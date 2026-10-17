@@ -12,6 +12,7 @@ import { allow, isBlocked, recordFailure } from './http/rateLimit'
 import { getToday } from './services/today'
 import { endSession, logDrill, requireSession, startSession } from './services/sessions'
 import { handleUtterance } from './services/utterance'
+import { listReview, approveOutbox, skipOutbox, approveAllOutbox, handleBilling, noteBilling } from './services/review'
 import { computeCoverage, loadSessionContext, markPresent, nextStudentFor } from './services/context'
 
 type Vars = { Variables: { instructorId: string } }
@@ -161,6 +162,26 @@ export function createApp(deps: Deps) {
     const ctx = await loadSessionContext(db, n.sessionId, null)
     return c.json({ coverage: await computeCoverage(db, ctx), nextStudent: await nextStudentFor(db, ctx, deps.now()) })
   })
+
+  app.get('/v1/review', async c => c.json(await listReview(db)))
+  app.post('/v1/review/outbox/approve-all', async c => c.json(await approveAllOutbox(deps)))
+  app.post('/v1/review/outbox/:id/approve', async c => {
+    const edits = await json(c.req.raw, z.object({ subject: z.string().min(1).max(120).optional(), body: z.string().min(1).max(5000).optional() }))
+    const r = await approveOutbox(deps, c.req.param('id'), edits)
+    return r.ok ? c.json(r) : c.json(r, 502)
+  })
+  app.post('/v1/review/outbox/:id/skip', async c => { await skipOutbox(db, c.req.param('id')); return c.json({ ok: true }) })
+  app.post('/v1/review/billing/:id/handle', async c => {
+    const { note } = await json(c.req.raw, z.object({ note: z.string().max(500).optional() }))
+    await handleBilling(db, c.req.param('id'), note)
+    return c.json({ ok: true })
+  })
+  app.post('/v1/review/billing/:id/note', async c => {
+    const { note } = await json(c.req.raw, z.object({ note: z.string().min(1).max(500) }))
+    await noteBilling(db, c.req.param('id'), note)
+    return c.json({ ok: true })
+  })
+  app.post('/v1/notes/:id/dismiss', async c => { await db.delete(notes).where(eq(notes.id, c.req.param('id'))); return c.json({ ok: true }) })
 
   return app
 }
