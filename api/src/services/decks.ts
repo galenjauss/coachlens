@@ -29,7 +29,7 @@ export async function patchDeck(db: Db, deckId: string, patch: DeckPatch): Promi
   const keep = new Set(ids)
   const unknown = [...keep].filter(id => !current.drills.some(d => d.id === id))
   if (unknown.length) throw new Error(`drills not in deck: ${unknown.join(',')}`)
-  // Not transactional (neon-http): ids are validated before any write, and a retry after a partial failure is rejected with 400 (ids no longer in the deck), so it can't double-apply.
+  // Not transactional (neon-http has no interactive transactions). Ids are validated before any write. If a write fails partway, a retry can duplicate newly added (id-less) drills; the instructor sees them in the editor and can delete them.
   const del = current.drills.filter(d => !keep.has(d.id)).map(d => d.id)
   if (del.length) await db.delete(drills).where(inArray(drills.id, del))
   for (const [i, d] of patch.drills.entries()) {
