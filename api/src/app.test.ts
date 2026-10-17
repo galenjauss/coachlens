@@ -89,4 +89,20 @@ describe('http', () => {
     expect((await app.request('/jobs/plan')).status).toBe(401)
   })
 
+  it('rejects duplicate drill ids and empty cron secret; job isolates failures', async () => {
+    const { app, h } = await setup()
+    const today = await (await app.request('/v1/today', { headers: h })).json() as { deck: { id: string; drills: { id: string }[] } }
+    const dr = { name: 'X', minutes: 5, kind: 'drill', cues: [], focusStudentIds: [], rationale: '' }
+    const id = today.deck.drills[0]!.id
+    const r = await app.request(`/v1/decks/${today.deck.id}`, { method: 'PATCH', headers: h, body: JSON.stringify({ drills: [{ ...dr, id }, { ...dr, id }] }) })
+    expect(r.status).toBe(400)
+    const after = await (await app.request(`/v1/decks/${today.deck.id}`, { headers: h })).json() as { drills: { name: string }[] }
+    expect(after.drills.map(d => d.name)).toEqual(['Horse stance holds'])
+    const empty = createApp(makeDeps(await makeTestDb(), { env: { ...makeDeps(await makeTestDb()).env, cronSecret: '' } }))
+    expect((await empty.request('/jobs/plan', { headers: { Authorization: 'Bearer ' } })).status).toBe(401)
+    const ok = await app.request('/jobs/plan', { headers: { Authorization: 'Bearer cron' } })
+    expect(ok.status).toBe(200)
+    expect(await ok.json()).toHaveProperty('failed')
+  })
+
 })

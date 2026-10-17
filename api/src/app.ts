@@ -199,17 +199,24 @@ export function createApp(deps: Deps) {
     const m = e instanceof Error ? e.message : ''
     if (/not found$/.test(m) || /^deck .* not found/.test(m)) throw new HTTPException(404, { message: m })
     if (/not pending$/.test(m)) throw new HTTPException(409, { message: m })
-    if (/^drills not in deck/.test(m)) throw new HTTPException(400, { message: m })
+    if (/^drills not in deck|^duplicate drill ids/.test(m)) throw new HTTPException(400, { message: m })
+    if (/^planner unavailable/.test(m)) throw new HTTPException(502, { message: m })
     throw e
   }
   const guard = async <T>(p: Promise<T>): Promise<T> => p.catch(httpErr)
 
   app.get('/jobs/plan', async c => {
-    if (c.req.header('authorization') !== `Bearer ${deps.env.cronSecret}`) throw new HTTPException(401, { message: 'cron only' })
+    if (!deps.env.cronSecret || !codesMatch(c.req.header('authorization') ?? '', `Bearer ${deps.env.cronSecret}`)) throw new HTTPException(401, { message: 'cron only' })
     const today = localDate(deps.now(), deps.env.timeZone)
     let drafted = 0
-    for (const cl of await db.select().from(classes)) if (await nextDeckFor(deps, cl.id, today)) drafted++
-    return c.json({ drafted })
+    let failed = 0
+    for (const cl of await db.select().from(classes)) {
+      try { if (await nextDeckFor(deps, cl.id, today)) drafted++ } catch (e) {
+        failed++
+        console.error('[jobs/plan] class failed', cl.id, e)
+      }
+    }
+    return c.json({ drafted, failed })
   })
 
   app.get('/v1/decks/:id', async c => c.json(await guard(getDeck(db, c.req.param('id')))))
