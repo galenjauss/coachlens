@@ -1,20 +1,29 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { HTTPException } from 'hono/http-exception'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { UtteranceForm } from '@matside/shared'
 import type { Deps } from './deps'
 import { attendance, billingFlags, enrollments, instructors, notes, sessions, students, classes } from './db/schema'
 import { hashToken } from './http/auth'
-import { allow } from './http/rateLimit'
+import { timingSafeEqual } from 'node:crypto'
+import { allow, isBlocked, recordFailure } from './http/rateLimit'
 import { getToday } from './services/today'
-import { endSession, logDrill, startSession } from './services/sessions'
+import { endSession, logDrill, requireSession, startSession } from './services/sessions'
 import { handleUtterance } from './services/utterance'
 import { computeCoverage, loadSessionContext, markPresent, nextStudentFor } from './services/context'
 
 type Vars = { Variables: { instructorId: string } }
 const MAX_AUDIO_BYTES = 2_000_000
+const PAIR_FAIL_LIMIT = 20
+const PAIR_FAIL_WINDOW_MS = 10 * 60_000
+const MAX_TOKENS = 5
+
+function codesMatch(a: string, b: string): boolean {
+  const x = Buffer.from(a), y = Buffer.from(b)
+  return x.length === y.length && timingSafeEqual(x, y)
+}
 
 const json = async <T>(req: Request, schema: z.ZodType<T>): Promise<T> => {
   const parsed = schema.safeParse(await req.json().catch(() => null))
@@ -45,18 +54,23 @@ export function createApp(deps: Deps) {
     const ip = c.req.header('x-forwarded-for') ?? 'local'
     if (!allow(`pair:${ip}`, 10)) throw new HTTPException(429, { message: 'slow down' })
     const { code } = await json(c.req.raw, z.object({ code: z.string().min(1).max(32) }))
-    if (code !== deps.env.pairingCode) throw new HTTPException(401, { message: 'bad code' })
+    if (isBlocked('pair-fail:global', PAIR_FAIL_LIMIT)) throw new HTTPException(429, { message: 'slow down' })
+    if (!codesMatch(code, deps.env.pairingCode)) {
+      recordFailure('pair-fail:global', PAIR_FAIL_WINDOW_MS)
+      throw new HTTPException(401, { message: 'bad code' })
+    }
     const [ins] = await db.select().from(instructors).limit(1)
     if (!ins) throw new HTTPException(500, { message: 'no instructor seeded' })
     const token = `${crypto.randomUUID()}${crypto.randomUUID()}`.replaceAll('-', '')
-    await db.update(instructors).set({ tokenHash: await hashToken(token) }).where(eq(instructors.id, ins.id))
+    const hashes = [...ins.tokenHashes, await hashToken(token)].slice(-MAX_TOKENS)
+    await db.update(instructors).set({ tokenHashes: hashes }).where(eq(instructors.id, ins.id))
     return c.json({ token })
   })
 
   app.use('/v1/*', async (c, next) => {
     const token = c.req.header('authorization')?.replace(/^Bearer\s+/i, '')
     if (!token) throw new HTTPException(401, { message: 'missing token' })
-    const [ins] = await db.select({ id: instructors.id }).from(instructors).where(eq(instructors.tokenHash, await hashToken(token)))
+    const [ins] = await db.select({ id: instructors.id }).from(instructors).where(sql`${instructors.tokenHashes} @> ${JSON.stringify([await hashToken(token)])}::jsonb`)
     if (!ins) throw new HTTPException(401, { message: 'bad token' })
     c.set('instructorId', ins.id)
     await next()
@@ -72,6 +86,7 @@ export function createApp(deps: Deps) {
   app.post('/v1/sessions/:id/attendance', async c => {
     const { presentIds } = await json(c.req.raw, z.object({ presentIds: z.array(z.string()) }))
     const sessionId = c.req.param('id')
+    await requireSession(db, sessionId)
     const ctx = await loadSessionContext(db, sessionId, null)
     for (const s of ctx.roster) {
       const status = presentIds.includes(s.id) ? 'present' : 'absent'
@@ -85,8 +100,7 @@ export function createApp(deps: Deps) {
 
   app.post('/v1/sessions/:id/remind', async c => {
     const { studentIds } = await json(c.req.raw, z.object({ studentIds: z.array(z.string()).max(30) }))
-    const [s] = await db.select().from(sessions).where(eq(sessions.id, c.req.param('id')))
-    if (!s) throw new HTTPException(404, { message: 'session not found' })
+    const s = await requireSession(db, c.req.param('id'))
     await db.update(classes).set({ remindIds: studentIds }).where(eq(classes.id, s.classId))
     return c.json({ ok: true })
   })
@@ -99,16 +113,21 @@ export function createApp(deps: Deps) {
   })
 
   app.post('/v1/utterance', async c => {
-    if (!allow(`utt:${c.get('instructorId')}`, 30)) throw new HTTPException(429, { message: 'slow down' })
-    const body = await c.req.parseBody()
+    if (!allow(`utt:${c.get('instructorId')}`, 120)) {
+      c.header('Retry-After', '10')
+      throw new HTTPException(429, { message: 'slow down' })
+    }
+    if (Number(c.req.header('content-length') ?? 0) > MAX_AUDIO_BYTES + 65536) throw new HTTPException(413, { message: 'audio too large' })
+    let body: Awaited<ReturnType<typeof c.req.parseBody>>
+    try { body = await c.req.parseBody() } catch { throw new HTTPException(400, { message: 'invalid multipart' }) }
     const str = (k: string) => (typeof body[k] === 'string' && body[k] !== '' ? (body[k] as string) : null)
     const form = UtteranceForm.safeParse({ sessionId: str('sessionId'), drillId: str('drillId'), mode: str('mode'), text: str('text') })
     if (!form.success) throw new HTTPException(400, { message: 'invalid utterance form' })
+    const ctx = await loadSessionContext(db, (await requireSession(db, form.data.sessionId)).id, null)
     let transcript = form.data.text
     const audio = body['audio']
     if (!transcript && audio instanceof File) {
       if (audio.size > MAX_AUDIO_BYTES) throw new HTTPException(413, { message: 'audio too large' })
-      const ctx = await loadSessionContext(db, form.data.sessionId, null)
       transcript = (await deps.stt.transcribe(new Uint8Array(await audio.arrayBuffer()), ctx.roster.map(r => r.name))).trim()
     }
     if (!transcript) throw new HTTPException(422, { message: 'empty_transcript' })

@@ -1,0 +1,1 @@
+ALTER TABLE "instructors" ADD COLUMN "token_hashes" jsonb DEFAULT '[]'::jsonb NOT NULL;

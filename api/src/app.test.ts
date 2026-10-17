@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { resetRateLimits } from './http/rateLimit'
 import { makeTestDb, makeDeps, fakeLlm } from './test/helpers'
 import { createApp } from './app'
 import { instructors, classes, students, enrollments, guardians, curriculum, decks, drills } from './db/schema'
@@ -22,6 +23,8 @@ async function setup() {
 }
 
 describe('http', () => {
+  beforeEach(() => resetRateLimits())
+
   it('rejects bad pairing codes and unauthenticated calls', async () => {
     const { app } = await setup()
     expect((await app.request('/pair', { method: 'POST', body: JSON.stringify({ code: 'nope' }), headers: { 'Content-Type': 'application/json' } })).status).toBe(401)
@@ -50,5 +53,27 @@ describe('http', () => {
     const { app, h } = await setup()
     const form = new FormData(); form.set('mode', 'note')
     expect((await app.request('/v1/utterance', { method: 'POST', headers: { Authorization: h.Authorization }, body: form })).status).toBe(400)
+  })
+
+  it('returns 404 for missing sessions', async () => {
+    const { app, h } = await setup()
+    expect((await app.request('/v1/sessions/nope/end', { method: 'POST', headers: h })).status).toBe(404)
+    const form = new FormData(); form.set('sessionId', 'nope'); form.set('mode', 'note'); form.set('text', 'hi')
+    expect((await app.request('/v1/utterance', { method: 'POST', headers: { Authorization: h.Authorization }, body: form })).status).toBe(404)
+  })
+
+  it('keeps earlier tokens valid when pairing again', async () => {
+    const { app, h } = await setup()
+    const again = await app.request('/pair', { method: 'POST', body: JSON.stringify({ code: '4242' }), headers: { 'Content-Type': 'application/json' } })
+    const { token } = (await again.json()) as { token: string }
+    expect((await app.request('/v1/today', { headers: { Authorization: `Bearer ${token}` } })).status).toBe(200)
+    expect((await app.request('/v1/today', { headers: h })).status).toBe(200)
+  })
+
+  it('caps failed pairing attempts globally', async () => {
+    const { app } = await setup()
+    const post = (code: string, ip: string) => app.request('/pair', { method: 'POST', body: JSON.stringify({ code }), headers: { 'Content-Type': 'application/json', 'x-forwarded-for': ip } })
+    for (let i = 0; i < 20; i++) expect((await post('bad', `1.1.1.${i}`)).status).toBe(401)
+    expect((await post('4242', '9.9.9.9')).status).toBe(429)
   })
 })

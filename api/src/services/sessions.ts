@@ -1,21 +1,30 @@
+import { HTTPException } from 'hono/http-exception'
 import { and, count, eq, gte, isNull, isNotNull } from 'drizzle-orm'
 import type { StartSessionResponse, WrapUp } from '@matside/shared'
 import type { Deps } from '../deps'
+import type { Db } from '../db/client'
 import { agentRuns, billingFlags, classes, decks, drills, notes, outbox, sessions } from '../db/schema'
 import { localDate } from '../logic/dates'
 import { draftDeck } from '../agents/planner'
 import { computeCoverage, loadSessionContext, nextStudentFor } from './context'
 
+export async function requireSession(db: Db, id: string) {
+  const [s] = await db.select().from(sessions).where(eq(sessions.id, id))
+  if (!s) throw new HTTPException(404, { message: 'session not found' })
+  return s
+}
+
 export async function startSession(deps: Deps, classId: string): Promise<StartSessionResponse> {
   const { db } = deps
   const forDate = localDate(deps.now(), deps.env.timeZone)
+  const [cls] = await db.select().from(classes).where(eq(classes.id, classId))
+  if (!cls) throw new HTTPException(404, { message: 'class not found' })
   const [open] = await db.select().from(sessions).where(and(eq(sessions.classId, classId), eq(sessions.forDate, forDate), isNull(sessions.endedAt)))
   let session = open
   if (!session) {
     const deckId = await draftDeck(deps, classId, forDate)
     if (!deckId) throw new Error('could not prepare a deck')
-    const [c] = await db.select().from(classes).where(eq(classes.id, classId))
-    if (!c) throw new Error(`class ${classId} not found`)
+    const c = cls
     ;[session] = await db.insert(sessions).values({ classId, deckId, forDate, startedAt: deps.now(), remindIds: c.remindIds }).returning()
     await db.update(classes).set({ remindIds: [] }).where(eq(classes.id, classId))
     await db.update(decks).set({ status: 'active' }).where(eq(decks.id, deckId))
@@ -26,8 +35,9 @@ export async function startSession(deps: Deps, classId: string): Promise<StartSe
 
 export async function logDrill(deps: Deps, sessionId: string, drillId: string, event: 'start' | 'end') {
   const { db } = deps
-  const [s] = await db.select().from(sessions).where(eq(sessions.id, sessionId))
-  if (!s) throw new Error('session not found')
+  const s = await requireSession(db, sessionId)
+  const [dr] = await db.select({ id: drills.id }).from(drills).where(and(eq(drills.id, drillId), eq(drills.deckId, s.deckId)))
+  if (!dr) throw new HTTPException(404, { message: 'drill not found' })
   const now = deps.now()
   if (event === 'start') {
     await db.update(drills).set({ endedAt: now }).where(and(eq(drills.deckId, s.deckId), isNotNull(drills.startedAt), isNull(drills.endedAt)))
@@ -40,8 +50,7 @@ export async function logDrill(deps: Deps, sessionId: string, drillId: string, e
 export async function endSession(deps: Deps, sessionId: string): Promise<WrapUp> {
   const { db } = deps
   const now = deps.now()
-  const [s] = await db.select().from(sessions).where(eq(sessions.id, sessionId))
-  if (!s) throw new Error('session not found')
+  const s = await requireSession(db, sessionId)
   if (!s.endedAt) {
     await db.update(sessions).set({ endedAt: now }).where(eq(sessions.id, sessionId))
     await db.update(decks).set({ status: 'done' }).where(eq(decks.id, s.deckId))
