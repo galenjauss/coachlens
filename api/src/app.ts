@@ -1,0 +1,147 @@
+import { Hono } from 'hono'
+import { cors } from 'hono/cors'
+import { HTTPException } from 'hono/http-exception'
+import { and, eq, inArray } from 'drizzle-orm'
+import { z } from 'zod'
+import { UtteranceForm } from '@matside/shared'
+import type { Deps } from './deps'
+import { attendance, billingFlags, enrollments, instructors, notes, sessions, students, classes } from './db/schema'
+import { hashToken } from './http/auth'
+import { allow } from './http/rateLimit'
+import { getToday } from './services/today'
+import { endSession, logDrill, startSession } from './services/sessions'
+import { handleUtterance } from './services/utterance'
+import { computeCoverage, loadSessionContext, markPresent, nextStudentFor } from './services/context'
+
+type Vars = { Variables: { instructorId: string } }
+const MAX_AUDIO_BYTES = 2_000_000
+
+const json = async <T>(req: Request, schema: z.ZodType<T>): Promise<T> => {
+  const parsed = schema.safeParse(await req.json().catch(() => null))
+  if (!parsed.success) throw new HTTPException(400, { message: 'invalid body' })
+  return parsed.data
+}
+
+export function createApp(deps: Deps) {
+  const app = new Hono<Vars>()
+  const { db } = deps
+
+  app.use('*', cors({
+    origin: o => (deps.env.allowedOrigins.includes('*') ? o || '*' : deps.env.allowedOrigins.includes(o) ? o : null),
+    allowHeaders: ['Authorization', 'Content-Type'],
+    allowMethods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+    maxAge: 600,
+  }))
+
+  app.onError((err, c) => {
+    if (err instanceof HTTPException) return c.json({ error: err.message }, err.status)
+    console.error('[api]', c.req.method, c.req.path, err)
+    return c.json({ error: 'internal_error' }, 500)
+  })
+
+  app.get('/health', c => c.json({ ok: true }))
+
+  app.post('/pair', async c => {
+    const ip = c.req.header('x-forwarded-for') ?? 'local'
+    if (!allow(`pair:${ip}`, 10)) throw new HTTPException(429, { message: 'slow down' })
+    const { code } = await json(c.req.raw, z.object({ code: z.string().min(1).max(32) }))
+    if (code !== deps.env.pairingCode) throw new HTTPException(401, { message: 'bad code' })
+    const [ins] = await db.select().from(instructors).limit(1)
+    if (!ins) throw new HTTPException(500, { message: 'no instructor seeded' })
+    const token = `${crypto.randomUUID()}${crypto.randomUUID()}`.replaceAll('-', '')
+    await db.update(instructors).set({ tokenHash: await hashToken(token) }).where(eq(instructors.id, ins.id))
+    return c.json({ token })
+  })
+
+  app.use('/v1/*', async (c, next) => {
+    const token = c.req.header('authorization')?.replace(/^Bearer\s+/i, '')
+    if (!token) throw new HTTPException(401, { message: 'missing token' })
+    const [ins] = await db.select({ id: instructors.id }).from(instructors).where(eq(instructors.tokenHash, await hashToken(token)))
+    if (!ins) throw new HTTPException(401, { message: 'bad token' })
+    c.set('instructorId', ins.id)
+    await next()
+  })
+
+  app.get('/v1/today', async c => c.json(await getToday(deps)))
+
+  app.post('/v1/sessions', async c => {
+    const { classId } = await json(c.req.raw, z.object({ classId: z.string().min(1) }))
+    return c.json(await startSession(deps, classId))
+  })
+
+  app.post('/v1/sessions/:id/attendance', async c => {
+    const { presentIds } = await json(c.req.raw, z.object({ presentIds: z.array(z.string()) }))
+    const sessionId = c.req.param('id')
+    const ctx = await loadSessionContext(db, sessionId, null)
+    for (const s of ctx.roster) {
+      const status = presentIds.includes(s.id) ? 'present' : 'absent'
+      await db.insert(attendance).values({ sessionId, studentId: s.id, status, source: 'phone' })
+        .onConflictDoUpdate({ target: [attendance.sessionId, attendance.studentId], set: { status, source: 'phone' } })
+    }
+    return c.json(await computeCoverage(db, ctx))
+  })
+
+  app.post('/v1/sessions/:id/end', async c => c.json(await endSession(deps, c.req.param('id'))))
+
+  app.post('/v1/sessions/:id/remind', async c => {
+    const { studentIds } = await json(c.req.raw, z.object({ studentIds: z.array(z.string()).max(30) }))
+    const [s] = await db.select().from(sessions).where(eq(sessions.id, c.req.param('id')))
+    if (!s) throw new HTTPException(404, { message: 'session not found' })
+    await db.update(classes).set({ remindIds: studentIds }).where(eq(classes.id, s.classId))
+    return c.json({ ok: true })
+  })
+
+  app.post('/v1/sessions/:id/drills/:drillId/:event', async c => {
+    const event = z.enum(['start', 'end']).safeParse(c.req.param('event'))
+    if (!event.success) throw new HTTPException(400, { message: 'bad event' })
+    await logDrill(deps, c.req.param('id'), c.req.param('drillId'), event.data)
+    return c.json({ ok: true })
+  })
+
+  app.post('/v1/utterance', async c => {
+    if (!allow(`utt:${c.get('instructorId')}`, 30)) throw new HTTPException(429, { message: 'slow down' })
+    const body = await c.req.parseBody()
+    const str = (k: string) => (typeof body[k] === 'string' && body[k] !== '' ? (body[k] as string) : null)
+    const form = UtteranceForm.safeParse({ sessionId: str('sessionId'), drillId: str('drillId'), mode: str('mode'), text: str('text') })
+    if (!form.success) throw new HTTPException(400, { message: 'invalid utterance form' })
+    let transcript = form.data.text
+    const audio = body['audio']
+    if (!transcript && audio instanceof File) {
+      if (audio.size > MAX_AUDIO_BYTES) throw new HTTPException(413, { message: 'audio too large' })
+      const ctx = await loadSessionContext(db, form.data.sessionId, null)
+      transcript = (await deps.stt.transcribe(new Uint8Array(await audio.arrayBuffer()), ctx.roster.map(r => r.name))).trim()
+    }
+    if (!transcript) throw new HTTPException(422, { message: 'empty_transcript' })
+    return c.json(await handleUtterance(deps, { sessionId: form.data.sessionId, drillId: form.data.drillId, mode: form.data.mode, transcript }))
+  })
+
+  app.post('/v1/utterances/:id/undo', async c => {
+    const id = c.req.param('id')
+    const [n] = await db.select({ sessionId: notes.sessionId }).from(notes).where(eq(notes.utteranceId, id)).limit(1)
+    await db.delete(notes).where(eq(notes.utteranceId, id))
+    await db.delete(billingFlags).where(eq(billingFlags.utteranceId, id))
+    const coverage = n?.sessionId ? await computeCoverage(db, await loadSessionContext(db, n.sessionId, null)) : null
+    return c.json({ coverage })
+  })
+
+  app.post('/v1/notes/:id/assign', async c => {
+    const { studentId } = await json(c.req.raw, z.object({ studentId: z.string().min(1) }))
+    const [n] = await db.select().from(notes).where(eq(notes.id, c.req.param('id')))
+    if (!n) throw new HTTPException(404, { message: 'note not found' })
+    if (n.sessionId) {
+      const [en] = await db.select().from(enrollments).innerJoin(sessions, eq(sessions.classId, enrollments.classId))
+        .where(and(eq(sessions.id, n.sessionId), eq(enrollments.studentId, studentId)))
+      if (!en) throw new HTTPException(400, { message: 'student not in class' })
+    } else {
+      const [st] = await db.select().from(students).where(inArray(students.id, [studentId]))
+      if (!st) throw new HTTPException(400, { message: 'unknown student' })
+    }
+    await db.update(notes).set({ studentId }).where(eq(notes.id, n.id))
+    if (!n.sessionId) return c.json({ coverage: null, nextStudent: null })
+    await markPresent(db, n.sessionId, studentId, 'backstop')
+    const ctx = await loadSessionContext(db, n.sessionId, null)
+    return c.json({ coverage: await computeCoverage(db, ctx), nextStudent: await nextStudentFor(db, ctx, deps.now()) })
+  })
+
+  return app
+}
