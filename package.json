@@ -1,0 +1,10 @@
+{
+  "name": "matside",
+  "private": true,
+  "type": "module",
+  "workspaces": ["shared", "api", "app"],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}
