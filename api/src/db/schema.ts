@@ -1,4 +1,4 @@
-import { pgTable, text, integer, real, timestamp, jsonb, primaryKey } from 'drizzle-orm/pg-core'
+import { pgTable, text, integer, real, timestamp, jsonb, primaryKey, uniqueIndex } from 'drizzle-orm/pg-core'
 import type { SkillTag, Urgency, DeckDiff, ReportCardContent } from '@matside/shared'
 
 const id = () => text('id').primaryKey().$defaultFn(() => crypto.randomUUID())
@@ -42,7 +42,7 @@ export const attendance = pgTable('attendance', {
 export const decks = pgTable('decks', {
   id: id(), classId: text('class_id').notNull(), forDate: text('for_date').notNull(),
   status: text('status').$type<'draft' | 'active' | 'done'>().notNull().default('draft'),
-})
+}, t => [uniqueIndex('decks_class_date').on(t.classId, t.forDate)])
 export const drills = pgTable('drills', {
   id: id(), deckId: text('deck_id').notNull(), position: integer('position').notNull(),
   name: text('name').notNull(), minutes: integer('minutes').notNull(),

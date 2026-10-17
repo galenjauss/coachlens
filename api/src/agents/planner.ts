@@ -44,13 +44,27 @@ async function planningContext(deps: Deps, classId: string, forDate: string) {
 
 export async function draftDeck(deps: Deps, classId: string, forDate: string): Promise<string | null> {
   const existing = await findDeck(deps.db, classId, forDate)
-  if (existing) return existing.id
+  if (existing) {
+    const [has] = await deps.db.select({ id: drills.id }).from(drills).where(eq(drills.deckId, existing.id)).limit(1)
+    if (has) return existing.id
+    await deps.db.delete(decks).where(eq(decks.id, existing.id)) // empty leftover from a failed draft
+  }
   return withRun(deps, { agent: 'planner', trigger: 'draft', sessionId: null }, async () => {
     const ctx = await planningContext(deps, classId, forDate)
     const out = await deps.llm.object({ name: 'planner.draft', instructions: PLANNER_INSTRUCTIONS, prompt: `Plan the class on ${forDate}.\n${ctx.text}`, schema: DraftOut })
-    const [deck] = await deps.db.insert(decks).values({ classId, forDate }).returning()
-    await deps.db.insert(drills).values(out.drills.map((d, i) => ({ ...d, deckId: deck!.id, position: i + 1 })))
-    return { result: deck!.id, summary: `Drafted ${forDate} deck: ${out.drills.length} drills, ${totalMinutes(out.drills)} min (${ctx.theme})`, reason: 'theme + forms cycle + open issues', output: out }
+    const [deck] = await deps.db.insert(decks).values({ classId, forDate }).onConflictDoNothing().returning()
+    if (!deck) {
+      const raced = await findDeck(deps.db, classId, forDate)
+      if (!raced) throw new Error('deck insert conflict but no deck found')
+      return { result: raced.id, summary: `Deck for ${forDate} already drafted`, reason: 'concurrent draft', output: out }
+    }
+    try {
+      await deps.db.insert(drills).values(out.drills.map((d, i) => ({ ...d, deckId: deck.id, position: i + 1 })))
+    } catch (e) {
+      await deps.db.delete(decks).where(eq(decks.id, deck.id)).catch(() => {})
+      throw e
+    }
+    return { result: deck.id, summary: `Drafted ${forDate} deck: ${out.drills.length} drills, ${totalMinutes(out.drills)} min (${ctx.theme})`, reason: 'theme + forms cycle + open issues', output: out }
   })
 }
 
@@ -79,19 +93,25 @@ export async function suggestDiff(deps: Deps, deckId: string, requestText: strin
 
 export async function acceptDiff(deps: Deps, diffId: string, opts: { remember: boolean }): Promise<Deck> {
   const { db } = deps
-  const [row] = await db.select().from(deckDiffs).where(eq(deckDiffs.id, diffId))
-  if (!row || row.status !== 'pending') throw new Error(`diff ${diffId} not pending`)
+  const [claimed] = await db.update(deckDiffs).set({ status: 'accepted' })
+    .where(and(eq(deckDiffs.id, diffId), eq(deckDiffs.status, 'pending'))).returning()
+  if (!claimed) throw new Error(`diff ${diffId} not pending`)
+  const row = claimed
   const deck = await getDeck(db, row.deckId)
-  const planned = applyDiff(deck.drills, row.diff)
-  const keepIds = new Set(planned.flatMap(p => (p.id ? [p.id] : [])))
-  const toDelete = deck.drills.filter(d => !keepIds.has(d.id)).map(d => d.id)
-  if (toDelete.length) await db.delete(drills).where(inArray(drills.id, toDelete))
-  for (const [i, p] of planned.entries()) {
-    const { id, ...fields } = p
-    if (id) await db.update(drills).set({ ...fields, position: i + 1 }).where(eq(drills.id, id))
-    else await db.insert(drills).values({ ...fields, deckId: deck.id, position: i + 1 })
+  try {
+    const planned = applyDiff(deck.drills, row.diff)
+    const keepIds = new Set(planned.flatMap(p => (p.id ? [p.id] : [])))
+    const toDelete = deck.drills.filter(d => !keepIds.has(d.id)).map(d => d.id)
+    if (toDelete.length) await db.delete(drills).where(inArray(drills.id, toDelete))
+    for (const [i, p] of planned.entries()) {
+      const { id, ...fields } = p
+      if (id) await db.update(drills).set({ ...fields, position: i + 1 }).where(eq(drills.id, id))
+      else await db.insert(drills).values({ ...fields, deckId: deck.id, position: i + 1 })
+    }
+  } catch (e) {
+    await db.update(deckDiffs).set({ status: 'pending' }).where(eq(deckDiffs.id, diffId)).catch(() => {})
+    throw e
   }
-  await db.update(deckDiffs).set({ status: 'accepted' }).where(eq(deckDiffs.id, diffId))
   if (opts.remember && row.diff.rememberSuggestion) await db.insert(preferences).values({ classId: deck.classId, text: row.diff.rememberSuggestion })
   return getDeck(db, deck.id)
 }

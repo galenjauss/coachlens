@@ -4,7 +4,7 @@ import { makeTestDb, makeDeps, fakeLlm } from '../test/helpers'
 import { draftParentEmail } from './parentEmail'
 import { draftDeck, suggestDiff, acceptDiff } from './planner'
 import { getDeck } from '../services/decks'
-import { classes, students, guardians, enrollments, curriculum, notes, outbox, deckDiffs, preferences } from '../db/schema'
+import { classes, students, guardians, enrollments, curriculum, notes, outbox, deckDiffs, preferences, decks } from '../db/schema'
 
 const drill = (name: string, minutes = 5) => ({ name, minutes, kind: 'drill', cues: ['knees out'], focusStudentIds: [], rationale: 'theme' })
 
@@ -50,5 +50,31 @@ describe('planner agent', () => {
     const [diffRow] = await db.select().from(deckDiffs)
     expect(diffRow!.status).toBe('accepted')
     expect(await db.select().from(preferences)).toHaveLength(1)
+  })
+
+  it('rejects a second accept of the same diff without duplicating drills', async () => {
+    const { db, classId } = await world()
+    const deps = makeDeps(db, {
+      llm: fakeLlm(({ name }) => name === 'planner.draft'
+        ? { drills: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].map(n => drill(n)) }
+        : { added: [{ ...drill('Sparring', 8), kind: 'sparring', afterPosition: 2, reason: 'x' }], changed: [], removed: [], rememberSuggestion: null }),
+    })
+    const deckId = await draftDeck(deps, classId, '2026-10-20')
+    const s = await suggestDiff(deps, deckId!, 'add sparring')
+    await acceptDiff(deps, s!.diffId, { remember: false })
+    await expect(acceptDiff(deps, s!.diffId, { remember: false })).rejects.toThrow('not pending')
+    const deck = await getDeck(db, deckId!)
+    expect(deck.drills.filter(d => d.name === 'Sparring')).toHaveLength(1)
+    expect(deck.drills).toHaveLength(9)
+  })
+
+  it('re-drafts a pre-existing empty deck', async () => {
+    const { db, classId } = await world()
+    await db.insert(decks).values({ classId, forDate: '2026-10-20' })
+    const deps = makeDeps(db, { llm: fakeLlm(() => ({ drills: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].map(n => drill(n)) })) })
+    const deckId = await draftDeck(deps, classId, '2026-10-20')
+    expect(deckId).toBeTruthy()
+    expect((await getDeck(db, deckId!)).drills).toHaveLength(8)
+    expect(await db.select().from(decks)).toHaveLength(1)
   })
 })

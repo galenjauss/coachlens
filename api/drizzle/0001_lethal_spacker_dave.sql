@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "decks_class_date" ON "decks" USING btree ("class_id","for_date");
