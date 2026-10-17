@@ -81,7 +81,7 @@ export const outbox = pgTable('outbox', {
   id: id(), kind: text('kind').$type<'parent_email' | 'report_card'>().notNull(),
   studentId: text('student_id').notNull(), sessionId: text('session_id'), toEmail: text('to_email').notNull(),
   subject: text('subject').notNull(), body: text('body').notNull(),
-  status: text('status').$type<'pending_review' | 'sent' | 'skipped' | 'error'>().notNull().default('pending_review'),
+  status: text('status').$type<'pending_review' | 'sending' | 'sent' | 'skipped' | 'error'>().notNull().default('pending_review'),
   error: text('error'), sentAt: ts('sent_at'), createdAt: createdAt(),
 })
 export const reportCards = pgTable('report_cards', {

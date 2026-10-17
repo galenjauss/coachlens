@@ -9,7 +9,7 @@ const iso = (d: Date) => d.toISOString()
 const first = (n: string | null) => (n ? n.split(' ')[0]! : 'Unknown')
 
 export async function listReview(db: Db): Promise<ReviewItem[]> {
-  const mail = await db.select({ o: outbox, name: students.name }).from(outbox).innerJoin(students, eq(students.id, outbox.studentId)).where(eq(outbox.status, 'pending_review'))
+  const mail = await db.select({ o: outbox, name: students.name }).from(outbox).leftJoin(students, eq(students.id, outbox.studentId)).where(eq(outbox.status, 'pending_review'))
   const bills = await db.select({ b: billingFlags, name: students.name }).from(billingFlags).leftJoin(students, eq(students.id, billingFlags.studentId)).where(eq(billingFlags.status, 'open'))
   const loose = await db.select().from(notes).where(isNull(notes.studentId)).orderBy(desc(notes.createdAt)).limit(20)
   const diffs = await db.select().from(deckDiffs).where(eq(deckDiffs.status, 'pending'))
@@ -22,45 +22,72 @@ export async function listReview(db: Db): Promise<ReviewItem[]> {
   return items.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
-export async function approveOutbox(deps: Deps, id: string, edits: { subject?: string; body?: string } = {}): Promise<{ ok: true } | { ok: false; error: string }> {
+export type ReviewFail = 'not_found' | 'not_pending'
+export type ActionResult = { ok: true } | { ok: false; code: ReviewFail; error: string }
+export type ApproveResult = { ok: true } | { ok: false; code: ReviewFail | 'send_failed'; error: string }
+
+const notFound = (what: string): ActionResult => ({ ok: false, code: 'not_found', error: `${what} not found` })
+const conflict = (what: string): ActionResult => ({ ok: false, code: 'not_pending', error: `${what} is not pending` })
+
+export async function approveOutbox(deps: Deps, id: string, edits: { subject?: string; body?: string } = {}): Promise<ApproveResult> {
   const { db } = deps
-  const [row] = await db.select().from(outbox).where(and(eq(outbox.id, id), eq(outbox.status, 'pending_review')))
-  if (!row) return { ok: false, error: 'not pending' }
+  // Atomic claim: only one concurrent caller can move pending_review -> sending.
+  const [row] = await db.update(outbox).set({ status: 'sending' }).where(and(eq(outbox.id, id), eq(outbox.status, 'pending_review'))).returning()
+  if (!row) {
+    const [exists] = await db.select({ id: outbox.id }).from(outbox).where(eq(outbox.id, id))
+    return exists ? { ok: false, code: 'not_pending', error: 'not pending' } : { ok: false, code: 'not_found', error: 'not found' }
+  }
   const subject = edits.subject ?? row.subject
   const body = edits.body ?? row.body
   const to = deps.env.demoEmailOverride ?? row.toEmail
-  try {
-    await deps.mail.send({ to, subject, text: body })
-  } catch (e) {
-    const error = e instanceof Error ? e.message : String(e)
-    await db.update(outbox).set({ subject, body, error }).where(eq(outbox.id, id))
-    return { ok: false, error }
+  let sendError: string | null = null
+  await withRun(deps, { agent: 'mailer', trigger: 'approved', sessionId: row.sessionId }, async () => {
+    try {
+      await deps.mail.send({ to, subject, text: body })
+    } catch (e) {
+      sendError = e instanceof Error ? e.message : String(e)
+      throw e
+    }
+    return { result: true, summary: `Sent "${subject}" to ${row.toEmail}${deps.env.demoEmailOverride ? ' (demo inbox)' : ''}`, reason: 'instructor approved' }
+  })
+  if (sendError !== null) {
+    await db.update(outbox).set({ subject, body, status: 'pending_review', error: sendError }).where(eq(outbox.id, id))
+    return { ok: false, code: 'send_failed', error: sendError }
   }
   await db.update(outbox).set({ subject, body, status: 'sent', sentAt: deps.now(), error: null }).where(eq(outbox.id, id))
-  await withRun(deps, { agent: 'mailer', trigger: 'approved', sessionId: row.sessionId }, async () => ({
-    result: true, summary: `Sent "${subject}" to ${row.toEmail}${deps.env.demoEmailOverride ? ' (demo inbox)' : ''}`, reason: 'instructor approved',
-  }))
   return { ok: true }
 }
 
-export async function skipOutbox(db: Db, id: string) {
-  await db.update(outbox).set({ status: 'skipped' }).where(eq(outbox.id, id))
+export async function skipOutbox(db: Db, id: string): Promise<ActionResult> {
+  const done = await db.update(outbox).set({ status: 'skipped' }).where(and(eq(outbox.id, id), eq(outbox.status, 'pending_review'))).returning({ id: outbox.id })
+  if (done.length) return { ok: true }
+  const [exists] = await db.select({ id: outbox.id }).from(outbox).where(eq(outbox.id, id))
+  return exists ? conflict('email') : notFound('email')
 }
 
-export async function approveAllOutbox(deps: Deps): Promise<{ sent: number; failed: number }> {
-  const pending = await deps.db.select({ id: outbox.id }).from(outbox).where(eq(outbox.status, 'pending_review'))
+export async function approveAllOutbox(deps: Deps, ids: string[]): Promise<{ sent: number; failed: number }> {
   let sent = 0, failed = 0
-  for (const p of pending) ((await approveOutbox(deps, p.id)).ok ? sent++ : failed++)
+  for (const id of new Set(ids)) ((await approveOutbox(deps, id)).ok ? sent++ : failed++)
   return { sent, failed }
 }
 
-export async function noteBilling(db: Db, id: string, extraNote: string) {
+export async function noteBilling(db: Db, id: string, extraNote: string): Promise<ActionResult> {
   const [b] = await db.select().from(billingFlags).where(eq(billingFlags.id, id))
-  if (!b) throw new Error('billing flag not found')
+  if (!b) return notFound('billing flag')
   await db.update(billingFlags).set({ note: `${b.note}\n— ${extraNote}` }).where(eq(billingFlags.id, id))
+  return { ok: true }
 }
 
-export async function handleBilling(db: Db, id: string, extraNote?: string) {
+export async function handleBilling(db: Db, id: string, extraNote?: string): Promise<ActionResult> {
+  const [b] = await db.select().from(billingFlags).where(eq(billingFlags.id, id))
+  if (!b) return notFound('billing flag')
+  if (b.status !== 'open') return conflict('billing flag')
   if (extraNote) await noteBilling(db, id, extraNote)
-  await db.update(billingFlags).set({ status: 'handled' }).where(eq(billingFlags.id, id))
+  await db.update(billingFlags).set({ status: 'handled' }).where(and(eq(billingFlags.id, id), eq(billingFlags.status, 'open')))
+  return { ok: true }
+}
+
+export async function dismissNote(db: Db, id: string): Promise<ActionResult> {
+  const gone = await db.delete(notes).where(and(eq(notes.id, id), isNull(notes.studentId))).returning({ id: notes.id })
+  return gone.length ? { ok: true } : notFound('unassigned note')
 }
