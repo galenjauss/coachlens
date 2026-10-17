@@ -154,3 +154,9 @@ describe('review regressions', () => {
     expect(resolveName('Leo’s', roster)).toMatchObject({ kind: 'match', student: { id: 's4' } })
   })
 })
+
+describe('cardLines rollcall_unclear', () => {
+  it('asks for a repeat', () => {
+    expect(buildCardLines([{ kind: 'rollcall_unclear', names: ['Mya'] }])).toEqual(["Didn't catch: Mya", 'Say it again or use phone roster'])
+  })
+})

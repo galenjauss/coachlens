@@ -73,4 +73,27 @@ describe('handleUtterance', () => {
     const [n] = await w.db.select().from(notes).where(eq(notes.text, 'something'))
     expect(n!.studentId).toBeNull()
   })
+
+  it('feedback before roll call keeps the whole roster present', async () => {
+    const w = await classWorld()
+    const deps = makeDeps(w.db, { llm: fakeLlm(() => ({ intents: [intent({ studentNames: ['Leo'], content: 'good focus', skillTags: ['focus'] })] })) })
+    const r = await handleUtterance(deps, { sessionId: w.sessionId, drillId: null, mode: 'note', transcript: 'Leo good focus' })
+    expect(r.coverage).toEqual({ covered: 1, present: 5 })
+  })
+
+  it('roll call with an unresolved name writes no attendance', async () => {
+    const w = await classWorld()
+    const deps = makeDeps(w.db)
+    const r = await handleUtterance(deps, { sessionId: w.sessionId, drillId: null, mode: 'attendance', transcript: 'Everyone except Mya' })
+    expect(r.cardLines[0]).toBe("Didn't catch: Mya")
+    expect(await w.db.select().from(attendance).where(eq(attendance.sessionId, w.sessionId))).toHaveLength(0)
+  })
+
+  it('second ambiguous name in one intent becomes an unassigned line', async () => {
+    const w = await classWorld()
+    const deps = makeDeps(w.db, { llm: fakeLlm(() => ({ intents: [intent({ studentNames: ['Mya', 'Mya'], content: 'nice', skillTags: [] })] })) })
+    const r = await handleUtterance(deps, { sessionId: w.sessionId, drillId: null, mode: 'note', transcript: 'Mya Mya nice' })
+    expect(r.disambiguation).not.toBeNull()
+    expect(r.cardLines).toEqual(['● Saved · pick student in Review'])
+  })
 })

@@ -1,4 +1,4 @@
-import { and, eq, gte } from 'drizzle-orm'
+import { and, eq, gte, sql } from 'drizzle-orm'
 import type { Disambiguation, Intent, UtteranceResponse } from '@matside/shared'
 import type { Deps } from '../deps'
 import { attendance, billingFlags, drills, issues, notes, utterances } from '../db/schema'
@@ -10,9 +10,12 @@ import { resolveName } from '../logic/names'
 import { parseAttendance } from '../logic/attendance'
 import { isRecurring, RECURRING_WINDOW_DAYS } from '../logic/recurring'
 import { buildCardLines, type CardAction } from '../logic/cardLines'
-import { computeCoverage, loadSessionContext, markPresent, nextStudentFor, type SessionContext } from './context'
+import { coverageAndNext, loadSessionContext, markPresent, type SessionContext } from './context'
 
 const DAY = 86_400_000
+function safeDefer(deps: Deps, label: string, p: Promise<unknown>) {
+  deps.defer(p.catch(e => { console.error(`[defer:${label}]`, e) }))
+}
 const first = (name: string) => name.split(' ')[0]!
 
 export async function handleUtterance(
@@ -41,28 +44,37 @@ export async function handleUtterance(
       disambiguation ??= r.disambiguation
     }
   }
+  const { coverage, next } = await coverageAndNext(db, ctx, deps.now())
   return {
     utteranceId,
     transcript: input.transcript,
     cardLines: buildCardLines(actions),
-    coverage: await computeCoverage(db, ctx),
-    nextStudent: await nextStudentFor(db, ctx, deps.now()),
+    coverage,
+    nextStudent: next,
     disambiguation,
   }
 }
 
 async function applyRollCall(deps: Deps, ctx: SessionContext, parsed: { kind: 'except'; names: string[] } | { kind: 'all' }): Promise<CardAction> {
   const absent = new Map<string, string>()
+  const unresolved: string[] = []
   if (parsed.kind === 'except') {
     for (const n of parsed.names) {
       const m = resolveName(n, ctx.roster)
       if (m.kind === 'match') absent.set(m.student.id, first(m.student.name))
+      else unresolved.push(n)
     }
   }
-  for (const s of ctx.roster) {
-    const status = absent.has(s.id) ? 'absent' : 'present'
-    await deps.db.insert(attendance).values({ sessionId: ctx.sessionId, studentId: s.id, status, source: 'voice' })
-      .onConflictDoUpdate({ target: [attendance.sessionId, attendance.studentId], set: { status, source: 'voice' } })
+  if (unresolved.length) {
+    await withRun(deps, { agent: 'attendance', trigger: 'roll_call', sessionId: ctx.sessionId }, async () => ({
+      result: false, summary: `Roll call not applied, unclear: ${unresolved.join(', ')}`, reason: 'unresolved names',
+    }))
+    return { kind: 'rollcall_unclear', names: unresolved }
+  }
+  if (ctx.roster.length) {
+    await deps.db.insert(attendance)
+      .values(ctx.roster.map(s => ({ sessionId: ctx.sessionId, studentId: s.id, status: absent.has(s.id) ? 'absent' as const : 'present' as const, source: 'voice' as const })))
+      .onConflictDoUpdate({ target: [attendance.sessionId, attendance.studentId], set: { status: sql`excluded.status`, source: 'voice' } })
   }
   await withRun(deps, { agent: 'attendance', trigger: 'roll_call', sessionId: ctx.sessionId }, async () => ({
     result: true, summary: `${ctx.roster.length - absent.size} present, absent: ${[...absent.values()].join(', ') || 'none'}`, reason: 'voice roll call',
@@ -78,7 +90,7 @@ async function applyIntent(deps: Deps, ctx: SessionContext, utteranceId: string,
     case 'billing': return applyBilling(deps, ctx, utteranceId, intent)
     case 'attendance': return applyAttendanceIntent(deps, ctx, intent)
     case 'plan_request': {
-      deps.defer((async () => {
+      safeDefer(deps, 'plan_request', (async () => {
         const deckId = await nextDeckFor(deps, ctx.classId, ctx.forDate)
         if (deckId) await suggestDiff(deps, deckId, intent.content, ctx.sessionId)
       })())
@@ -88,8 +100,8 @@ async function applyIntent(deps: Deps, ctx: SessionContext, utteranceId: string,
       const actions: CardAction[] = []
       for (const n of intent.studentNames) {
         const m = resolveName(n, ctx.roster)
-        if (m.kind !== 'match') continue
-        deps.defer(draftParentEmail(deps, { studentId: m.student.id, sessionId: ctx.sessionId, trigger: { kind: 'request', content: intent.content } }))
+        if (m.kind !== 'match') { actions.push({ kind: 'unassigned' }); continue }
+        safeDefer(deps, 'parent_email', draftParentEmail(deps, { studentId: m.student.id, sessionId: ctx.sessionId, trigger: { kind: 'request', content: intent.content } }))
         actions.push({ kind: 'parent_note', name: first(m.student.name) })
       }
       return { actions, disambiguation: null }
@@ -98,9 +110,12 @@ async function applyIntent(deps: Deps, ctx: SessionContext, utteranceId: string,
       const minutes = intent.minutes ?? 5
       const name = intent.content.slice(0, 40)
       const position = (ctx.drill?.position ?? 0) + 1
-      const existing = await deps.db.select().from(drills).where(eq(drills.deckId, ctx.deckId))
-      for (const d of existing.filter(x => x.position >= position)) await deps.db.update(drills).set({ position: d.position + 1 }).where(eq(drills.id, d.id))
-      await deps.db.insert(drills).values({ deckId: ctx.deckId, position, name, minutes, kind: 'drill', rationale: 'added live by instructor' })
+      await withRun(deps, { agent: 'planner', trigger: 'add_drill', sessionId: ctx.sessionId }, async () => {
+        const existing = await deps.db.select().from(drills).where(eq(drills.deckId, ctx.deckId))
+        for (const d of existing.filter(x => x.position >= position)) await deps.db.update(drills).set({ position: d.position + 1 }).where(eq(drills.id, d.id))
+        await deps.db.insert(drills).values({ deckId: ctx.deckId, position, name, minutes, kind: 'drill', rationale: 'added live by instructor' })
+        return { result: true, summary: `Added drill "${name}" (${minutes}m) at position ${position}`, reason: 'instructor request during class' }
+      })
       return { actions: [{ kind: 'add_drill', name, minutes }], disambiguation: null }
     }
   }
@@ -119,7 +134,8 @@ async function applyFeedback(deps: Deps, ctx: SessionContext, utteranceId: strin
     const m = resolveName(heard, ctx.roster)
     if (m.kind === 'ambiguous') {
       const [n] = await db.insert(notes).values({ ...base, heard }).returning()
-      disambiguation ??= { noteId: n!.id, heard, options: m.options }
+      if (disambiguation) actions.push({ kind: 'unassigned' })
+      else disambiguation = { noteId: n!.id, heard, options: m.options }
       continue
     }
     if (m.kind === 'none') {
@@ -141,8 +157,8 @@ async function applyFeedback(deps: Deps, ctx: SessionContext, utteranceId: strin
       recurring = isRecurring(count, Boolean(open))
       if (recurring) {
         await db.insert(issues).values({ studentId: s.id, tag })
-        deps.defer(draftParentEmail(deps, { studentId: s.id, sessionId: ctx.sessionId, trigger: { kind: 'recurring', tag } }))
-        deps.defer(autoAdjustNextDeck(deps, { classId: ctx.classId, afterDate: ctx.forDate, sessionId: ctx.sessionId, requestText: `Add a short, fun drill targeting ${tag} for ${s.name} [${s.id}] (recurring issue).` }))
+        safeDefer(deps, 'parent_email', draftParentEmail(deps, { studentId: s.id, sessionId: ctx.sessionId, trigger: { kind: 'recurring', tag } }))
+        safeDefer(deps, 'auto_adjust', autoAdjustNextDeck(deps, { classId: ctx.classId, afterDate: ctx.forDate, sessionId: ctx.sessionId, requestText: `Add a short, fun drill targeting ${tag} for ${s.name} [${s.id}] (recurring issue).` }))
       }
     }
     await withRun(deps, { agent: 'progress', trigger: 'feedback', sessionId: ctx.sessionId }, async () => ({
@@ -173,8 +189,11 @@ async function applyAttendanceIntent(deps: Deps, ctx: SessionContext, intent: In
   for (const heard of intent.studentNames) {
     const m = resolveName(heard, ctx.roster)
     if (m.kind !== 'match') continue
-    await deps.db.insert(attendance).values({ sessionId: ctx.sessionId, studentId: m.student.id, status, source: 'voice' })
-      .onConflictDoUpdate({ target: [attendance.sessionId, attendance.studentId], set: { status, source: 'voice' } })
+    await withRun(deps, { agent: 'attendance', trigger: 'voice', sessionId: ctx.sessionId }, async () => {
+      await deps.db.insert(attendance).values({ sessionId: ctx.sessionId, studentId: m.student.id, status, source: 'voice' })
+        .onConflictDoUpdate({ target: [attendance.sessionId, attendance.studentId], set: { status, source: 'voice' } })
+      return { result: true, summary: `Marked ${first(m.student.name)} ${status}`, reason: 'voice attendance update' }
+    })
     actions.push({ kind: 'marked', name: first(m.student.name), status })
   }
   return { actions, disambiguation: null }
