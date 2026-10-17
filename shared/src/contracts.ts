@@ -168,3 +168,12 @@ export const StudentDetail = z.object({
   reportCard: z.object({ id: z.string(), month: z.string(), content: ReportCardContent, outboxId: z.string(), status: z.string() }).nullable(),
 })
 export type StudentDetail = z.infer<typeof StudentDetail>
+
+export const SuggestResponse = z.object({ diffId: z.string(), diff: DeckDiff, totalBefore: z.number().int(), totalAfter: z.number().int() })
+export type SuggestResponse = z.infer<typeof SuggestResponse>
+
+export const DeckPatch = z.object({ drills: z.array(DrillDraft.extend({ id: z.string().nullable() })).min(1).max(20) })
+export type DeckPatch = z.infer<typeof DeckPatch>
+
+export const Alternatives = z.object({ alternatives: z.array(DrillDraft).length(3) })
+export type Alternatives = z.infer<typeof Alternatives>

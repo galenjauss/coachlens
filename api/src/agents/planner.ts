@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, lt } from 'drizzle-orm'
 import { z } from 'zod'
-import { DeckDiff, DrillDraft, type Deck } from '@matside/shared'
+import { Alternatives, DeckDiff, DrillDraft, type Deck } from '@matside/shared'
+import type { Db } from '../db/client'
 import type { Deps } from '../deps'
 import { classes, curriculum, deckDiffs, decks, drills, enrollments, issues, preferences, students } from '../db/schema'
 import { applyDiff, totalMinutes } from '../logic/deckDiff'
@@ -127,4 +128,24 @@ export async function autoAdjustNextDeck(deps: Deps, a: { classId: string; after
   if (!deckId) return
   const s = await suggestDiff(deps, deckId, a.requestText, a.sessionId)
   if (s) await acceptDiff(deps, s.diffId, { remember: false })
+}
+
+export async function alternativesFor(deps: Deps, drillId: string): Promise<DrillDraft[]> {
+  const [d] = await deps.db.select().from(drills).where(eq(drills.id, drillId))
+  if (!d) throw new Error('drill not found')
+  const deck = await getDeck(deps.db, d.deckId)
+  const ctx = await planningContext(deps, deck.classId, deck.forDate)
+  const r = await withRun(deps, { agent: 'planner', trigger: 'alternatives', sessionId: null }, async () => {
+    const out = await deps.llm.object({
+      name: 'planner.alternatives', instructions: PLANNER_INSTRUCTIONS, schema: Alternatives,
+      prompt: `Give exactly 3 alternative drills that serve the same purpose as "${d.name}" (${d.minutes}m, ${d.kind}; why: ${d.rationale}). Vary format: one game, one partner drill, one solo/line drill. Keep the same focusStudentIds: ${JSON.stringify(d.focusStudentIds)}.\n${ctx.text}`,
+    })
+    return { result: out.alternatives, summary: `3 alternatives for "${d.name}"`, reason: 'instructor asked to swap' }
+  })
+  if (!r) throw new Error('planner unavailable')
+  return r
+}
+
+export async function undoDiff(db: Db, diffId: string) {
+  await db.update(deckDiffs).set({ status: 'undone' }).where(and(eq(deckDiffs.id, diffId), eq(deckDiffs.status, 'pending')))
 }

@@ -3,7 +3,7 @@ import { cors } from 'hono/cors'
 import { HTTPException } from 'hono/http-exception'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { UtteranceForm } from '@matside/shared'
+import { DeckPatch, UtteranceForm } from '@matside/shared'
 import type { Deps } from './deps'
 import { attendance, billingFlags, enrollments, instructors, notes, sessions, students, classes } from './db/schema'
 import { hashToken } from './http/auth'
@@ -13,6 +13,10 @@ import { getToday } from './services/today'
 import { endSession, logDrill, requireSession, startSession } from './services/sessions'
 import { handleUtterance } from './services/utterance'
 import { listReview, approveOutbox, skipOutbox, approveAllOutbox, handleBilling, noteBilling, dismissNote, type ActionResult } from './services/review'
+import { getDeck, patchDeck } from './services/decks'
+import { acceptDiff, alternativesFor, nextDeckFor, suggestDiff, undoDiff } from './agents/planner'
+import { applyDiff, totalMinutes } from './logic/deckDiff'
+import { localDate } from './logic/dates'
 import { computeCoverage, loadSessionContext, markPresent, nextStudentFor } from './services/context'
 
 type Vars = { Variables: { instructorId: string } }
@@ -188,6 +192,41 @@ export function createApp(deps: Deps) {
     return mapped(c, await noteBilling(db, c.req.param('id'), note))
   })
   app.post('/v1/notes/:id/dismiss', async c => mapped(c, await dismissNote(db, c.req.param('id'))))
+
+  // Missing resources are 404, lost races are 409, bad references are 400.
+  const httpErr = (e: unknown): never => {
+    if (e instanceof HTTPException) throw e
+    const m = e instanceof Error ? e.message : ''
+    if (/not found$/.test(m) || /^deck .* not found/.test(m)) throw new HTTPException(404, { message: m })
+    if (/not pending$/.test(m)) throw new HTTPException(409, { message: m })
+    if (/^drills not in deck/.test(m)) throw new HTTPException(400, { message: m })
+    throw e
+  }
+  const guard = async <T>(p: Promise<T>): Promise<T> => p.catch(httpErr)
+
+  app.get('/jobs/plan', async c => {
+    if (c.req.header('authorization') !== `Bearer ${deps.env.cronSecret}`) throw new HTTPException(401, { message: 'cron only' })
+    const today = localDate(deps.now(), deps.env.timeZone)
+    let drafted = 0
+    for (const cl of await db.select().from(classes)) if (await nextDeckFor(deps, cl.id, today)) drafted++
+    return c.json({ drafted })
+  })
+
+  app.get('/v1/decks/:id', async c => c.json(await guard(getDeck(db, c.req.param('id')))))
+  app.patch('/v1/decks/:id', async c => c.json(await guard(patchDeck(db, c.req.param('id'), await json(c.req.raw, DeckPatch)))))
+  app.post('/v1/decks/:id/suggest', async c => {
+    const { text } = await json(c.req.raw, z.object({ text: z.string().min(2).max(500) }))
+    const deck = await guard(getDeck(db, c.req.param('id')))
+    const s = await suggestDiff(deps, deck.id, text)
+    if (!s) throw new HTTPException(502, { message: 'planner unavailable' })
+    return c.json({ diffId: s.diffId, diff: s.diff, totalBefore: totalMinutes(deck.drills), totalAfter: totalMinutes(applyDiff(deck.drills, s.diff)) })
+  })
+  app.post('/v1/diffs/:id/accept', async c => {
+    const { remember } = await json(c.req.raw, z.object({ remember: z.boolean() }))
+    return c.json(await guard(acceptDiff(deps, c.req.param('id'), { remember })))
+  })
+  app.post('/v1/diffs/:id/undo', async c => { await undoDiff(db, c.req.param('id')); return c.json({ ok: true }) })
+  app.post('/v1/drills/:id/alternatives', async c => c.json({ alternatives: await guard(alternativesFor(deps, c.req.param('id'))) }))
 
   return app
 }

@@ -1,5 +1,5 @@
-import { and, asc, eq } from 'drizzle-orm'
-import type { Deck } from '@matside/shared'
+import { and, asc, eq, inArray } from 'drizzle-orm'
+import type { Deck, DeckPatch } from '@matside/shared'
 import type { Db } from '../db/client'
 import { decks, drills } from '../db/schema'
 
@@ -20,4 +20,19 @@ export async function getDeck(db: Db, deckId: string): Promise<Deck> {
       startedAt: r.startedAt?.toISOString() ?? null, endedAt: r.endedAt?.toISOString() ?? null,
     })),
   }
+}
+
+export async function patchDeck(db: Db, deckId: string, patch: DeckPatch): Promise<Deck> {
+  const current = await getDeck(db, deckId)
+  const keep = new Set(patch.drills.flatMap(d => (d.id ? [d.id] : [])))
+  const unknown = [...keep].filter(id => !current.drills.some(d => d.id === id))
+  if (unknown.length) throw new Error(`drills not in deck: ${unknown.join(',')}`)
+  const del = current.drills.filter(d => !keep.has(d.id)).map(d => d.id)
+  if (del.length) await db.delete(drills).where(inArray(drills.id, del))
+  for (const [i, d] of patch.drills.entries()) {
+    const { id, ...fields } = d
+    if (id) await db.update(drills).set({ ...fields, position: i + 1 }).where(eq(drills.id, id))
+    else await db.insert(drills).values({ ...fields, deckId, position: i + 1 })
+  }
+  return getDeck(db, deckId)
 }
