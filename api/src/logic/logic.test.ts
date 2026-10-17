@@ -121,3 +121,36 @@ describe('dates', () => {
     expect(addDays('2026-10-30', 3)).toBe('2026-11-02')
   })
 })
+
+describe('review regressions', () => {
+  const dr = (id: string, position: number, name: string) => ({ id, position, name, minutes: 5, kind: 'drill' as const, cues: [], focusStudentIds: [], rationale: '' })
+  const add = (name: string, afterPosition: number) => ({ name, minutes: 1, kind: 'drill' as const, cues: [], focusStudentIds: [], rationale: '', afterPosition, reason: '' })
+  const diff = (o: object) => ({ removed: [], changed: [], added: [], rememberSuggestion: null, ...o }) as never
+  it('add anchored to a removed drill lands at its original spot', () => {
+    const out = applyDiff([dr('a', 1, 'A'), dr('b', 2, 'B'), dr('c', 3, 'C')], diff({ removed: [{ drillId: 'b', reason: '' }], added: [add('Z', 2)] }))
+    expect(out.map(x => x.name)).toEqual(['A', 'Z', 'C'])
+  })
+  it('keeps diff order for adds at the same anchor', () => {
+    const drills = [dr('a', 1, 'A'), dr('b', 2, 'B')]
+    expect(applyDiff(drills, diff({ added: [add('P', 1), add('Q', 1)] })).map(x => x.name)).toEqual(['A', 'P', 'Q', 'B'])
+    expect(applyDiff(drills, diff({ added: [add('P', 0), add('Q', 0)] })).map(x => x.name)).toEqual(['P', 'Q', 'A', 'B'])
+  })
+  it('exact name beats a near name; weak lone match is none', () => {
+    const r = [{ id: '1', name: 'Leo Park', nickname: null, belt: 'white' }, { id: '2', name: 'Leon Diaz', nickname: null, belt: 'white' }]
+    expect(resolveName('Leo', r)).toMatchObject({ kind: 'match', student: { id: '1' } })
+    expect(resolveName('Mya', [{ id: '3', name: 'Maya Chen', nickname: null, belt: 'white' }])).toEqual({ kind: 'none' })
+  })
+  it('card overflow reserves a +N more line', () => {
+    expect(buildCardLines([
+      { kind: 'feedback', name: 'Priya', tag: 'guard', count: 3, recurring: true },
+      { kind: 'billing', name: 'Leo', urgency: 'high' },
+    ])).toEqual(['✓ Priya · guard (3rd time)', '→ progress logged', '→ parent note drafting', '+1 more'])
+  })
+  it('attendance ignores feedback sentences', () => {
+    expect(parseAttendance('Everyone but Priya needs to work on guard')).toBeNull()
+  })
+  it('accepts curly apostrophes', () => {
+    expect(parseAttendance('Everyone’s here')).toEqual({ kind: 'all' })
+    expect(resolveName('Leo’s', roster)).toMatchObject({ kind: 'match', student: { id: 's4' } })
+  })
+})

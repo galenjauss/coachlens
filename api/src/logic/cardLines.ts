@@ -42,7 +42,7 @@ export function buildCardLines(actions: CardAction[]): string[] {
   for (let i = 0; i < groups.length; i++) {
     const g = groups[i]!
     if (out.length + g.length <= MAX_LINES - 1) { out.push(...g); continue }
-    if (out.length === 0) return g.slice(0, MAX_LINES).map(clip)
+    if (out.length === 0) return (groups.length === 1 ? g.slice(0, MAX_LINES) : [...g.slice(0, MAX_LINES - 1), `+${groups.length - 1} more`]).map(clip)
     out.push(`+${groups.length - i} more`)
     break
   }

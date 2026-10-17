@@ -9,16 +9,17 @@ export function applyDiff(drills: ExistingDrill[], diff: DeckDiff): PlannedDrill
   const removed = new Set(diff.removed.map(r => r.drillId))
   const changed = new Map(diff.changed.map(c => [c.drillId, c.after]))
   const kept = [...drills].sort((a, b) => a.position - b.position).filter(d => !removed.has(d.id))
-  const out: (PlannedDrill & { origPos: number })[] = kept.map(d => ({ ...draftOf(changed.get(d.id) ?? d), id: d.id, origPos: d.position }))
-  const adds = [...diff.added].sort((a, b) => b.afterPosition - a.afterPosition)
-  for (const a of adds) {
-    const item = { ...draftOf(a), id: null, origPos: -1 }
-    if (a.afterPosition === 0) { out.unshift(item); continue }
-    const idx = out.findIndex(x => x.origPos === a.afterPosition)
-    if (idx === -1) out.push(item)
-    else out.splice(idx + 1, 0, item)
+  // slots[n] = adds inserted after the n-th kept drill (slot 0 = start). Anchors use ORIGINAL positions.
+  const slots: PlannedDrill[][] = Array.from({ length: kept.length + 1 }, () => [])
+  for (const a of diff.added) {
+    const slot = kept.filter(d => d.position <= a.afterPosition).length
+    slots[slot]!.push({ ...draftOf(a), id: null })
   }
-  return out.map(({ origPos: _o, ...rest }) => rest)
+  const out: PlannedDrill[] = [...slots[0]!]
+  kept.forEach((d, i) => {
+    out.push({ ...draftOf(changed.get(d.id) ?? d), id: d.id }, ...slots[i + 1]!)
+  })
+  return out
 }
 
 export function totalMinutes(d: { minutes: number }[]): number {

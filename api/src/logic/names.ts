@@ -31,7 +31,7 @@ export function jaroWinkler(a: string, b: string): number {
   return jaro + p * 0.1 * (1 - jaro)
 }
 
-const norm = (s: string) => s.toLowerCase().replace(/'s\b/g, '').replace(/[^a-z\s-]/g, '').trim()
+const norm = (s: string) => s.toLowerCase().replace(/['\u2019]s\b/g, '').replace(/[^a-z\s-]/g, '').trim()
 
 function scoreStudent(heard: string, s: RosterStudent): number {
   const h = norm(heard)
@@ -48,7 +48,7 @@ export function resolveName(heard: string, roster: RosterStudent[]): NameMatch {
   const ranked = roster.map(s => ({ s, score: scoreStudent(heard, s) })).sort((x, y) => y.score - x.score)
   const [best, second] = ranked
   if (!best || best.score < AMBIGUOUS) return { kind: 'none' }
-  if (best.score >= AUTO_MATCH && (!second || second.score < AUTO_MATCH)) return { kind: 'match', student: best.s }
-  if (!second) return { kind: 'match', student: best.s }
+  if (best.score >= AUTO_MATCH && (!second || second.score < AUTO_MATCH || best.score - second.score >= 0.05)) return { kind: 'match', student: best.s }
+  if (!second || second.score < AMBIGUOUS) return { kind: 'none' }
   return { kind: 'ambiguous', options: [{ id: best.s.id, name: best.s.name }, { id: second.s.id, name: second.s.name }] }
 }
