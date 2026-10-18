@@ -269,10 +269,14 @@ export async function undoDiff(db: Db, diffId: string) {
   }
   if (row.status !== 'accepted' || !row.before) return
   if (await isStarted(db, row.deckId)) throw new Error('class started')
+  const now = (await getDeck(db, row.deckId)).drills
+  const key = (d: { name: string; minutes: number; kind: string; cues: string[] }) => JSON.stringify([d.name, d.minutes, d.kind, d.cues])
+  const expected = applyDiff(row.before.map((d, i) => ({ ...d, position: i + 1 })), row.diff)
+  if (now.length !== expected.length || now.some((d, i) => key(d) !== key(expected[i]!))) throw new Error('plan changed since')
   const [claimed] = await db.update(deckDiffs).set({ status: 'undone' }).where(and(eq(deckDiffs.id, diffId), eq(deckDiffs.status, 'accepted'))).returning({ id: deckDiffs.id })
   if (!claimed) return
   try {
-    const current = new Set((await getDeck(db, row.deckId)).drills.map(d => d.id))
+    const current = new Set(now.map(d => d.id))
     await patchDeck(db, row.deckId, { drills: row.before.map(d => ({ ...d, id: current.has(d.id) ? d.id : null })) })
   } catch (e) {
     await db.update(deckDiffs).set({ status: 'accepted' }).where(eq(deckDiffs.id, diffId)).catch(() => {})

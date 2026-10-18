@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import { resetRateLimits } from '../http/rateLimit'
 import { makeTestDb, makeDeps, fakeLlm } from '../test/helpers'
 import { createApp } from '../app'
-import { agentRuns, agentSettings, classes, deckDiffs, decks, drills, instructors, sessions } from '../db/schema'
+import { agentRuns, agentSettings, enrollments, students, classes, deckDiffs, decks, drills, instructors, sessions } from '../db/schema'
 import { BudgetExceededError } from './budget'
 
 const draft = (name: string, minutes = 5) => ({ name, minutes, kind: 'drill' as const, cues: ['c'], focusStudentIds: [], rationale: '' })
@@ -31,7 +31,7 @@ async function setup(llm: Parameters<typeof fakeLlm>[0] = () => { throw new Erro
   const h = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
   const post = (path: string, body: unknown) => app.request(path, { method: 'POST', headers: h, body: JSON.stringify(body) })
   const names = async (deckId: string) => (await db.select().from(drills).where(eq(drills.deckId, deckId)).orderBy(drills.position)).map(r => r.name)
-  return { db, deps, post, names, classId: c!.id, prev, cur, other }
+  return { app, h, db, deps, post, names, classId: c!.id, prev, cur, other }
 }
 
 describe('POST /v1/decks/:id/replace', () => {
@@ -101,6 +101,47 @@ describe('POST /v1/decks/:id/replace', () => {
   })
 })
 
+describe('replace: sources and safety', () => {
+  beforeEach(() => resetRateLimits())
+
+  it('cross-class copy drops focus students who are not in the target class', async () => {
+    const t = await setup()
+    const [mine, theirs] = await t.db.insert(students).values([{ name: 'Mine', belt: 'white', birthYear: 2018 }, { name: 'Theirs', belt: 'white', birthYear: 2018 }]).returning()
+    await t.db.insert(enrollments).values({ classId: t.classId, studentId: mine!.id })
+    await t.db.update(drills).set({ focusStudentIds: [mine!.id, theirs!.id] }).where(eq(drills.deckId, t.other.id))
+    const r = await t.post(`/v1/decks/${t.cur.id}/replace`, { source: { deckId: t.other.id } })
+    const deck = await r.json() as { drills: { focusStudentIds: string[] }[] }
+    expect(deck.drills.every(d => d.focusStudentIds.every(id => id === mine!.id))).toBe(true)
+    expect(deck.drills[0]!.focusStudentIds).toEqual([mine!.id])
+  })
+
+  it('classId source uses the nearest upcoming plan with items and never drafts', async () => {
+    const t = await setup()
+    const otherClass = (await t.db.select().from(classes).where(eq(classes.name, 'Teens Wed')))[0]!
+    const before = (await t.db.select().from(decks)).length
+    const r = await t.post(`/v1/decks/${t.cur.id}/replace`, { source: { classId: otherClass.id } })
+    expect(r.status).toBe(200)
+    expect(await t.names(t.cur.id)).toEqual(['Teen X', 'Teen Y', 'Teen Z', 'Teen W'])
+    expect((await t.db.select().from(decks)).length).toBe(before)
+  })
+
+  it('classId source: 404 when that class has no plan, and nothing is drafted', async () => {
+    const t = await setup()
+    const [empty] = await t.db.insert(classes).values({ instructorId: 'i', name: 'Empty', weekday: 5, startTime: '10:00' }).returning()
+    expect((await t.post(`/v1/decks/${t.cur.id}/replace`, { source: { classId: empty!.id } })).status).toBe(404)
+    expect(await t.db.select().from(decks).where(eq(decks.classId, empty!.id))).toHaveLength(0)
+    expect(await t.names(t.cur.id)).toEqual(['Jab', 'Cross', 'Kata 2'])
+  })
+
+  it('a blank deck accepts its first item', async () => {
+    const t = await setup()
+    await t.post(`/v1/decks/${t.cur.id}/replace`, { source: 'blank' })
+    const r = await t.app.request(`/v1/decks/${t.cur.id}`, { method: 'PATCH', headers: t.h, body: JSON.stringify({ drills: [{ ...draft('First'), id: null }] }) })
+    expect(r.status).toBe(200)
+    expect(await t.names(t.cur.id)).toEqual(['First'])
+  })
+})
+
 describe('POST /v1/plan/voice', () => {
   beforeEach(() => resetRateLimits())
 
@@ -146,6 +187,16 @@ describe('POST /v1/plan/voice', () => {
     expect(row!.status).toBe('undone')
     expect((await t.post(`/v1/diffs/${body.diffId}/undo`, {})).status).toBe(200) // idempotent
     expect(await t.names(t.cur.id)).toEqual(['Jab', 'Cross', 'Kata 2'])
+  })
+
+  it('undo is a 409 when the plan was edited after the voice change', async () => {
+    const { patchDeck } = await import('../services/decks')
+    const t = await setup(({ prompt }) => ({ added: [{ ...raw('Extra'), afterPosition: 0, reason: '' }], changed: [], removed: [], rememberSuggestion: null, prompt }))
+    const body = await (await t.post('/v1/plan/voice', { classId: t.classId, transcript: convo })).json() as { diffId: string }
+    const now = await t.db.select().from(drills).where(eq(drills.deckId, t.cur.id)).orderBy(drills.position)
+    await patchDeck(t.db, t.cur.id, { drills: [...now.map(r => ({ ...draft(r.name, r.minutes), id: r.id })), { ...draft('Manual'), id: null }] })
+    expect((await t.post(`/v1/diffs/${body.diffId}/undo`, {})).status).toBe(409)
+    expect(await t.names(t.cur.id)).toEqual(['Extra', 'Jab', 'Cross', 'Kata 2', 'Manual'])
   })
 
   it('undo is a 409 once the class has started', async () => {

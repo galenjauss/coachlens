@@ -116,5 +116,6 @@ describe('start-from helpers', () => {
     expect(deckErrorOutcome(new ApiError(409, 'x'), 'replace').text).toMatch(/already started/)
     expect(deckErrorOutcome(new ApiError(404, 'x'), 'replace').text).toMatch(/Nothing to copy/)
     expect(deckErrorOutcome(new ApiError(502, 'x'), 'replace').text).toMatch(/plan was kept/)
+    expect(deckErrorOutcome(new ApiError(409, 'x'), 'undo').text).toBe('Plan was edited since; undo not available')
   })
 })

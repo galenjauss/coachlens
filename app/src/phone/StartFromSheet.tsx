@@ -28,12 +28,9 @@ export function StartFromSheet({ api, classId, itemCount, busy, error, onReplace
     const label = START_OPTIONS.find(o => o.key === key)!.label
     setStep({ at: 'confirm', source: key, label })
   }
-  const pickClass = async (c: ClassSummary) => {
+  const pickClass = (c: ClassSummary) => {
     setLocal(null)
-    try {
-      const t = await api.today(c.id)
-      setStep({ at: 'confirm', source: { deckId: t.deck.id }, label: `${c.name}’s plan` })
-    } catch { setLocal(`Couldn’t open ${c.name}’s plan. Try again.`) }
+    setStep({ at: 'confirm', source: { classId: c.id }, label: `${c.name}’s plan` })
   }
   const onKeyDown = (e: React.KeyboardEvent) => { if (e.key === 'Escape' && !busy) onClose() }
 
@@ -54,7 +51,7 @@ export function StartFromSheet({ api, classId, itemCount, busy, error, onReplace
         step.classes === null ? <p className="muted" role="status">Loading classes…</p>
           : step.classes.length === 0 ? <p className="muted">No other classes yet.</p>
             : <ul className="startfrom-list">{step.classes.map(c => (
-              <li key={c.id}><button type="button" className="startfrom-opt" disabled={busy} onClick={() => void pickClass(c)}><b>{c.name}</b><span className="muted">{c.modeLabel}</span></button></li>
+              <li key={c.id}><button type="button" className="startfrom-opt" disabled={busy} onClick={() => pickClass(c)}><b>{c.name}</b><span className="muted">{c.modeLabel}</span></button></li>
             ))}</ul>
       )}
       {step.at === 'confirm' && (

@@ -215,6 +215,7 @@ export type DeckPatch = z.infer<typeof DeckPatch>
 export const ReplaceSource = z.union([
   z.enum(['last', 'blank', 'ai']),
   z.object({ deckId: z.string().min(1).max(64) }),
+  z.object({ classId: z.string().min(1).max(64) }), // that class's nearest upcoming plan with items, else its latest; never drafts
 ])
 export type ReplaceSource = z.infer<typeof ReplaceSource>
 export const ReplaceDeckRequest = z.object({ source: ReplaceSource })

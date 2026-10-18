@@ -1,7 +1,7 @@
-import { and, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm'
 import type { Deck, DrillDraft, ReplaceSource, VoicePlanResponse } from '@matside/shared'
 import type { Deps } from '../deps'
-import { classes, deckDiffs, decks, drills, sessions } from '../db/schema'
+import { classes, deckDiffs, decks, drills, enrollments, sessions } from '../db/schema'
 import { addDays, localDate } from '../logic/dates'
 import { diffSummary } from '../logic/diffSummary'
 import { normalizeDiff, RawDeckDiff } from '../logic/planNormalize'
@@ -15,6 +15,14 @@ const draftOf = (d: Deck['drills'][number]): DrillDraft => ({ name: d.name, minu
 /** Drills of another deck, copied as fresh drafts (no ids, no run history). Null when the deck has none. */
 async function sourceDrills(deps: Deps, deck: Deck, source: Exclude<ReplaceSource, 'ai'>): Promise<DrillDraft[]> {
   if (source === 'blank') return []
+  if (typeof source === 'object' && 'classId' in source) {
+    const today = localDate(deps.now(), deps.env.timeZone)
+    const hasItems = async (rows: { id: string }[]) => { for (const r of rows) { const d = (await getDeck(deps.db, r.id)).drills; if (d.length) return d.map(draftOf) } return null }
+    const upcoming = await deps.db.select({ id: decks.id }).from(decks).where(and(eq(decks.classId, source.classId), gte(decks.forDate, today))).orderBy(asc(decks.forDate))
+    const found = (await hasItems(upcoming)) ?? (await hasItems(await deps.db.select({ id: decks.id }).from(decks).where(eq(decks.classId, source.classId)).orderBy(desc(decks.forDate))))
+    if (!found) throw new Error('plan not found')
+    return found
+  }
   if (typeof source === 'object') return (await getDeck(deps.db, source.deckId)).drills.map(draftOf)
   const earlier = await deps.db.select({ id: decks.id }).from(decks).where(and(eq(decks.classId, deck.classId), lt(decks.forDate, deck.forDate))).orderBy(desc(decks.forDate))
   for (const e of earlier) {
@@ -36,7 +44,8 @@ export async function replaceDeck(deps: Deps, deckId: string, source: ReplaceSou
   const deck = await getDeck(db, deckId)
   if (await isStarted(db, deckId)) throw new Error('class started')
   const label = typeof source === 'object' ? 'another class’s plan' : source === 'last' ? 'last class' : source === 'ai' ? 'AI draft' : 'blank'
-  const copied = source === 'ai' ? null : await sourceDrills(deps, deck, source)
+  const roster = new Set((await db.select({ id: enrollments.studentId }).from(enrollments).where(eq(enrollments.classId, deck.classId))).map(r => r.id))
+  const copied = source === 'ai' ? null : (await sourceDrills(deps, deck, source)).map(d => ({ ...d, focusStudentIds: d.focusStudentIds.filter(id => roster.has(id)) }))
   const out = await withRun<ReplaceOutcome>(deps, { agent: 'planner', trigger: 'replace', sessionId: null }, async () => {
     let next = copied
     if (!next) {
@@ -47,7 +56,9 @@ export async function replaceDeck(deps: Deps, deckId: string, source: ReplaceSou
     }
     if (await isStarted(db, deckId)) return { result: 'started', summary: 'Replace skipped', reason: 'class started', output: null }
     const old = deck.drills.map(d => d.id)
-    const added = next.length ? await db.insert(drills).values(next.map((d, i) => ({ ...d, deckId, position: i + 1 }))).returning({ id: drills.id }) : []
+    let added: { id: string }[] = []
+    try {
+    added = next.length ? await db.insert(drills).values(next.map((d, i) => ({ ...d, deckId, position: i + 1 }))).returning({ id: drills.id }) : []
     if (old.length) {
       await db.delete(drills).where(and(inArray(drills.id, old), isNull(drills.startedAt), sql`not exists (select 1 from ${sessions} where ${sessions.deckId} = ${deckId})`))
       const [left] = await db.select({ id: drills.id }).from(drills).where(inArray(drills.id, old)).limit(1)
@@ -57,6 +68,10 @@ export async function replaceDeck(deps: Deps, deckId: string, source: ReplaceSou
       }
     }
     await db.update(decks).set({ isStarter: false }).where(eq(decks.id, deckId))
+    } catch (e) {
+      if (added.length) await db.delete(drills).where(inArray(drills.id, added.map(a => a.id))).catch(() => {})
+      throw e
+    }
     return { result: 'ok', summary: `Plan for ${deck.forDate} replaced from ${label}: ${next.length} item${next.length === 1 ? '' : 's'}`, reason: 'instructor chose a starting point', output: { drills: next } }
   })
   if (out === 'started') throw new Error('class started')
@@ -98,7 +113,7 @@ export async function voicePlan(deps: Deps, classId: string, transcript: string)
       const before = await getDeck(deps.db, deckId)
       const ctx = await planningContext(deps, classId, before.forDate)
       const prompt = [
-        `Conversation: """${transcript}"""`,
+        `Conversation: """${transcript.replaceAll('"""', "'")}"""`,
         `Current deck (position. id | name | minutes | kind):`,
         ...before.drills.map(d => `${d.position}. ${d.id} | ${d.name} | ${d.minutes}m | ${d.kind}`),
         ctx.text,
@@ -110,7 +125,10 @@ export async function voicePlan(deps: Deps, classId: string, transcript: string)
       }
       const snapshot = before.drills.map(d => ({ id: d.id, ...draftOf(d) }))
       const [row] = await deps.db.insert(deckDiffs).values({ deckId, requestText: transcript.slice(0, 500), diff, before: snapshot }).returning()
-      const after = await acceptDiff(deps, row!.id, { remember: false })
+      const after = await acceptDiff(deps, row!.id, { remember: false }).catch(async e => {
+        await deps.db.update(deckDiffs).set({ status: 'undone' }).where(eq(deckDiffs.id, row!.id)).catch(() => {})
+        throw e
+      })
       const lines = diffSummary(before.drills, after.drills)
       if (!lines.length) lines.push('Plan updated')
       return {

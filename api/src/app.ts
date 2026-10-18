@@ -238,7 +238,7 @@ export function createApp(deps: Deps) {
     if (/not found$/.test(m) || /^deck .* not found/.test(m)) throw new HTTPException(404, { message: m })
     if (/not pending$/.test(m)) throw new HTTPException(409, { message: m })
     if (/^drills not in deck|^duplicate drill ids/.test(m)) throw new HTTPException(400, { message: m })
-    if (/^class started|^previous plan not found/.test(m)) throw new HTTPException(/^class started/.test(m) ? 409 : 404, { message: m })
+    if (/^class started|^plan changed since|^previous plan not found/.test(m)) throw new HTTPException(/^(class started|plan changed since)/.test(m) ? 409 : 404, { message: m })
     if (/^planner unavailable/.test(m)) throw new HTTPException(502, { message: m })
     throw e
   }

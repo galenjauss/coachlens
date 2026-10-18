@@ -105,13 +105,14 @@ export const nameMap = (deck: Deck): Record<string, string> => Object.fromEntrie
 export type EditorOutcome = { kind: 'gone'; text: string } | { kind: 'error'; text: string }
 
 /** Maps a failed planner/deck call to user text. 502 = planner (LLM) down; 404/409 = diff or deck already resolved. */
-export function deckErrorOutcome(e: unknown, what: 'save' | 'suggest' | 'accept' | 'alternatives' | 'replace'): EditorOutcome {
+export function deckErrorOutcome(e: unknown, what: 'save' | 'suggest' | 'accept' | 'alternatives' | 'replace' | 'undo'): EditorOutcome {
   if (e instanceof ApiError) {
     if (what === 'replace') {
       if (e.status === 409) return { kind: 'error', text: 'This class has already started, so its plan can’t be replaced.' }
       if (e.status === 404) return { kind: 'error', text: 'Nothing to copy from. Pick another starting point.' }
       if (e.status === 502) return { kind: 'error', text: 'Planner unavailable right now. Your plan was kept.' }
     }
+    if (what === 'undo' && e.status === 409) return { kind: 'error', text: 'Plan was edited since; undo not available' }
     if (what === 'accept' && (e.status === 409 || e.status === 404)) return { kind: 'gone', text: 'Already applied — reloaded.' }
     if ((what === 'suggest' || what === 'alternatives') && e.status === 502) return { kind: 'error', text: 'Planner unavailable right now.' }
     if (e.status === 401 || e.status === 403) return { kind: 'error', text: 'Session expired. Re-pair this phone from Today.' }
