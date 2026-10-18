@@ -83,9 +83,38 @@ export const knownFailedCount = (): number => knownFailed
 
 const parse = <T>(raw: string | null): T[] => { try { return raw ? (JSON.parse(raw) as T[]) : [] } catch { return [] } }
 
+/**
+ * Storage budget for both stores together (serialized JSON chars ≈ bytes). Queued audio is base64 WAV
+ * (a 20 s note ≈ 850 KB), and the Even app's bridge storage is not unlimited, so the queue must never grow
+ * until a write fails. At OUTBOX_WARN_FRACTION the lens and phone warn; at the budget a NEW audio note is
+ * refused before recording (the lens says so) and `enqueue` rejects with OutboxFullError, which the caller
+ * turns into a direct send or a visible failure. Nothing already stored is ever evicted automatically:
+ * only the coach's Discard (or a successful send) frees space.
+ */
+export const OUTBOX_BUDGET_BYTES = 6 * 1024 * 1024
+export const OUTBOX_WARN_FRACTION = 0.7
+export class OutboxFullError extends Error { constructor() { super('outbox_full') } }
+/** Storage use after the last change: `fraction` of OUTBOX_BUDGET_BYTES. */
+export type OutboxUsage = { bytes: number; budget: number; fraction: number }
+let knownUsage: OutboxUsage = { bytes: 0, budget: OUTBOX_BUDGET_BYTES, fraction: 0 }
+bus.on('outboxUsage', u => { knownUsage = u })
+export const knownOutboxUsage = (): OutboxUsage => knownUsage
+
+/** A note with a transcript never keeps its audio (the transcript is what is sent; audio is the expensive part). */
+const slim = (form: OutboxForm): OutboxForm => (form.text && form.audioB64 ? { ...form, audioB64: null } : form)
+
 export class Outbox {
   private busy: Promise<unknown> = Promise.resolve()
-  constructor(private kv: KV, private now: () => number = Date.now) {}
+  constructor(private kv: KV, private now: () => number = Date.now, private budget = OUTBOX_BUDGET_BYTES) {}
+
+  /** Bytes both stores take now, against the budget. */
+  async usage(): Promise<OutboxUsage> {
+    const [q, f] = await Promise.all([this.kv.get(KEYS.outbox), this.kv.get(KEYS.outboxFailed)])
+    return this.usageOf((q ?? '').length + (f ?? '').length)
+  }
+  private usageOf(bytes: number): OutboxUsage { return { bytes, budget: this.budget, fraction: bytes / this.budget } }
+  /** True when a new audio note of about `bytes` would not fit (the lens refuses to record instead of losing it later). */
+  async wouldOverflow(bytes = 0): Promise<boolean> { const u = await this.usage(); return u.bytes + bytes >= u.budget }
 
   /** Notes waiting to send. */
   async count(): Promise<number> { return (await this.list()).length }
@@ -96,16 +125,23 @@ export class Outbox {
   // Short mutex for read-modify-write on storage (both stores); separate from flush serialization so
   // enqueue never waits on a slow network send. Every saved change announces the new counts.
   private lock: Promise<unknown> = Promise.resolve()
-  private mutate<T>(fn: (items: OutboxItem[], failed: FailedItem[]) => { items: OutboxItem[]; failed?: FailedItem[]; value: T }): Promise<T> {
+  private mutate<T>(fn: (items: OutboxItem[], failed: FailedItem[]) => { items: OutboxItem[]; failed?: FailedItem[]; value: T }, o: { budgetCheck?: boolean } = {}): Promise<T> {
     const run = this.lock.then(async () => {
-      const before = await this.list()
-      const failedBefore = await this.failed()
+      const qRaw = await this.kv.get(KEYS.outbox)
+      const fRaw = await this.kv.get(KEYS.outboxFailed)
+      const before = parse<OutboxItem>(qRaw)
+      const failedBefore = parse<FailedItem>(fRaw)
       const { items, failed, value } = fn(before, failedBefore)
-      // Failed store first: an item moving queue → failed is never absent from both.
-      if (failed) await this.kv.set(KEYS.outboxFailed, JSON.stringify(failed))
-      await this.kv.set(KEYS.outbox, JSON.stringify(items))
+      const qJson = items === before ? (qRaw ?? '[]') : JSON.stringify(items)
+      const fJson = failed ? JSON.stringify(failed) : (fRaw ?? '')
+      const usage = this.usageOf(qJson.length + fJson.length)
+      if (o.budgetCheck && usage.bytes > this.budget) throw new OutboxFullError() // nothing written; the caller sends directly or says so
+      // Failed store first: an item moving queue → failed is never absent from both. Unchanged stores are not rewritten.
+      if (failed) await this.kv.set(KEYS.outboxFailed, fJson)
+      if (items !== before) await this.kv.set(KEYS.outbox, qJson)
       if (items.length !== before.length) bus.emit('outboxChanged', items.length)
       if (failed && failed.length !== failedBefore.length) bus.emit('outboxFailedChanged', failed.length)
+      if (items !== before || failed) bus.emit('outboxUsage', usage)
       return value
     })
     this.lock = run.catch(() => undefined)
@@ -113,15 +149,15 @@ export class Outbox {
   }
 
   enqueue(form: OutboxForm, opts: { holdUntil?: number } = {}): Promise<OutboxItem> {
-    const item: OutboxItem = { id: crypto.randomUUID(), createdAt: this.now(), attempts: 0, form, ...(opts.holdUntil ? { holdUntil: opts.holdUntil } : {}) }
-    return this.mutate(items => ({ items: [...items, item], value: item }))
+    const item: OutboxItem = { id: crypto.randomUUID(), createdAt: this.now(), attempts: 0, form: slim(form), ...(opts.holdUntil ? { holdUntil: opts.holdUntil } : {}) }
+    return this.mutate(items => ({ items: [...items, item], value: item }), { budgetCheck: true })
   }
 
   /** Replace an item's form (e.g. audio → text) and release its hold. False if the item is gone (already sent/failed). */
   swap(id: string, form: OutboxForm): Promise<boolean> {
     return this.mutate(items => {
       const found = items.some(i => i.id === id)
-      return { items: items.map(i => (i.id === id ? { id: i.id, createdAt: i.createdAt, attempts: i.attempts, form } : i)), value: found }
+      return { items: items.map(i => (i.id === id ? { id: i.id, createdAt: i.createdAt, attempts: i.attempts, form: slim(form) } : i)), value: found }
     })
   }
 
@@ -148,6 +184,15 @@ export class Outbox {
     })
   }
 
+  /** After re-pairing (401 fixed) or the coach's Retry: every queued note may go now (backoff cleared). */
+  resetBackoff(): Promise<number> {
+    return this.mutate(items => {
+      const waiting = items.filter(i => i.nextAttemptAt)
+      if (!waiting.length) return { items, value: 0 }
+      return { items: items.map(i => { if (!i.nextAttemptAt) return i; const { nextAttemptAt: _n, ...rest } = i; return rest }), value: waiting.length }
+    })
+  }
+
   /** The coach chose Discard on a failed note: the only way a failed note is deleted. */
   discardFailed(id: string): Promise<boolean> {
     return this.mutate((items, failed) => ({ items, failed: failed.filter(x => x.id !== id), value: failed.some(x => x.id === id) }))
@@ -159,7 +204,7 @@ export class Outbox {
     return this.mutate((items, failed) => {
       const it = items.find(i => i.id === id)
       if (!it) return { items, value: undefined }
-      return { items: items.filter(i => i.id !== id), failed: [...failed, { ...it, failedAt: this.now(), failure }], value: undefined }
+      return { items: items.filter(i => i.id !== id), failed: [...failed, { ...it, form: slim(it.form), failedAt: this.now(), failure }], value: undefined }
     })
   }
 
@@ -167,6 +212,8 @@ export class Outbox {
   private defer(id: string, reason: RetryReason, retryAfterMs?: number): Promise<number> {
     return this.mutate(items => {
       const cur = items.find(i => i.id === id)
+      // Offline again with nothing new to record: leave storage alone (no rewrite of the queue).
+      if (cur && reason === 'offline' && cur.lastError === 'offline' && !cur.nextAttemptAt) return { items, value: cur.attempts }
       const attempts = (cur?.attempts ?? 0) + (reason === 'offline' ? 0 : 1)
       const wait = reason === 'offline' ? 0 : retryAfterMs ?? backoffMs(attempts)
       const next = (i: OutboxItem): OutboxItem => {

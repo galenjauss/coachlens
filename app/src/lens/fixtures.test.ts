@@ -62,7 +62,7 @@ describe('screenshot fixtures', () => {
     const card = r('card')
     expect(body(card, 'hdr')).toBe('√ Priya · guard (3rd time)')
     expect(body(card, 'said').replace(/\n/g, ' ')).toBe('"Priya keeps dropping her guard on the jab"')
-    expect(body(card, 'agents')).toBe('ok sorted · ok report · ok plan\ntap: close · 2×: undo')
+    expect(body(card, 'agents')).toBe('ok sorted · ok report · ok plan\ntap: note · 2×: undo')
 
     const answer = r('answer')
     expect(body(answer, 'hdr')).toBe('1/2 swipe · ANSWER')

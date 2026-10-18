@@ -69,10 +69,11 @@ describe('controller · remediation', () => {
     b.emit(dbl); await flush() // skip → peek
     return { ...b, kv, outbox, api }
   }
-  async function recordNote(b: Awaited<ReturnType<typeof toPeek>>) {
+  async function recordNote(b: Awaited<ReturnType<typeof toPeek>>, quiet = false) {
     b.emit(tap); await flush()
     await vi.advanceTimersByTimeAsync(700)
-    b.emit(pcm()); b.emit(pcm())
+    const chunk = quiet ? { audioEvent: { audioPcm: new Uint8Array(16000) } } : pcm()
+    b.emit(chunk); b.emit(chunk)
     b.emit(tap); await flush()
     await vi.advanceTimersByTimeAsync(10) // transcribe is absent in the fake: the note goes as audio
   }
@@ -165,5 +166,52 @@ describe('controller · remediation', () => {
     b.emit(tap); await flush() // retry
     expect(undo).toHaveBeenCalledTimes(3)
     expect(b.sent.join('\n')).toContain('Already undone')
+  })
+
+  it('#2 low-energy audio is still SENT (the server decides); a 422 for it says "Couldn\'t hear you"', async () => {
+    const utterance = vi.fn(async (): Promise<ReturnType<typeof reply>> => { throw new ApiError(422, 'empty_transcript') })
+    const b = await toPeek(fakeApi({ utterance }), 'standard')
+    await recordNote(b, true)
+    expect(utterance).toHaveBeenCalledTimes(1)
+    expect(b.sent.join('\n')).toContain("Couldn't hear you")
+    utterance.mockImplementation(async () => reply('u9'))
+    await recordNote(b, true)
+    expect(b.sent.join('\n')).toContain('Maya rank: black') // a quiet clip the server understood is a normal note
+  })
+
+  it('#6 Retry while a note is reporting is deferred, not dropped: it flushes right after', async () => {
+    let release!: (v: unknown) => void
+    const utterance = vi.fn()
+      .mockImplementationOnce(async () => { throw new ApiError(503, 'x') }) // an older note: queued
+      .mockImplementationOnce(() => new Promise(r => { release = r })) // the next note: slow
+      .mockImplementation(async () => reply('u3'))
+    const b = await toPeek(fakeApi({ utterance }), 'standard')
+    await recordNote(b) // stays queued (503)
+    b.emit(tap); await flush(); await vi.advanceTimersByTimeAsync(700); b.emit(pcm()); b.emit(pcm())
+    bus.emit('outboxRetry', undefined) // pressed while nothing is reporting yet: forced flush starts (slow)
+    await flush()
+    b.emit(tap); await flush()
+    bus.emit('outboxRetry', undefined) // pressed while the new note is in flight: must not be lost
+    release(reply('u2')); await flush(); await flush()
+    await vi.advanceTimersByTimeAsync(10)
+    expect(await b.outbox.count()).toBe(0)
+  })
+
+  it('#7 after re-pairing, held notes go at once (backoff reset, forced flush)', async () => {
+    const utterance = vi.fn(async (): Promise<ReturnType<typeof reply>> => { throw new ApiError(401, 'unauthorized') })
+    const b = await toPeek(fakeApi({ utterance }), 'standard')
+    await recordNote(b)
+    expect((await b.outbox.list())[0]!.nextAttemptAt).toBeDefined()
+    utterance.mockImplementation(async () => reply())
+    bus.emit('paired', undefined); await flush(); await flush()
+    expect(await b.outbox.count()).toBe(0)
+  })
+
+  it('#8 an older note set aside during the current note\'s flush gets a status line', async () => {
+    const b = await toPeek(fakeApi(), 'standard')
+    await b.outbox.enqueue({ sessionId: 's1', drillId: null, mode: 'note', audioB64: null, text: 'old one' })
+    ;(b.api.utterance as ReturnType<typeof vi.fn>).mockImplementation(async (p: { text: string | null }) => { if (p.text === 'old one') throw new ApiError(400, 'bad'); return reply() })
+    await recordNote(b)
+    expect(b.sent.join('\n')).toContain('1 note not sent · see phone')
   })
 })

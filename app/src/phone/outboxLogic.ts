@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { bus } from '../core/bus'
-import { knownFailedCount, knownOutboxCount, retryText, type FailedItem, type OutboxItem } from '../core/outbox'
+import { OUTBOX_WARN_FRACTION, knownFailedCount, knownOutboxCount, knownOutboxUsage, retryText, type FailedItem, type OutboxItem } from '../core/outbox'
 
 /** Today banner text for notes waiting in the outbox; null when none. */
 export function queuedBanner(count: number): string | null {
@@ -47,4 +47,18 @@ export function useFailedCount(): number {
   const [count, setCount] = useState(knownFailedCount)
   useEffect(() => bus.on('outboxFailedChanged', setCount), [])
   return count
+}
+
+/** Live storage use of the unsent-notes stores (fraction of the budget). */
+export function useOutboxUsage(): number {
+  const [f, setF] = useState(() => knownOutboxUsage().fraction)
+  useEffect(() => bus.on('outboxUsage', u => setF(u.fraction)), [])
+  return f
+}
+
+/** F07 / review #1: warn from 70 % of the budget; at 100 % new voice notes are refused on the lens. */
+export function storageWarning(fraction: number): string | null {
+  if (fraction >= 1) return 'Unsent notes are full: new voice notes can’t be saved. Send or discard notes below.'
+  if (fraction >= OUTBOX_WARN_FRACTION) return `Unsent notes are ${Math.round(fraction * 100)}% full. Send or discard some soon.`
+  return null
 }

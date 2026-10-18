@@ -123,10 +123,10 @@ describe('render', () => {
     const agents = p.texts.find(t => t.name === 'agents')!
     expect(agents).toMatchObject({ x: 0, w: 576 })
     expect(agents.y).toBeGreaterThanOrEqual(said.y + said.h)
-    expect(agents.content).toBe('… working\ntap: close · 2×: undo')
+    expect(agents.content).toBe('… working\ntap: note · 2×: undo')
     const runs = [{ agent: 'router', summary: '', status: 'ok', createdAt: '' }, { agent: 'progress', summary: '', status: 'ok', createdAt: '' }]
     p = render({ ...s, screen: 'card', card: { ...mkCard('x'), lines: ['√ x', '→ parent note drafting'], runs } }, 0)
-    expect(p.texts.find(t => t.name === 'agents')?.content).toBe('ok sorted · ok logged · .. email\ntap: close · 2×: undo')
+    expect(p.texts.find(t => t.name === 'agents')?.content).toBe('ok sorted · ok logged · .. email\ntap: note · 2×: undo')
     const many = ['router', 'progress', 'billing', 'attendance', 'parent_email', 'planner'].map(agent => ({ agent, summary: '', status: 'ok', createdAt: '' }))
     const lines = p.texts.length && render({ ...s, screen: 'card', card: { ...mkCard('x'), runs: many } }, 0).texts.find(t => t.name === 'agents')!.content.split('\n')
     expect(lines).toHaveLength(2) // progress wraps to 2 lines max (hints yield)

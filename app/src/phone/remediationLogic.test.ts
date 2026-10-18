@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { FailedItem, OutboxItem } from '../core/outbox'
-import { unsentRows, unsentSummary } from './outboxLogic'
-import { classPayload, studentCreatePayload, studentUpdatePayload, WEEKDAYS } from './rosterLogic'
+import { storageWarning, unsentRows, unsentSummary } from './outboxLogic'
+import { classPayload, classUpdatePayload, studentCreatePayload, studentUpdatePayload, WEEKDAYS } from './rosterLogic'
 import { filterCandidates, urgentFirst } from './reviewLogic'
 import { classInsightsQuery } from './insightsLogic'
 import { parseStatus } from './settingsLogic'
@@ -89,5 +89,28 @@ describe('C5 · status line for the phone', () => {
     expect(parseStatus({ ...base, stt: { configured: false }, degraded: ['speech_to_text_unconfigured' as const] }).lines).toContain('Speech-to-text is not set up on the server: voice notes wait in the queue')
     expect(parseStatus({ ...base, ai: { ...base.ai, exhausted: true, remainingToday: 0 }, degraded: ['ai_budget_reached' as const] }))
       .toEqual({ ok: false, lines: ['AI calls today: 12 of 200', 'Daily AI limit reached: notes still save, sorting resumes tomorrow'] })
+  })
+})
+
+describe('review round 1 · #3 editing a class never moves it', () => {
+  const row = { name: 'Teens', mode: 'martial_arts' as const, startTime: '18:00', weekday: 3 }
+  it('sends only what changed', () => {
+    expect(classUpdatePayload(row, { name: 'Teens', mode: 'martial_arts', startTime: '18:00', weekday: 3 })).toEqual({ ok: true, value: {} })
+    expect(classUpdatePayload(row, { name: 'Teens A', mode: 'martial_arts', startTime: '18:00', weekday: 3 })).toEqual({ ok: true, value: { name: 'Teens A' } })
+    expect(classUpdatePayload(row, { name: 'Teens', mode: 'martial_arts', startTime: '18:30', weekday: 4 })).toEqual({ ok: true, value: { startTime: '18:30', weekday: 4 } })
+  })
+  it('an unknown weekday / start time (older server) stays unset: never defaulted to Monday or 17:00', () => {
+    const bare = { name: 'Teens', mode: 'martial_arts' as const }
+    expect(classUpdatePayload(bare, { name: 'Teens 2', mode: 'martial_arts', startTime: '', weekday: null })).toEqual({ ok: true, value: { name: 'Teens 2' } })
+    expect(classUpdatePayload(bare, { name: 'Teens', mode: 'martial_arts', startTime: '', weekday: 5 })).toEqual({ ok: true, value: { weekday: 5 } })
+    expect(classUpdatePayload(bare, { name: 'Teens', mode: 'martial_arts', startTime: '7pm', weekday: null })).toEqual({ ok: false, error: 'Start time must look like 18:00.' })
+  })
+})
+
+describe('review round 1 · #1 storage warning on the phone', () => {
+  it('nothing under 70%, a warning from 70%, refusal wording at 100%', () => {
+    expect(storageWarning(0.5)).toBeNull()
+    expect(storageWarning(0.72)).toBe('Unsent notes are 72% full. Send or discard some soon.')
+    expect(storageWarning(1)).toMatch(/full: new voice notes can’t be saved/)
   })
 })

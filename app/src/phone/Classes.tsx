@@ -3,22 +3,25 @@ import { MODE_IDS, MODES, type ModeId } from '@matside/shared'
 import { ApiError, type Api, type ClassRow } from '../core/api'
 import { bus } from '../core/bus'
 import { outcomeFor } from './reviewLogic'
-import { classPayload, WEEKDAYS, type ClassDraft } from './rosterLogic'
+import { classPayload, classUpdatePayload, WEEKDAYS, type ClassEditDraft } from './rosterLogic'
 import { usePoll } from './usePoll'
 
-const blank: ClassDraft = { name: '', mode: 'martial_arts', startTime: '17:00', weekday: 1 }
-const draftOf = (c: ClassRow): ClassDraft => ({ name: c.name, mode: c.mode, startTime: c.startTime ?? '', weekday: c.weekday ?? 1 })
+/** New class: the coach must pick the day (no silent default). Editing: unknown day/time stay unset. */
+const blank: ClassEditDraft = { name: '', mode: 'martial_arts', startTime: '', weekday: null }
+const draftOf = (c: ClassRow): ClassEditDraft => ({ name: c.name, mode: c.mode, startTime: c.startTime ?? '', weekday: c.weekday ?? null })
 
 function ClassForm({ api, row, onDone, onCancel }: { api: Api; row: ClassRow | null; onDone(msg: string): void; onCancel(): void }) {
-  const [d, setD] = useState<ClassDraft>(row ? draftOf(row) : blank)
+  const [d, setD] = useState<ClassEditDraft>(row ? draftOf(row) : blank)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   async function save() {
-    const p = classPayload(d)
+    if (!row && d.weekday === null) { setErr('Pick a day.'); return }
+    if (!row && !d.startTime) { setErr('Set a start time.'); return }
+    const p = row ? classUpdatePayload(row, d) : classPayload({ ...d, weekday: d.weekday ?? -1 })
     if (!p.ok) { setErr(p.error); return }
     setBusy(true); setErr(null)
     try {
-      if (row) await api.updateClass(row.id, p.value); else await api.createClass(p.value)
+      if (row) { if (Object.keys(p.value).length) await api.updateClass(row.id, p.value) } else await api.createClass(p.value as Parameters<Api['createClass']>[0])
       bus.emit('classChanged', null)
       onDone(row ? 'Class saved.' : 'Class added.')
     } catch (e) { setErr(outcomeFor(e, 'Saving').text) } finally { setBusy(false) }
@@ -30,9 +33,12 @@ function ClassForm({ api, row, onDone, onCancel }: { api: Api; row: ClassRow | n
         <select value={d.mode} onChange={e => setD({ ...d, mode: e.target.value as ModeId })}>{MODE_IDS.map(m => <option key={m} value={m}>{MODES[m].label}</option>)}</select>
       </label>
       <div className="grid2">
-        <label className="field-gap">Day<select value={d.weekday} onChange={e => setD({ ...d, weekday: Number(e.target.value) })}>{WEEKDAYS.map((w, i) => <option key={w} value={i}>{w}</option>)}</select></label>
+        <label className="field-gap">Day<select value={d.weekday ?? ''} onChange={e => setD({ ...d, weekday: e.target.value === '' ? null : Number(e.target.value) })}>
+          <option value="" disabled>{row ? 'Not known · pick to change' : 'Pick a day'}</option>
+          {WEEKDAYS.map((w, i) => <option key={w} value={i}>{w}</option>)}</select></label>
         <label className="field-gap">Starts<input type="time" value={d.startTime} onChange={e => setD({ ...d, startTime: e.target.value })} /></label>
       </div>
+      {row && (row.weekday == null || !row.startTime) && <p className="muted">The server didn’t send this class’s {row.weekday == null ? 'day' : 'start time'}; it stays as it is unless you set it.</p>}
       {err && <p className="error" role="alert">{err}</p>}
       <div className="btns"><button type="button" disabled={busy} onClick={onCancel}>Cancel</button><button type="submit" className="primary" disabled={busy}>{busy ? 'Saving…' : row ? 'Save class' : 'Add class'}</button></div>
     </form>

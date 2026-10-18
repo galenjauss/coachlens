@@ -30,7 +30,7 @@ describe('video flow fixtures', () => {
     expect(text(frame('recordingFB'), 'mic')).toBe('● LISTENING  0:01')
     expect(text(frame('recordingFC'), 'mic')).toBe('○ LISTENING  0:01')
     expect(text(frame('noteFE'), 'agents')).toContain('… sorting')
-    expect(text(frame('noteFJ'), 'agents')).toBe('ok sorted · ok report · ok plan\ntap: close · 2×: undo')
+    expect(text(frame('noteFJ'), 'agents')).toBe('ok sorted · ok report · ok plan\ntap: note · 2×: undo')
     expect(text(frame('rollCallFF'), 'body')).toContain('absent: Mia')
     expect(text(frame('bannerFB'), 'hdr')).toBe('★ Jake\'s back after 3 missed')
     expect(text(frame('urgentFD'), 'agents')).toContain('ok email')

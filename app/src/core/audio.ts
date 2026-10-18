@@ -9,7 +9,12 @@ export type MicSource = 'glasses' | 'phone'
 export type EmptyReason = 'no_audio' | 'too_short' | 'not_understood' | 'quiet'
 
 type AudioBridge = { audioControl(isOpen: boolean, source?: AudioInputSource): Promise<boolean> }
-export type StopResult = { wav: Uint8Array; bytes: number } | { wav: null; bytes: number; reason: Exclude<EmptyReason, 'not_understood'> }
+/**
+ * `lowEnergy`: the clip had less speech-level audio than MIN_SPEECH_MS. It is STILL sent (the gate is not
+ * calibrated on hardware; the server's transcriber decides); the lens only uses it to word an empty result
+ * as "Couldn't hear you · move closer, speak up".
+ */
+export type StopResult = { wav: Uint8Array; bytes: number; lowEnergy?: boolean } | { wav: null; bytes: number; reason: Exclude<EmptyReason, 'not_understood' | 'quiet'> }
 export interface RecorderOptions {
   /** Open the glasses and phone mics together and buffer both (see `selectMic`). */
   dual?: boolean
@@ -18,7 +23,7 @@ export interface RecorderOptions {
 const SDK_SOURCE: Record<MicSource, AudioInputSource> = { glasses: AudioInputSource.Glasses, phone: AudioInputSource.Phone }
 
 /**
- * F14 speech-energy gate. A 20 ms frame (320 samples of 16 kHz s16le) counts as speech when its RMS is at
+ * F14 speech energy. Used to SELECT the mic (never to discard audio). A 20 ms frame (320 samples of 16 kHz s16le) counts as speech when its RMS is at
  * least SPEECH_RMS (≈ -38 dBFS: well under talking at arm's length, well over a quiet room). A source has
  * usable speech with at least MIN_SPEECH_MS of such frames. Conservative on purpose: a false "quiet" would
  * drop a real note, so the threshold is low; calibrate on G2 hardware.
@@ -61,12 +66,11 @@ type Buffer = { chunks: Uint8Array[]; bytes: number; speechMs: number }
 const emptyBuffer = (): Buffer => ({ chunks: [], bytes: 0, speechMs: 0 })
 const emptyBuffers = (): Record<MicSource, Buffer> => ({ glasses: emptyBuffer(), phone: emptyBuffer() })
 
-/** A finished buffer → what to send, or why not: no audio, too short, or no speech energy ('quiet'). */
+/** A finished buffer → what to send (flagged lowEnergy when quiet: still sent), or why not: no audio or too short. */
 function result(b: Buffer): StopResult {
   if (b.bytes === 0) return { wav: null, bytes: 0, reason: 'no_audio' }
   if (b.bytes < MIN_BYTES) return { wav: null, bytes: b.bytes, reason: 'too_short' }
-  if (b.speechMs < MIN_SPEECH_MS) return { wav: null, bytes: b.bytes, reason: 'quiet' }
-  return { wav: pcmToWav(b.chunks), bytes: b.bytes }
+  return { wav: pcmToWav(b.chunks), bytes: b.bytes, ...(b.speechMs < MIN_SPEECH_MS ? { lowEnergy: true } : {}) }
 }
 
 export class Recorder {

@@ -91,6 +91,8 @@ export interface LensState {
   undo: UndoState | null
   /** C6: quiet (default) or standard. */
   displayMode: DisplayMode
+  /** Unsent-notes storage use (fraction of the budget): ≥ 0.7 warns on the status row, ≥ 1 refuses a new recording. */
+  storage: number
 }
 
 export type LensEvent =
@@ -110,6 +112,7 @@ export type LensEvent =
   /** A background flush finished: `sent` delivered, `failed` moved to the failed store. */
   | { type: 'outboxSynced'; sent: number; failed: number }
   | { type: 'failedChanged'; count: number }
+  | { type: 'storageChanged'; fraction: number }
   | { type: 'undoResult'; utteranceId: string; res: UndoLines }
   | { type: 'undoFailed'; utteranceId: string; kind: 'error' | 'already' | 'missing'; message: string }
   | { type: 'displayModeLoaded'; mode: DisplayMode }

@@ -43,16 +43,22 @@ describe('F14 · speech energy, not bytes', () => {
     expect(out.wav).not.toBeNull()
   })
 
-  it('both silent: nothing is sent and the reason is "quiet" (the lens says move closer / speak up)', async () => {
+  it('both silent: the audio is STILL returned (flagged lowEnergy) so the server decides, never discarded on the client', async () => {
     const r = new Recorder(bridge(), { dual: true })
     await r.start()
     r.push(tone(1500, 0, 200), 'glasses')
     r.push(tone(1500, 0, 200), 'phone')
-    expect(await r.stop()).toMatchObject({ wav: null, reason: 'quiet' })
+    const out = await r.stop()
+    expect(out.wav).not.toBeNull()
+    expect(out).toMatchObject({ lowEnergy: true })
     const single = new Recorder(bridge())
     await single.start()
     single.push(tone(1000, 0))
-    expect(await single.stop()).toMatchObject({ wav: null, reason: 'quiet' })
+    expect(await single.stop()).toMatchObject({ lowEnergy: true })
+    const loud = new Recorder(bridge())
+    await loud.start()
+    loud.push(tone(1000, 5000))
+    expect((await loud.stop() as { lowEnergy?: boolean }).lowEnergy).toBeUndefined()
   })
 
   it('a short clip is still "too_short", no audio is still "no_audio"', async () => {

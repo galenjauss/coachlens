@@ -1,5 +1,6 @@
 import { ANSWER_BRIEF_NAME, type Insight, type WrapUp } from '@matside/shared'
 import { INSIGHT_GLYPH, QUEUED_GLYPH } from '../config'
+import { OUTBOX_WARN_FRACTION } from '../core/outbox'
 import { progressLines } from './agentRuns'
 import { SAID_COLS, SAID_LINES, clip, clipWithSuffix, classHeader, colsFor, fitNames, paginate, rowsFor, transcriptPages, wrap } from './text'
 
@@ -79,6 +80,8 @@ export const queuedSuffix = (n: number): string => (n > 0 ? ` ${QUEUED_GLYPH} ${
 
 /** Status-row suffix for notes the server rejected (kept on the phone's Unsent notes): ` ! 1 failed`. */
 export const failedSuffix = (n: number): string => (n > 0 ? ` ! ${n} failed` : '')
+/** Status-row suffix once unsent-notes storage passes OUTBOX_WARN_FRACTION: ` ⚠ 72% full`. */
+export const storageSuffix = (f: number): string => (f >= OUTBOX_WARN_FRACTION ? ` ⚠ ${Math.min(100, Math.round(f * 100))}% full` : '')
 
 /** Compact status-row suffix for insights surfaced but not seen yet: ` ★1` ('' when none). */
 export const insightSuffix = (n: number): string => (n > 0 ? ` ${INSIGHT_GLYPH}${n}` : '')
@@ -92,8 +95,8 @@ export function insightRows(i: Pick<Insight, 'title' | 'detail'>, cols = FULL, d
  * Status-row lines with the queued suffix: appended to the last line when it fits, else on a spare
  * row when `rows` allows one, else the last line is cut at a word boundary to make room.
  */
-function withQueued(lines: string[], n: number, rows = 1, cols = FULL, failed = 0): string[] {
-  return withSuffix(lines, queuedSuffix(n) + failedSuffix(failed), rows, cols)
+function withQueued(lines: string[], n: number, rows = 1, cols = FULL, failed = 0, storage = 0): string[] {
+  return withSuffix(lines, queuedSuffix(n) + failedSuffix(failed) + storageSuffix(storage), rows, cols)
 }
 
 /** `withQueued` for any suffix (queued count, insight count, or both). */
@@ -128,7 +131,7 @@ function home(s: LensState): PageSpec {
   const shownId = s.selectedClassId ?? td?.classId
   const shown = s.classes.find(c => c.id === shownId)
   const pos = n > 1 && shown ? ` (${s.classes.indexOf(shown) + 1}/${n})` : ''
-  const footer = withQueued([s.status ?? (n > 1 ? 'swipe: change class · 2×: exit' : '2×: exit')], s.queued, 1, FULL, s.failed)[0]!
+  const footer = withQueued([s.status ?? (n > 1 ? 'swipe: change class · 2×: exit' : '2×: exit')], s.queued, 1, FULL, s.failed, s.storage)[0]!
   if (s.selectedClassId && shown && td?.classId !== s.selectedClassId) {
     return panel(`COACHLENS${pos}`, `${shown.name}\n${shown.modeLabel}\n\n${s.loadError ? `${s.loadError} · tap to retry` : 'Loading class…'}`, footer)
   }
@@ -197,7 +200,7 @@ function peek(s: LensState, now: number): PageSpec {
   const b = s.insightBanner
   const header = b ? clip(`${INSIGHT_GLYPH} ${b.title}`, FULL) : td ? classHeader(td.theme, td.className, td.modeLabel, FULL) : ''
   const drill = b ? wrap(b.detail, NAME_COLS, 2).join('\n') : a ? wrap(a.drill.name, NAME_COLS, 2).join('\n') : 'No drill running'
-  const suffix = queuedSuffix(s.queued) + failedSuffix(s.failed) + insightSuffix(s.insightUnseen.length)
+  const suffix = queuedSuffix(s.queued) + failedSuffix(s.failed) + storageSuffix(s.storage) + insightSuffix(s.insightUnseen.length)
   return { key: `peek${fit.nextRows}`, list: null, texts: [
     t(1, 'hdr', 0, 0, W, 40, header),
     t(2, 'drill', 0, 44, PEEK.nameW, 72, drill),
@@ -211,6 +214,11 @@ function peek(s: LensState, now: number): PageSpec {
 /** Peek state hints (C6): tap always records in class; a banner is opened (and dismissed) by swipe. */
 export const PEEK_HINT = 'tap: note · swipe: deck · 2×: end'
 export const BANNER_HINT = 'tap: note · swipe: open insight'
+
+/** Card footer in class (C6): a tap closes the card and starts the next note. */
+export const CARD_HINT = 'tap: note · 2×: undo'
+/** Card status when a second undo is asked for while the first is still out. */
+export const UNDO_BUSY = 'Undo in progress · try again shortly'
 
 /** Card pages: the student brief first (when the reply has one), then the transcript pages. */
 export function cardPageCount(cd: Pick<Card, 'transcript' | 'brief'>): number {
@@ -239,7 +247,9 @@ function card(s: LensState, now: number): PageSpec {
   const pageTag = total > 1 ? `${page + 1}/${total} swipe · ` : ''
   const said = brief && onBrief ? brief.lines.flatMap(l => wrap(l, SAID_COLS)).slice(0, SAID_LINES) : pages[page - (brief ? 1 : 0)]!
   const progress = onBrief ? [BRIEF_HINT] : cd ? wrap((cd.provisional ? [SORTING_LINE] : progressLines(cd)).join(' · '), SAID_COLS, 2) : []
-  const bottom = [...progress, cd?.provisional ? 'tap: close' : 'tap: close · 2×: undo'].slice(0, 2)
+  const hint = cd?.provisional ? 'tap: close' : s.session && s.displayMode === 'quiet' ? CARD_HINT : 'tap: close · 2×: undo'
+  // A status raised while the card is up (a second undo refused, an older note set aside) replaces the hint row.
+  const bottom = s.status ? [...progress.slice(0, 1), clip(s.status, SAID_COLS)] : [...progress, hint].slice(0, 2)
   const title = brief && onBrief ? (brief.name === ANSWER_BRIEF_NAME ? ANSWER_HEADER : brief.name) : cd?.lines[0] ?? c.drillHeader
   return { key: 'card', list: null, texts: [
     t(1, 'hdr', 0, 0, W, 40, clip(`${pageTag}${title}`, FULL)),

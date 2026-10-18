@@ -4,7 +4,7 @@ import type { EmptyReason } from '../core/audio'
 import type { RetryReason } from '../core/outbox'
 import type { DarkFrom, Effect, LensEvent, LensState, Mode, Screen, UndoLines } from './state'
 import { NO_INSIGHTS, freshInsights, topInsight } from './insights'
-import { cardPageCount, detailPages } from './render'
+import { UNDO_BUSY, cardPageCount, detailPages } from './render'
 import { colsFor, fitNames } from './text'
 
 /** How long a one-line status (e.g. "Saved · will sync") stays on the peek before the next-kid line returns. */
@@ -34,7 +34,7 @@ export function initialState(firstRunSeen: boolean): LensState {
     coverage: { covered: 0, present: 0 }, nextStudent: null, card: null, disambiguation: null, wrapup: null,
     pending: null, mic: null, thinking: null, detail: null, darkFrom: null, attendanceLines: [], status: null, loadError: null, starting: false, queued: 0,
     planning: null, planResult: null, lobbyInsight: null, ...NO_INSIGHTS, wrapupInsight: null,
-    failed: 0, undo: null, displayMode: 'quiet',
+    failed: 0, undo: null, displayMode: 'quiet', storage: 0,
   }
 }
 
@@ -76,7 +76,11 @@ function resumeDrill(s: LensState, now: number): R {
   return peek({ ...s, active: { drillId: live.id, startedAt: Date.parse(live.startedAt) } })
 }
 
+/** The unsent-notes store is full: a new recording would have nowhere to wait, so refuse BEFORE recording. */
+export const STORAGE_FULL = 'Unsent notes full · send or discard on phone'
+
 function record(s: LensState, mode: Mode, returnTo: Screen, viaLongPress: boolean, now: number): R {
+  if (mode === 'note' && s.storage >= 1) return peek({ ...s, pending: null, card: null, undo: s.undo?.stage === 'pending' ? s.undo : null }, STORAGE_FULL)
   return done({ ...s, screen: mode === 'attendance' ? 'attendance' : 'recording', pending: { mode, returnTo, viaLongPress, at: now }, darkFrom: null,
     mic: { tick: 0, audio: false, source: 'glasses' }, status: null }, { type: 'startMic' })
 }
@@ -224,9 +228,10 @@ function dataEvent(s: LensState, e: LensEvent, now: number): R | null {
     }
     case 'outboxSynced': {
       if (!e.sent && !e.failed) return done(s)
-      const status = e.failed ? `${plural(e.failed, 'note')} not sent · see phone` : `↑ ${plural(e.sent, 'note')} sent`
-      return done({ ...s, status }, expire)
+      if (e.failed) return wakeStatus(s, `${plural(e.failed, 'note')} not sent · see phone`) // a failure wakes a dark lens
+      return done({ ...s, status: `↑ ${plural(e.sent, 'note')} sent` }, expire)
     }
+    case 'storageChanged': return s.storage === e.fraction ? done(s) : done({ ...s, storage: e.fraction })
     case 'failedChanged': return s.failed === e.count ? done(s) : done({ ...s, failed: e.count })
     case 'undoResult': return undoResult(s, e.utteranceId, e.res)
     case 'undoFailed': return undoFailed(s, e)
@@ -374,10 +379,18 @@ export function reduce(s: LensState, e: LensEvent): R {
       return e.type === 'doubleTap' ? peek(s) : done(s)
     case 'card':
       // Tap closes (quiet mode: it also closes itself after RESULT_CARD_MS); double-tap asks the server to undo (F02).
-      if (e.type === 'doubleTap' && s.card?.utteranceId) return startUndo({ ...s, card: null }, s.card.utteranceId)
+      if (e.type === 'doubleTap' && s.card?.utteranceId) {
+        // One undo at a time: a second one while the first is still out would lose the first one's answer.
+        if (s.undo?.stage === 'pending') return done({ ...s, status: UNDO_BUSY }, expire)
+        return startUndo({ ...s, card: null }, s.card.utteranceId)
+      }
+      // C6 quiet: in class a tap closes the card AND starts the next note; swipe (one page) or the 6 s timer only
+      // close it. Standard keeps the persistent card that a tap closes.
+      if (e.type === 'tap' && tapRecords(s) && !s.card?.provisional) return record({ ...s, card: null }, 'note', 'peek', false, now)
       if (e.type === 'tap' || e.type === 'doubleTap') return promoteBanner(peek({ ...s, card: null }))
       if ((e.type === 'swipeDown' || e.type === 'swipeUp') && s.card) {
-        // Swipe pages through a transcript longer than one page.
+        // Swipe pages through a transcript longer than one page; quiet mode: on a one-page card it just closes it.
+        if (cardPageCount(s.card) <= 1 && tapRecords(s) && !s.card.provisional) return promoteBanner(peek({ ...s, card: null }))
         const last = cardPageCount(s.card) - 1
         const page = Math.max(0, Math.min(last, s.card.page + (e.type === 'swipeDown' ? 1 : -1)))
         return page === s.card.page ? done(s) : done({ ...s, card: { ...s.card, page } })
@@ -394,7 +407,7 @@ export function reduce(s: LensState, e: LensEvent): R {
       if (e.type === 'doubleTap') return peek({ ...s, disambiguation: null, card: null }, '● Saved to Review')
       return done(s)
     }
-    case 'undo': return undoGesture(s, e)
+    case 'undo': return undoGesture(s, e, now)
     case 'confirmEnd':
       if (e.type === 'tap' && s.session) return done({ ...s, screen: 'wrapup', wrapup: null }, { type: 'endSession', sessionId: s.session.id })
       return peek(s)
@@ -422,6 +435,15 @@ function restGesture(s: LensState, e: LensEvent, now: number): R {
   return done(s)
 }
 
+/** C6 quiet mode in class: a tap on a result card or the undo screen closes it and starts the next note. */
+const tapRecords = (s: LensState): boolean => Boolean(s.session) && s.displayMode === 'quiet'
+
+/** A status the coach must see (a failure, an undo outcome): on a dark lens it wakes to peek; elsewhere it is set. */
+function wakeStatus(s: LensState, status: string): R {
+  if (s.screen === 'dark') return peek({ ...s, darkFrom: null }, status)
+  return done({ ...s, status }, expire)
+}
+
 /** Undo: "Undoing…" until the server answers (never an optimistic "Undone"). */
 function startUndo(s: LensState, utteranceId: string): R {
   const undo = { utteranceId, stage: 'pending' as const, reversed: [], cancelled: [], notReversible: [], message: null }
@@ -429,12 +451,18 @@ function startUndo(s: LensState, utteranceId: string): R {
 }
 
 /** Undo screen: pending → any tap/2× leaves (the answer comes back as a status line); failed → tap retries; result → tap closes. */
-function undoGesture(s: LensState, e: LensEvent): R {
+function undoGesture(s: LensState, e: LensEvent, now: number): R {
   const u = s.undo
   if (!u) return peek(s)
-  if (e.type !== 'tap' && e.type !== 'doubleTap') return done(s)
+  // A failed undo: tap retries (the screen's hint says so); swipe or 2× close it.
+  if (u.stage === 'failed') {
+    if (e.type === 'tap') return startUndo(s, u.utteranceId)
+    return e.type === 'doubleTap' || e.type === 'swipeUp' || e.type === 'swipeDown' ? promoteBanner(peek({ ...s, undo: null })) : done(s)
+  }
+  // C6: in class a tap closes the screen AND starts a note (a pending undo keeps going; its outcome comes back as a status line).
+  if (e.type === 'tap' && tapRecords(s)) return record({ ...s, undo: u.stage === 'pending' ? u : null }, 'note', 'peek', false, now)
+  if (e.type !== 'tap' && e.type !== 'doubleTap' && e.type !== 'swipeUp' && e.type !== 'swipeDown') return done(s)
   if (u.stage === 'pending') return peek(s, UNDOING)
-  if (u.stage === 'failed' && e.type === 'tap') return startUndo(s, u.utteranceId)
   return promoteBanner(peek({ ...s, undo: null }))
 }
 const UNDOING = 'Undoing…'
@@ -448,7 +476,7 @@ export function undoSummary(r: UndoLines): string {
 
 function undoResult(s: LensState, utteranceId: string, res: UndoLines): R {
   if (s.undo?.utteranceId === utteranceId && s.screen === 'undo') return done({ ...s, undo: { ...s.undo, ...res, stage: 'done', message: null } })
-  if (s.undo?.utteranceId === utteranceId || s.status === UNDOING) return done({ ...s, undo: null, status: undoSummary(res) }, expire)
+  if (s.undo?.utteranceId === utteranceId || s.status === UNDOING) return wakeStatus({ ...s, undo: null }, undoSummary(res))
   return done(s)
 }
 
@@ -457,7 +485,7 @@ function undoFailed(s: LensState, e: Extract<LensEvent, { type: 'undoFailed' }>)
   if (s.undo?.utteranceId === e.utteranceId && s.screen === 'undo') return done({ ...s, undo: { ...s.undo, stage, message: e.message || null } })
   if (s.undo?.utteranceId !== e.utteranceId && s.status !== UNDOING) return done(s)
   const status = e.kind === 'already' ? 'Already undone' : e.kind === 'missing' ? 'Nothing to undo' : `Undo failed · ${e.message}`
-  return done({ ...s, undo: null, status }, expire)
+  return wakeStatus({ ...s, undo: null }, status)
 }
 
 /** C6: in quiet mode, during class, the idle peek goes dark after IDLE_DARK_MS (not while a banner is up: it collapses first). */

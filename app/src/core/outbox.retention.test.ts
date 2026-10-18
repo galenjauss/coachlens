@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ApiError, NetworkError } from './api'
 import { bus } from './bus'
 import { BASE_BACKOFF_MS, MAX_BACKOFF_MS, Outbox, backoffMs, retryText } from './outbox'
@@ -129,5 +129,79 @@ describe('F07 · the outbox never silently drops a queued note', () => {
   it('reason text names the real failure, never "didn\'t catch that"', () => {
     for (const r of ['offline', 'rate_limited', 'server', 'unpaired', 'in_progress', 'app_error'] as const) expect(retryText(r)).not.toMatch(/catch/i)
     expect(retryText('rate_limited')).toMatch(/busy/i)
+  })
+})
+
+describe('review round 1 · storage budget (#1) and re-pair (#7)', () => {
+  it('a transcript replaces the audio; a note with both never stores the audio', async () => {
+    const kv = memoryKV()
+    const ob = new Outbox(kv)
+    const a = await ob.enqueue({ ...form, text: null, audioB64: 'A'.repeat(5000) })
+    expect((await kv.get('matside.outbox'))!.length).toBeGreaterThan(5000)
+    await ob.swap(a.id, { ...form, text: 'heard', audioB64: 'A'.repeat(5000) })
+    expect((await ob.list())[0]!.form).toMatchObject({ text: 'heard', audioB64: null })
+    expect((await kv.get('matside.outbox'))!.length).toBeLessThan(1000)
+  })
+
+  it('over budget, enqueue rejects with OutboxFullError and writes nothing; usage is announced for the 70% warning', async () => {
+    const { OutboxFullError } = await import('./outbox')
+    const usages: number[] = []
+    const off = bus.on('outboxUsage', u => usages.push(u.fraction))
+    const ob = new Outbox(memoryKV(), Date.now, 10_000)
+    await ob.enqueue({ ...form, text: null, audioB64: 'A'.repeat(7_000) })
+    expect(usages.at(-1)).toBeGreaterThan(0.7)
+    expect(await ob.wouldOverflow(3_000)).toBe(true)
+    await expect(ob.enqueue({ ...form, text: null, audioB64: 'B'.repeat(7_000) })).rejects.toBeInstanceOf(OutboxFullError)
+    expect(await ob.count()).toBe(1) // the stored note is untouched; nothing was evicted
+    await expect(ob.enqueue({ ...form, text: 'short text note' })).resolves.toBeDefined() // small text notes still fit
+    off()
+  })
+
+  it('a failed note keeps only its transcript when it has one; Discard is the only thing that frees its space', async () => {
+    const ob = new Outbox(memoryKV())
+    const a = await ob.enqueue({ ...form, text: null, audioB64: 'A'.repeat(2000) })
+    await ob.flush(async () => { throw new ApiError(413, 'too_large') })
+    expect((await ob.failed())[0]!.form.audioB64).toBe('A'.repeat(2000)) // no transcript: the audio is the note, kept
+    expect(await ob.discardFailed(a.id)).toBe(true)
+    expect((await ob.usage()).bytes).toBeLessThan(100)
+  })
+
+  it('an offline retry with nothing new does not rewrite the queue', async () => {
+    const writes: string[] = []
+    const base = memoryKV()
+    const kv = { get: base.get, set: async (k: string, v: string) => { writes.push(k); await base.set(k, v) } }
+    const ob = new Outbox(kv)
+    await ob.enqueue(form)
+    await ob.flush(async () => { throw new NetworkError('offline') })
+    const n = writes.length
+    await ob.flush(async () => { throw new NetworkError('offline') })
+    expect(writes.length).toBe(n)
+  })
+
+  it('resetBackoff clears every wait (after re-pairing), so the next flush sends at once', async () => {
+    const c = clock()
+    const ob = new Outbox(memoryKV(), c.now)
+    await ob.enqueue(form)
+    await ob.flush(async () => { throw new ApiError(401, 'unauthorized') })
+    await ob.flush(async () => { throw new ApiError(401, 'unauthorized') })
+    expect((await ob.list())[0]!.nextAttemptAt).toBeGreaterThan(c.t)
+    expect(await ob.resetBackoff()).toBe(1)
+    const r = await ob.flush(async i => res(i.id))
+    expect(r.remaining).toBe(0)
+  })
+})
+
+describe('review round 1 · #6 phone-only Retry', () => {
+  it('without a lens, outboxRetry flushes the outbox (forced) with the item id as the idempotency key', async () => {
+    const { wirePhoneOnlyRetry } = await import('./sendItem')
+    const ob = new Outbox(memoryKV())
+    const a = await ob.enqueue(form)
+    await ob.flush(async () => { throw new ApiError(429, 'x', 60_000) })
+    const utterance = vi.fn(async (_p: unknown, o: { opId?: string }) => res(o.opId!))
+    const off = wirePhoneOnlyRetry(ob, { utterance } as never)
+    bus.emit('outboxRetry', undefined)
+    await vi.waitFor(async () => expect(await ob.count()).toBe(0))
+    expect(utterance.mock.calls[0]![1]).toEqual({ opId: a.id })
+    off()
   })
 })

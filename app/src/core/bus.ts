@@ -11,6 +11,8 @@ type Events = {
   outboxChanged: number
   /** Notes the server rejected as invalid (the failed store) changed (count after the change). */
   outboxFailedChanged: number
+  /** Outbox storage use after a change (both stores, against the budget). */
+  outboxUsage: { bytes: number; budget: number; fraction: number }
   /** The phone asked to send queued notes now (the lens controller flushes, ignoring backoff). */
   outboxRetry: void
   /** The lens display policy changed on the phone (C6: 'quiet' | 'standard'). */

@@ -73,12 +73,12 @@ describe('F02 · undo waits for the server', () => {
   })
 
   it('leaving "Undoing…" early: the late result becomes a status line, never a false success', () => {
-    let s = run(onCard(), { type: 'doubleTap' }, { type: 'tap' }).state
+    let s = run(onCard(), { type: 'doubleTap' }, { type: 'swipeDown' }).state
     expect(s.screen).toBe('peek')
     expect(s.status).toBe('Undoing…')
     s = run(s, { type: 'undoResult', utteranceId: 'u1', res: { reversed: ['Removed Priya note'], cancelled: [], notReversible: ['Email already sent'] } }).state
     expect(s.status).toBe('Undone · 1 change · 1 not reversible')
-    const f = run(onCard(), { type: 'doubleTap' }, { type: 'tap' }, { type: 'undoFailed', utteranceId: 'u1', kind: 'error', message: 'Offline' }).state
+    const f = run(onCard(), { type: 'doubleTap' }, { type: 'swipeDown' }, { type: 'undoFailed', utteranceId: 'u1', kind: 'error', message: 'Offline' }).state
     expect(f.status).toBe('Undo failed · Offline')
   })
 
@@ -217,5 +217,58 @@ describe('F14 · low-energy recovery on the lens', () => {
     const sending = run(inPeek(), { type: 'tap' }, { type: 'tap' }).state
     const s = run(sending, { type: 'utteranceEmpty', reason: 'quiet' }).state
     expect(s.status).toBe("Couldn't hear you · move closer, speak up")
+  })
+})
+
+describe('review round 1', () => {
+  it('#4 an undo outcome or a flush failure landing on a dark lens wakes it to peek with the status', () => {
+    const pendingThenDark = run(onCard(), { type: 'doubleTap' }, { type: 'swipeDown' }, { type: 'idleTimeout' }).state
+    expect(pendingThenDark.screen).toBe('dark')
+    const ok = run(pendingThenDark, { type: 'undoResult', utteranceId: 'u1', res: { reversed: ['Removed Priya note'], cancelled: [], notReversible: [] } }).state
+    expect(ok).toMatchObject({ screen: 'peek', status: 'Undone · 1 change' })
+    const bad = run(pendingThenDark, { type: 'undoFailed', utteranceId: 'u1', kind: 'error', message: 'Offline' }).state
+    expect(bad).toMatchObject({ screen: 'peek', status: 'Undo failed · Offline' })
+    const dark = run(inPeek(), { type: 'idleTimeout' }).state
+    expect(run(dark, { type: 'outboxSynced', sent: 0, failed: 1 }).state).toMatchObject({ screen: 'peek', status: '1 note not sent · see phone' })
+    expect(run(dark, { type: 'outboxSynced', sent: 2, failed: 0 }).state.screen).toBe('dark') // good news does not wake it
+  })
+
+  it('#5 quiet: a tap on a result card or the undo result closes it AND starts recording; swipe or the timer only close', () => {
+    const r = run(onCard(), { type: 'tap' })
+    expect(r.state.screen).toBe('recording')
+    expect(r.state.card).toBeNull()
+    expect(r.effects).toContainEqual({ type: 'startMic' })
+    expect(run(onCard(), { type: 'swipeDown' }).state.screen).toBe('peek')
+    const undone = run(onCard(), { type: 'doubleTap' }, { type: 'undoResult', utteranceId: 'u1', res: { reversed: ['x'], cancelled: [], notReversible: [] } }).state
+    expect(run(undone, { type: 'tap' }).state).toMatchObject({ screen: 'recording', undo: null })
+    expect(run(undone, { type: 'swipeUp' }).state).toMatchObject({ screen: 'peek', undo: null })
+    const pending = run(onCard(), { type: 'doubleTap' }, { type: 'tap' }).state
+    expect(pending.screen).toBe('recording')
+    expect(pending.undo?.stage).toBe('pending') // the undo keeps going; its answer comes back as a status line
+    expect(render(onCard(), 0).texts.map(t => t.content).join('\n')).toContain('tap: note · 2×: undo')
+    expect(run(onCard('standard'), { type: 'tap' }).state.screen).toBe('peek') // standard keeps the persistent card
+  })
+
+  it('#9 a second undo while one is pending is refused with a hint (the first answer is not lost)', () => {
+    const pending = run(onCard(), { type: 'doubleTap' }, { type: 'tap' }).state // left the undo screen, recording
+    const second = run(pending, { type: 'tap' }, { ...note('u2') }).state
+    expect(second.screen).toBe('card')
+    const r = run(second, { type: 'doubleTap' })
+    expect(r.effects).not.toContainEqual({ type: 'undo', utteranceId: 'u2' })
+    expect(r.state.status).toBe('Undo in progress · try again shortly')
+    expect(render(r.state, 0).texts.map(t => t.content).join('\n')).toContain('Undo in progress')
+    const back = run(r.state, { type: 'undoResult', utteranceId: 'u1', res: { reversed: ['Removed Priya note'], cancelled: [], notReversible: [] } }).state
+    expect(back.status).toBe('Undone · 1 change')
+  })
+
+  it('#1 a full unsent-notes store refuses a new note BEFORE recording, and warns from 70%', () => {
+    const full = run(inPeek(), { type: 'storageChanged', fraction: 1 }).state
+    const r = run(full, { type: 'tap' })
+    expect(r.state.screen).toBe('peek')
+    expect(r.state.status).toBe('Unsent notes full · send or discard on phone')
+    expect(r.effects).not.toContainEqual({ type: 'startMic' })
+    const warn = run(inPeek('standard'), { type: 'storageChanged', fraction: 0.72 }).state
+    expect(render(warn, 0).texts.find(t => t.name === 'next')!.content).toContain('72% full')
+    expect(render(run(inPeek('standard'), { type: 'storageChanged', fraction: 0.5 }).state, 0).texts.find(t => t.name === 'next')!.content).not.toContain('full')
   })
 })
