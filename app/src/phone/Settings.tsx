@@ -4,7 +4,7 @@ import type { Api } from '../core/api'
 import type { KV } from '../core/storage'
 import { Classes } from './Classes'
 import { rePair } from './kvContext'
-import { outcomeFor } from './reviewLogic'
+import { outcomeFor, revokedNotice } from './reviewLogic'
 import { parseStatus, readDisplayMode, writeDisplayMode, type DisplayMode } from './settingsLogic'
 import { usePoll } from './usePoll'
 
@@ -107,6 +107,36 @@ function Unpair({ api, kv }: { api: Api; kv: KV }) {
   )
 }
 
+/** C4 (batch 2): sign out every other phone paired to this account; this one stays signed in. */
+function SignOutOthers({ api }: { api: Api }) {
+  const [confirm, setConfirm] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  async function revoke() {
+    setBusy(true); setErr(null); setMsg(null)
+    try { const r = await api.revokeOtherTokens(); setMsg(revokedNotice(r.revoked)); setConfirm(false) } catch (e) {
+      setErr(`Other phones are still signed in. ${outcomeFor(e, 'Signing out').text}`)
+    } finally { setBusy(false) }
+  }
+  return (
+    <section className="card" aria-labelledby="set-others">
+      <div className="label" id="set-others">Other phones</div>
+      {!confirm
+        ? <div className="btns"><button type="button" onClick={() => { setMsg(null); setErr(null); setConfirm(true) }}>Sign out other phones</button></div>
+        : <>
+            <p>Every other phone paired to your account is signed out and will need the pairing code again. This phone stays signed in.</p>
+            <div className="btns">
+              <button type="button" disabled={busy} onClick={() => setConfirm(false)}>Cancel</button>
+              <button type="button" className="danger" disabled={busy} onClick={() => { void revoke() }}>{busy ? 'Signing out…' : 'Sign out others'}</button>
+            </div>
+          </>}
+      <div aria-live="polite">{msg && <p className="notice">{msg}</p>}</div>
+      {err && <p className="error" role="alert">{err}</p>}
+    </section>
+  )
+}
+
 export function Settings({ api, kv, onClose }: { api: Api; kv: KV; onClose(): void }) {
   const [classes, setClasses] = useState(false)
   if (classes) return <Classes api={api} onBack={() => setClasses(false)} />
@@ -119,6 +149,7 @@ export function Settings({ api, kv, onClose }: { api: Api; kv: KV; onClose(): vo
       <RankReview api={api} />
       <ServerStatus api={api} />
       <Unpair api={api} kv={kv} />
+      <SignOutOthers api={api} />
     </main>
   )
 }

@@ -39,3 +39,9 @@ These fixes come from the independent review. Each one has a regression test. Wh
 | 9 | A second undo while one was pending could drop the first result. → It is refused with `Undo in progress · try again shortly` (shown on the card). The first answer still arrives. | `app/src/lens/{reducer,render}.ts` | `reducer.remediation.test.ts` #9 | fixed (unit-verified), e2e pending |
 
 Round-1 verification: app tests (`--maxWorkers=2`) 479 passing, plus the app typecheck and build, all clean.
+
+## Follow-up after merging build (21a4732)
+
+- **Sign out other phones** is in Settings, next to Unpair. It calls `POST /v1/tokens/revoke-others` (typed `api.revokeOtherTokens()`, which returns `{ ok, revoked }`), asks for confirmation, then shows "Signed out N other phones" (or "No other phones were signed in."). An offline or error result says the other phones are still signed in, with the reason. Tests: `api.contracts.test.ts`, `remediationLogic.test.ts` (`revokedNotice`).
+- I checked the client against batch 2's real routes. Students `GET` returns `guardians` and `classIds`, and class rows carry `weekday` and `startTime`. Both match the client schemas. Undo replies with the extra `coverage` field parse and keep it (test added). A `409 no_class` from candidates (a note captured outside a class) shows a plain message with no retry in the Review picker ("wasn't captured in a class … dismiss it, or record it again during class"). Tests: `api.contracts.test.ts`, `remediationLogic.test.ts` (`candidatesError`).
+- App tests (`--maxWorkers=2`): 484 passing. The typecheck and build are clean.

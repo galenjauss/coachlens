@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { DeckDiff } from '@matside/shared'
 import type { Api, ReviewItemClient as ReviewItem } from '../core/api'
-import { approveAllNotice, bulkEmailIds, filterCandidates, outcomeFor, urgentFirst, visibleEmailIds } from './reviewLogic'
+import { approveAllNotice, bulkEmailIds, candidatesError, filterCandidates, outcomeFor, urgentFirst, visibleEmailIds } from './reviewLogic'
 import { usePoll } from './usePoll'
 import { useAction } from './useAction'
 
@@ -86,7 +86,10 @@ function BillingCard({ api, item, onGone, refresh, locked }: Props & { item: Ext
  */
 function NoteCard({ api, item, onGone, refresh, locked }: Props & { item: Extract<ReviewItem, { kind: 'unassigned_note' }> }) {
   const { busy, err, run } = useAction(onGone, refresh)
-  const { data: cand, error: candErr, reload } = usePoll(() => api.noteCandidates(item.id), null, [item.id])
+  const [candErr, setCandErr] = useState<{ text: string; retry: boolean } | null>(null)
+  const { data: cand, reload } = usePoll(async () => {
+    try { const r = await api.noteCandidates(item.id); setCandErr(null); return r } catch (e) { setCandErr(candidatesError(e)); throw e }
+  }, null, [item.id])
   const [q, setQ] = useState(item.heard ?? '')
   const [pick, setPick] = useState<string | null>(null)
   const matches = cand ? filterCandidates(cand.students, q) : []
@@ -97,7 +100,7 @@ function NoteCard({ api, item, onGone, refresh, locked }: Props & { item: Extrac
       <div className="card-head"><Urgent item={item} /><span className="pill">Unassigned note</span>{item.heard && <span className="muted">heard “{item.heard}”</span>}</div>
       <div className="pre">{item.text}</div>
       {cand && <div className="muted">{cand.className} · {when(cand.capturedAt)}</div>}
-      {candErr && <p className="error" role="alert">Couldn’t load this class’s roster. <button type="button" className="inline" onClick={() => { void reload() }}>Retry</button></p>}
+      {candErr && <p className={candErr.retry ? 'error' : 'muted'} role={candErr.retry ? 'alert' : 'status'}>{candErr.text} {candErr.retry && <button type="button" className="inline" onClick={() => { void reload() }}>Retry</button>}</p>}
       {cand && (
         <>
           <label className="label chips-label" htmlFor={`find-${item.id}`}>Assign to someone in {cand.className}</label>

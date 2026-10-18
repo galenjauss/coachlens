@@ -191,6 +191,8 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
     deleteClass: (id: string) => req(`/v1/classes/${encodeURIComponent(id)}`, { method: 'DELETE' }, ok),
     /** C4: revoke this phone's token on the server (the caller then clears it locally). */
     unpair: () => post('/v1/unpair', {}, ok),
+    /** Revoke every other token of this instructor (this phone stays signed in). `revoked` = how many. */
+    revokeOtherTokens: () => post('/v1/tokens/revoke-others', {}, z.object({ ok: z.literal(true), revoked: z.number().int().min(0) })),
     /** C5 / F20: AI budget used today and whether speech-to-text is configured. */
     status: () => req('/v1/status', {}, StatusResponse),
     feed: (since?: string) => req(`/v1/agents/feed${since ? `?since=${encodeURIComponent(since)}` : ''}`, {}, z.array(AgentRunView)),
