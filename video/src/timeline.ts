@@ -21,6 +21,44 @@ export const beat = (n: number): number => Math.round(n * BEAT)
 export const bar = (n: number): number => n * BAR
 export const sec = (s: number): number => Math.round(s * FPS)
 
+// ── Finale schedule (computed first: the film's end depends on it) ────────────────────────────
+/** Number of use-case cards: each of the 50 roles in USE_CASES appears exactly once. */
+const N_CASES = 50
+const FLASH_FROM = bar(62)
+/**
+ * Card durations: two readable holds (1.2 s each), then ×0.68 per card down to a 2–3-frame flicker
+ * (card 9), then the 1/24-note stream (2.5 frames: sextuplet sixteenths of 120 BPM) until all 50 roles
+ * have shown once. Cut times are quantised to the 2.5-frame grid; "Your class." lands on the next
+ * beat after the stream, so the 50th card holds a few frames longer.
+ */
+const FLICKER = BEAT / 6
+const buildFlash = (): { starts: number[]; yourClass: number } => {
+  const d: number[] = [36, 36]
+  let x = 36
+  while (x * 0.68 >= FLICKER) {
+    x *= 0.68
+    d.push(x)
+  }
+  while (d.length < N_CASES) d.push(FLICKER)
+  const starts: number[] = []
+  let t = 0
+  for (const dur of d) {
+    starts.push(FLASH_FROM + Math.round(Math.round(t / FLICKER) * FLICKER))
+    t += dur
+  }
+  const streamEnd = FLASH_FROM + Math.round(t)
+  return { starts, yourClass: Math.ceil(streamEnd / BEAT) * BEAT }
+}
+const FLASH = buildFlash()
+/** Start frame of every flash-by card. */
+export const FLASH_STARTS: readonly number[] = FLASH.starts
+/** "Your class." lands on this beat with an impact and holds 5 s; the close (4 s) follows. */
+export const YOUR_CLASS_AT = FLASH.yourClass
+const YOUR_CLASS_HOLD = sec(5)
+const CLOSE_LEN = sec(4)
+/** The film's last frame + 1 (durationInFrames). */
+export const FILM_END = YOUR_CLASS_AT + YOUR_CLASS_HOLD + CLOSE_LEN
+
 // ── Sections ──────────────────────────────────────────────────────────────────────────────────
 export type SectionId = 'hook' | 'reveal' | 'quiet' | 'sentence' | 'notes' | 'notice' | 'origin' | 'control' | 'finale' | 'close'
 export const SECTIONS: Record<SectionId, { from: number; to: number }> = {
@@ -32,8 +70,8 @@ export const SECTIONS: Record<SectionId, { from: number; to: number }> = {
   notice: { from: bar(40), to: bar(48) },
   origin: { from: bar(48), to: bar(54) },
   control: { from: bar(54), to: bar(62) },
-  finale: { from: bar(62), to: sec(146) },
-  close: { from: sec(146), to: sec(150) },
+  finale: { from: bar(62), to: YOUR_CLASS_AT + YOUR_CLASS_HOLD },
+  close: { from: YOUR_CLASS_AT + YOUR_CLASS_HOLD, to: FILM_END },
 }
 
 /** Where the music jumps back into the track's drop phrase (film frame → track second). */
@@ -82,7 +120,7 @@ export const T = {
     autonomy: bar(54), tapReview: bar(55) + beat(1), card: bar(56), agents: beat(227), kidCard: beat(234),
     priya: beat(237), priya3: beat(239), montage: [bar(60), bar(60) + beat(1.5), bar(60) + beat(3), bar(60) + beat(4.5)], teach: beat(246),
   },
-  close: { iris: sec(146), lines: sec(146) + 8 },
+  close: { iris: YOUR_CLASS_AT + YOUR_CLASS_HOLD, lines: YOUR_CLASS_AT + YOUR_CLASS_HOLD + 8 },
 } as const
 
 // ── Finale: an exponentially accelerating stream of coaches ───────────────────────────────────
@@ -139,39 +177,6 @@ export const USE_CASES: readonly { role: string; line: string }[] = [
   { role: 'Driving instructor', line: 'Check blind spot · 2nd time' },
 ]
 const FIELD_CYCLE: readonly FieldName[] = ['orange', 'cobalt', 'paper', 'green', 'black', 'cobalt', 'orange', 'paper', 'black', 'green']
-/** "Your class." lands on this beat (141.0 s) with an impact and holds to the close. */
-export const YOUR_CLASS_AT = beat(282)
-
-/**
- * Card durations: two readable holds (1.2 s each), then ×0.68 per card down to a 2–3-frame flicker
- * (about card 9), then a long dense stream on the 1/24-note grid (2.5 frames: sextuplet sixteenths of
- * 120 BPM) until "Your class." lands. Cut times are quantised to that 2.5-frame grid.
- */
-const FLICKER = BEAT / 6
-const buildFlash = (): number[] => {
-  const d: number[] = [36, 36]
-  let x = 36
-  while (x * 0.68 >= FLICKER) {
-    x *= 0.68
-    d.push(x)
-  }
-  const total = YOUR_CLASS_AT - FINALE_AT
-  let used = d.reduce((a, b) => a + b, 0)
-  while (used + FLICKER <= total + 0.01) {
-    d.push(FLICKER)
-    used += FLICKER
-  }
-  const starts: number[] = []
-  let t = 0
-  for (const dur of d) {
-    const f = FINALE_AT + Math.round(Math.round(t / FLICKER) * FLICKER)
-    if (f < YOUR_CLASS_AT && f !== starts[starts.length - 1]) starts.push(f)
-    t += dur
-  }
-  return starts
-}
-/** Start frame of every flash-by card (the "Your class." card starts at YOUR_CLASS_AT). */
-export const FLASH_STARTS: readonly number[] = buildFlash()
 /** Frames each flash-by card is on screen. */
 export const flashLen = (i: number): number => (FLASH_STARTS[i + 1] ?? YOUR_CLASS_AT) - (FLASH_STARTS[i] ?? FINALE_AT)
 /**
@@ -308,7 +313,8 @@ const typingCues = (): Cue[] =>
 const FLASH_SFX: readonly SfxName[] = ['whoosh-air', 'swoosh-fast', 'whoosh-pop-light', 'sweep-fast-small', 'whoosh-cinematic-fast', 'swoosh-fast', 'select-tech', 'sweep-fast-small', 'click-check', 'swoosh-fast', 'select-tech']
 const flashCues = (): Cue[] => {
   const out: Cue[] = []
-  for (let i = 1; i < FLASH_STARTS.length; i++) {
+  // The last card only holds longer to reach the beat; it gets no sound of its own.
+  for (let i = 1; i < FLASH_STARTS.length - 1; i++) {
     const f = FLASH_STARTS[i] ?? 0
     const len = (FLASH_STARTS[i + 1] ?? YOUR_CLASS_AT) - f
     if (len >= 10 && out.length < FLASH_SFX.length) out.push({ f, s: FLASH_SFX[out.length] ?? 'select-tech', v: len > 30 ? 0.85 : 0.6 })

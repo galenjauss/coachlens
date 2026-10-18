@@ -13,5 +13,3 @@ export const WIDTH = 1920
 export const HEIGHT = 1080
 /** Title-safe margin (px at 1080p). */
 export const SAFE = 96
-/** 2:30 at 30 fps. */
-export const DURATION = 4500
