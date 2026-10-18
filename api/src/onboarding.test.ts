@@ -12,7 +12,7 @@ import { ageFrom } from './services/students'
 
 type Call = { name: string; prompt: string; instructions: string; images?: { data: string; mediaType: string }[] }
 
-const DRAFT = { drills: Array.from({ length: 5 }, (_, i) => ({ name: `Drill ${i + 1}`, minutes: 5, kind: 'drill', cues: [], focusStudentIds: [], rationale: 'r' })) }
+const DRAFT = { drills: ['Jab cross', 'Hip rotation', 'Palm strike', 'Front kick', 'Knee strike'].map(name => ({ name, minutes: 5, kind: 'drill', cues: [], focusStudentIds: [], rationale: 'r' })) }
 
 function stubLlm(calls: Call[]): Llm {
   return fakeLlm(a => {
@@ -251,7 +251,7 @@ describe('POST /v1/onboarding/commit', () => {
     await post('/v1/onboarding/commit', COMMIT)
     await deps.flush()
     const terms = (await db.select().from(schoolVocab)).map(r => r.term).sort()
-    expect(terms).toEqual(['Drill 1', 'Drill 2', 'Drill 3', 'Drill 4', 'Drill 5', 'Kata 1'])
+    expect(terms).toEqual(['Front kick', 'Hip rotation', 'Jab cross', 'Kata 1', 'Knee strike', 'Palm strike'])
   })
 
   it('is idempotent by name: re-running updates instead of duplicating', async () => {

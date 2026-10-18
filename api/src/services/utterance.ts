@@ -6,7 +6,7 @@ import { attendance, billingFlags, drills, issues, notes, utterances } from '../
 import { routeUtterance } from '../agents/router'
 import { withRun } from '../agents/runs'
 import { draftParentEmail } from '../agents/parentEmail'
-import { acceptDiff, autoAdjustNextDeck, nextDeckFor, suggestDiff } from '../agents/planner'
+import { acceptDiff, autoAdjustNextDeck, markAutonomy, nextDeckFor, suggestDiff } from '../agents/planner'
 import { resolveName } from '../logic/names'
 import { parseAttendance, type RollCall } from '../logic/attendance'
 import { isRecurring, RECURRING_WINDOW_DAYS } from '../logic/recurring'
@@ -59,6 +59,11 @@ export async function handleUtterance(
 }
 
 async function applyRollCall(deps: Deps, ctx: SessionContext, utteranceId: string, parsed: RollCall): Promise<CardAction | null> {
+  const run = { agent: 'attendance', trigger: 'roll_call', sessionId: ctx.sessionId, utteranceId }
+  if (await getAutonomy(deps.db, 'attendance') === 'off') {
+    await withRun(deps, run, async () => ({ result: false, summary: 'Roll call skipped (off)', reason: 'autonomy: off — voice attendance is turned off in Settings' }))
+    return null
+  }
   const named = new Map<string, string>()
   const unresolved: string[] = []
   if (parsed.kind !== 'all') {
@@ -72,11 +77,6 @@ async function applyRollCall(deps: Deps, ctx: SessionContext, utteranceId: strin
   const absent = parsed.kind === 'present'
     ? new Map(ctx.roster.filter(s => !named.has(s.id)).map(s => [s.id, first(s.name)] as const))
     : named
-  const run = { agent: 'attendance', trigger: 'roll_call', sessionId: ctx.sessionId, utteranceId }
-  if (await getAutonomy(deps.db, 'attendance') === 'off') {
-    await withRun(deps, run, async () => ({ result: false, summary: 'Roll call skipped (off)', reason: 'autonomy: off — voice attendance is turned off in Settings' }))
-    return null
-  }
   if (unresolved.length) {
     await withRun(deps, run, async () => ({
       result: false, summary: `Roll call not applied, unclear: ${unresolved.join(', ')}`, reason: 'unresolved names',
@@ -105,17 +105,22 @@ async function applyIntent(deps: Deps, ctx: SessionContext, utteranceId: string,
       safeDefer(deps, 'plan_request', (async () => {
         const deckId = await nextDeckFor(deps, ctx.classId, ctx.forDate, utteranceId)
         const s = deckId ? await suggestDiff(deps, deckId, intent.content, ctx.sessionId, utteranceId) : null
-        if (s && await getAutonomy(deps.db, 'planner') === 'auto') await acceptDiff(deps, s.diffId, { remember: false })
+        if (s) {
+          const auto = await getAutonomy(deps.db, 'planner') === 'auto'
+          if (auto) await acceptDiff(deps, s.diffId, { remember: false })
+          await markAutonomy(deps, ctx.sessionId, utteranceId, auto, s.diffId, 'plan_request')
+        }
       })())
       return { actions: [{ kind: 'plan_request' }], disambiguation: null }
     }
     case 'parent_message': {
       const actions: CardAction[] = []
+      const mailAutonomy = await getAutonomy(deps.db, 'parent_email')
       for (const n of intent.studentNames) {
         const m = resolveName(n, ctx.roster)
         if (m.kind !== 'match') { actions.push({ kind: 'name_unclear', name: n }); continue }
         safeDefer(deps, 'parent_email', draftParentEmail(deps, { studentId: m.student.id, sessionId: ctx.sessionId, utteranceId, trigger: { kind: 'request', content: intent.content } }))
-        actions.push({ kind: 'parent_note', name: first(m.student.name) })
+        if (mailAutonomy !== 'off') actions.push({ kind: 'parent_note', name: first(m.student.name) })
       }
       return { actions, disambiguation: null }
     }
@@ -147,6 +152,8 @@ async function applyFeedback(deps: Deps, ctx: SessionContext, utteranceId: strin
     return { actions: [unassigned()], disambiguation: null }
   }
   const progressOn = await getAutonomy(db, 'progress') === 'auto'
+  const deck = await getAutonomy(db, 'planner')
+  const mail = await getAutonomy(db, 'parent_email')
   let urgentFlagged = false
   const flagUrgent = () => {
     if (!intent.urgent || urgentFlagged) return
@@ -192,7 +199,7 @@ async function applyFeedback(deps: Deps, ctx: SessionContext, utteranceId: strin
       summary: `Logged "${intent.content.slice(0, 60)}" → ${first(s.name)}${ctx.drill ? ` · drill: ${ctx.drill.name}` : ''}`,
       reason: [intent.urgent ? `urgent · ${reason}` : reason, progressOn ? '' : 'autonomy: off — recurring-issue tracking skipped'].filter(Boolean).join(' · '),
     }))
-    actions.push({ kind: 'feedback', name: first(s.name), tag, count, recurring, urgent: intent.urgent })
+    actions.push({ kind: 'feedback', name: first(s.name), tag, count, recurring, urgent: intent.urgent, deck, mail })
   }
   return { actions, disambiguation }
 }

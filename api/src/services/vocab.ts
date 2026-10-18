@@ -28,6 +28,11 @@ export async function vocabHints(db: Db): Promise<string[]> {
   return rows.map(r => r.term)
 }
 
+/** Same terms, newest first (the router sees the freshest words first). */
+export async function vocabNewestFirst(db: Db): Promise<string[]> {
+  return (await vocabHints(db)).reverse()
+}
+
 /** Replaces the vocabulary with the normalized list. */
 export async function setVocab(db: Db, terms: readonly string[]): Promise<string[]> {
   const next = normalizeTerms(terms)
@@ -74,7 +79,12 @@ export function capHints(list: readonly string[], maxChars = MAX_HINT_CHARS): st
 
 /** STT hints: roster names and aliases first, then custom vocabulary, then the current deck's drill names. */
 export async function sttHints(db: Db, rosterTerms: readonly string[], deckId: string | null): Promise<string[]> {
-  const vocab = await vocabHints(db)
+  const vocab = await vocabNewestFirst(db)
   const deck = deckId ? (await db.select({ name: drills.name }).from(drills).where(eq(drills.deckId, deckId))).map(d => d.name) : []
   return capHints([...rosterTerms, ...vocab, ...deck])
 }
+
+const GENERIC_DRILLS = new Set(['warm-up', 'warm up', 'warmup', 'cool down', 'cool-down', 'cooldown', 'stretching', 'stretch', 'game', 'water break', 'review', 'drill'])
+/** Drill names worth teaching the transcriber: not generic ("Warm-up", "Game") and at least 4 characters. */
+export const specificDrillNames = (names: readonly string[]): string[] =>
+  names.map(n => n.trim()).filter(n => n.length >= 4 && !GENERIC_DRILLS.has(n.toLowerCase()))

@@ -2,7 +2,7 @@ import { and, eq, sql } from 'drizzle-orm'
 import type { OnboardingCommit, OnboardingCommitResponse, OnboardingStatus } from '@matside/shared'
 import type { Deps } from '../deps'
 import { classes, curriculum, drills, enrollments, guardians, instructors, students } from '../db/schema'
-import { addVocab } from './vocab'
+import { addVocab, specificDrillNames } from './vocab'
 import { draftDeck } from '../agents/planner'
 import { localDate, upcomingClassDate } from '../logic/dates'
 import { nameKey } from '../logic/onboarding'
@@ -108,7 +108,7 @@ export async function commitOnboarding(deps: Deps, instructorId: string, p: Onbo
   deps.defer((async () => {
     for (const c of toPlan) {
       const deckId = await draftDeck(deps, c.id, upcomingClassDate(deps.now(), deps.env.timeZone, c.weekday)).catch(e => { console.error('[onboarding:plan]', c.id, e); return null })
-      if (deckId) await addVocab(db, (await db.select({ name: drills.name }).from(drills).where(eq(drills.deckId, deckId))).map(d => d.name))
+      if (deckId) await addVocab(db, specificDrillNames((await db.select({ name: drills.name }).from(drills).where(eq(drills.deckId, deckId))).map(d => d.name)))
     }
   })())
 

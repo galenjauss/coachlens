@@ -110,7 +110,7 @@ describe('teaching modes over HTTP', () => {
     const form = new FormData()
     form.set('sessionId', start.sessionId); form.set('mode', 'note'); form.set('text', "Maria's squat depth was great, knees caving on the last set")
     const u = await app.request('/v1/utterance', { method: 'POST', headers: { Authorization: h.Authorization }, body: form })
-    expect(((await u.json()) as { cardLines: string[] }).cardLines).toEqual(['✓ Maria · depth (3rd time)', '→ progress logged', '→ added to report card', '→ added to next deck'])
+    expect(((await u.json()) as { cardLines: string[] }).cardLines).toEqual(['✓ Maria · depth (3rd time)', '→ progress logged', '→ added to report card', '→ next deck change to review'])
     await deps.flush()
     expect(await db.select().from(outbox).where(eq(outbox.studentId, w.mariaId))).toHaveLength(0)
     expect(calls.some(c => c.name === 'parent_email')).toBe(false)
@@ -124,7 +124,7 @@ describe('teaching modes over HTTP', () => {
     form.set('sessionId', start.sessionId); form.set('mode', 'note'); form.set('text', "Maria's squat depth was great, knees caving on the last set")
     const u = await app.request('/v1/utterance', { method: 'POST', headers: { Authorization: h.Authorization }, body: form })
     expect(u.status).toBe(200)
-    expect(((await u.json()) as { cardLines: string[] }).cardLines).toEqual(['✓ Maria · depth (3rd time)', '⚠ urgent · parent note drafting', '→ added to report card', '→ added to next deck'])
+    expect(((await u.json()) as { cardLines: string[] }).cardLines).toEqual(['✓ Maria · depth (3rd time)', '⚠ urgent · parent note drafting', '→ added to report card', '→ next deck change to review'])
     const router = calls.find(c => c.name === 'router')!
     expect(router.instructions).toContain('depth')
     expect(router.instructions).not.toContain('guard')

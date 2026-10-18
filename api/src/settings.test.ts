@@ -12,6 +12,8 @@ import { autoAdjustNextDeck } from './agents/planner'
 import { routerInstructions } from './agents/router'
 import { handleUtterance } from './services/utterance'
 import { MODES } from '@matside/shared'
+import { buildCardLines } from './logic/cardLines'
+import { specificDrillNames } from './services/vocab'
 
 beforeEach(() => resetRateLimits())
 
@@ -197,5 +199,42 @@ describe('planner autonomy', () => {
       await deps.flush()
       expect((await db.select().from(deckDiffs))[0]!.status).toBe(mode === 'auto' ? 'accepted' : 'pending')
     }
+  })
+})
+
+describe('honest card lines and run reasons', () => {
+  const fb = (o: object) => ({ kind: 'feedback' as const, name: 'Priya', tag: 'guard' as const, count: 3, recurring: true, ...o })
+  it('deck line follows planner autonomy', () => {
+    expect(buildCardLines([fb({ deck: 'auto' })])).toContain('→ added to next deck')
+    expect(buildCardLines([fb({ deck: 'review' })])).toContain('→ next deck change to review')
+    const off = buildCardLines([fb({ deck: 'off' })])
+    expect(off.join(' ')).not.toContain('next deck')
+  })
+  it('urgent parent-note line is dropped when parent emails are off', () => {
+    expect(buildCardLines([fb({ recurring: false, urgent: true, mail: 'review' })])).toContain('⚠ urgent · parent note drafting')
+    expect(buildCardLines([fb({ recurring: false, urgent: true, mail: 'off' })]).join(' ')).not.toContain('parent note')
+  })
+  it('parent_message with parent_email off adds no parent_note line', async () => {
+    const { db, studentId, classId } = await world()
+    await patchSettings(db, { autonomy: { parent_email: 'off' } })
+    const [d] = await db.insert(decks).values({ classId, forDate: '2026-10-19', status: 'active' }).returning()
+    const [se] = await db.insert(sessions).values({ classId, deckId: d!.id, forDate: '2026-10-19', startedAt: new Date('2026-10-20T00:00:00Z') }).returning()
+    const deps = makeDeps(db, { llm: fakeLlm(() => ({ intents: [{ type: 'parent_message', studentNames: ['Priya'], content: 'tell mom hi', skillTags: [], urgency: null, amount: null, minutes: null, attendanceStatus: null, urgent: false }] })) })
+    const r = await handleUtterance(deps, { sessionId: se!.id, drillId: null, mode: 'note', transcript: 'email priya mom' })
+    expect(r.cardLines.join(' ')).not.toContain('parent note')
+    expect(studentId).toBeTruthy()
+  })
+  it('planner runs say whether the change was applied or awaiting accept', async () => {
+    for (const [mode, reason] of [['auto', 'autonomy: auto (applied)'], ['review', 'autonomy: review (awaiting accept)']] as const) {
+      const { db, classId } = await world()
+      await patchSettings(db, { autonomy: { planner: mode } })
+      await autoAdjustNextDeck(makeDeps(db, { llm: fakeLlm(({ name }) => name === 'planner.draft'
+        ? { drills: ['A', 'B', 'C', 'D', 'E', 'F'].map(drill) }
+        : { added: [{ ...drill('Sparring'), kind: 'sparring', afterPosition: 1, reason: 'x' }], changed: [], removed: [], rememberSuggestion: null }) }), { classId, afterDate: '2026-10-19', sessionId: null, requestText: 'more guard' })
+      expect((await db.select().from(agentRuns)).some(r => r.reason === reason)).toBe(true)
+    }
+  })
+  it('generic or tiny drill names are not added to vocabulary', () => {
+    expect(specificDrillNames(['Warm-up', 'Cool Down', 'GAME', 'Water break', 'Jab', 'Drill', 'Hip rotation'])).toEqual(['Hip rotation'])
   })
 })

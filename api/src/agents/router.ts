@@ -1,7 +1,7 @@
 import { routerOutputFor, type Intent, type ModeConfig, type RosterStudent } from '@matside/shared'
 import type { Deps } from '../deps'
 import { withRun } from './runs'
-import { capHints, vocabHints } from '../services/vocab'
+import { capHints, vocabNewestFirst } from '../services/vocab'
 
 const contactLine = (mode: ModeConfig) => (mode.recipient === 'client'
   ? `- parent_message: an explicit request to message the client (the ${mode.person} themself), e.g. "email Tom that…". content = what to tell them.`
@@ -37,7 +37,7 @@ export async function routeUtterance(
     `${a.mode.weeklyLabel}: ${a.theme}`,
     `Utterance: """${a.transcript}"""`,
   ].join('\n')
-  const terms = capHints(await vocabHints(deps.db).catch(() => []), 400)
+  const terms = capHints(await vocabNewestFirst(deps.db).catch(() => []), 400)
   return withRun(deps, { agent: 'router', trigger: 'utterance', sessionId: a.sessionId, utteranceId: a.utteranceId ?? null }, async () => {
     const out = await deps.llm.object({ name: 'router', instructions: routerInstructions(a.mode, terms), prompt, schema: routerOutputFor(a.mode.id) })
     return {

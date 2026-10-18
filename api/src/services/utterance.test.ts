@@ -47,14 +47,14 @@ describe('handleUtterance', () => {
       }),
     })
     const r = await handleUtterance(deps, { sessionId: w.sessionId, drillId: w.drillId, mode: 'note', transcript: 'Priya, guard drops on the jab again' })
-    expect(r.cardLines).toEqual(['✓ Priya · guard (3rd time)', '→ progress logged', '→ added to report card', '→ added to next deck'])
+    expect(r.cardLines).toEqual(['✓ Priya · guard (3rd time)', '→ progress logged', '→ added to report card', '→ next deck change to review'])
     expect(r.coverage.covered).toBe(1)
     expect(await w.db.select().from(issues)).toHaveLength(1)
     await deps.flush()
     expect(await w.db.select().from(outbox)).toHaveLength(0)
     // every run, including the deferred planner, is linked to the utterance
     const runs = await w.db.select().from(agentRuns).where(eq(agentRuns.utteranceId, r.utteranceId))
-    expect(runs.map(x => x.agent).sort()).toEqual(['planner', 'planner', 'progress', 'router']) // next deck draft + diff
+    expect(runs.map(x => x.agent).sort()).toEqual(['planner', 'planner', 'planner', 'progress', 'router']) // next deck draft + diff + autonomy outcome
     const progress = runs.find(x => x.agent === 'progress')!
     expect(progress.links).toMatchObject({ studentId: w.ss[0]!.id })
     expect(progress.links?.noteId).toBeTruthy()

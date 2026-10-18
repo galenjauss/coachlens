@@ -234,7 +234,9 @@ export async function autoAdjustNextDeck(deps: Deps, a: { classId: string; after
   const deckId = await nextDeckFor(deps, a.classId, a.afterDate, a.utteranceId ?? null)
   if (!deckId) return
   const s = await suggestDiff(deps, deckId, a.requestText, a.sessionId, a.utteranceId ?? null)
-  if (s && autonomy === 'auto') await acceptDiff(deps, s.diffId, { remember: false })
+  if (!s) return
+  if (autonomy === 'auto') await acceptDiff(deps, s.diffId, { remember: false })
+  await markAutonomy(deps, a.sessionId, a.utteranceId ?? null, autonomy === 'auto', s.diffId, 'auto_adjust')
 }
 
 export async function alternativesFor(deps: Deps, drillId: string): Promise<DrillDraft[]> {
@@ -256,4 +258,13 @@ export async function alternativesFor(deps: Deps, drillId: string): Promise<Dril
 
 export async function undoDiff(db: Db, diffId: string) {
   await db.update(deckDiffs).set({ status: 'undone' }).where(and(eq(deckDiffs.id, diffId), eq(deckDiffs.status, 'pending')))
+}
+
+/** Short run recording whether a planner suggestion was applied or left for review (the suggest run itself predates the decision). */
+export async function markAutonomy(deps: Deps, sessionId: string | null, utteranceId: string | null, applied: boolean, diffId: string, trigger: string) {
+  await withRun(deps, { agent: 'planner', trigger, sessionId, utteranceId, links: { diffId } }, async () => ({
+    result: true,
+    summary: applied ? 'Applied suggested plan change' : 'Plan change waiting for your accept',
+    reason: applied ? 'autonomy: auto (applied)' : 'autonomy: review (awaiting accept)',
+  }))
 }
