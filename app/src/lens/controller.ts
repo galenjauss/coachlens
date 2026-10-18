@@ -33,6 +33,8 @@ export const MIC_FALLBACK_MS = 1500
 export const KEEP_WARM_MS = 4 * 60_000
 /** While notes wait in the outbox, retry sending them this often. */
 export const OUTBOX_RETRY_MS = 20_000
+/** The recorded audio waits in the outbox this long while transcript-first may swap it to text. */
+const HOLD_MS = TRANSCRIBE_TIMEOUT_MS + 2000
 /** UtteranceForm caps `text` at 1000 chars: a longer transcript goes as audio instead (never rejected). */
 const MAX_TEXT = 1000
 /** The "hearing you" line (and the thinking dots) refresh at most this often. */
@@ -118,18 +120,20 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     if (!state.session || suspended || exited) return timers.keepWarm.clear()
     if (timers.keepWarm.active) return
     timers.keepWarm.set(KEEP_WARM_MS, () => {
-      void Promise.resolve(d.api.health?.()).catch(err => console.warn('[keep-warm] ping failed', errText(err)))
+      if (!state.session || suspended || exited) return
+      void d.api.health().catch(err => console.warn('[keep-warm] ping failed', errText(err)))
       keepWarm()
     })
   }
 
   /** While notes wait in the outbox, retry every OUTBOX_RETRY_MS (keeps its cadence across count changes). */
   function armRetry(count: number): void {
-    if (count <= 0 || exited) return timers.outboxRetry.clear()
+    if (count <= 0 || exited || suspended) return timers.outboxRetry.clear()
     if (timers.outboxRetry.active) return
     timers.outboxRetry.set(OUTBOX_RETRY_MS, () => { void retryFlush() })
   }
   async function retryFlush(): Promise<void> {
+    if (exited || suspended) return
     await backgroundFlush()
     let n = 0
     try { n = await d.outbox.count() } catch (err) { console.warn('[outbox] count failed', err) }
@@ -203,10 +207,9 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
 
   /**
    * Transcript-first: STT alone, with a TRANSCRIBE_TIMEOUT_MS cap. `{ text }` = send the note as text;
-   * 'empty' = nothing was heard (422); null = offline, failed or too slow: send the audio instead.
+   * 'empty' = nothing was heard (422); null = failed or too slow: send the audio instead.
    */
   async function transcriptFirst(wav: Uint8Array, sessionId: string): Promise<{ text: string } | 'empty' | null> {
-    if (!online() || typeof d.api.transcribe !== 'function') return null
     dispatch({ type: 'sendStarted' })
     let timer: ReturnType<typeof setTimeout> | undefined
     const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new NetworkError('timeout')), TRANSCRIBE_TIMEOUT_MS) })
@@ -229,25 +232,38 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
       console.warn('[mic] nothing to send', res.reason, res.bytes, 'bytes from', recorder.source)
       return dispatch({ type: 'utteranceEmpty', reason: res.reason })
     }
-    const wav = res.wav
     const base = { sessionId: eff.sessionId, drillId: eff.drillId, mode: eff.mode }
-    const heard = await transcriptFirst(wav, eff.sessionId)
-    if (heard === 'empty') return dispatch({ type: 'utteranceEmpty', reason: 'not_understood' })
-    if (heard) dispatch({ type: 'transcriptReady', transcript: heard.text })
-    // Exactly one outbox item per note: the text when transcribe answered, else the audio.
-    return enqueueAndFlush(heard ? { ...base, audioB64: null, text: heard.text } : { ...base, audioB64: toB64(wav), text: null })
+    inFlight += 1 // before the enqueue: no background flush may take this note's reply
+    try { return await sendNote(res.wav, base) } finally { inFlight -= 1 }
   }
 
-  async function enqueueAndFlush(form: OutboxForm): Promise<void> {
+  /**
+   * The audio is saved in the outbox first (held while transcribe runs), so a kill in the transcribe
+   * window loses nothing. Transcribe answered → the same item becomes the text note (exactly one item);
+   * failed/slow → the hold is released and the audio goes. Offline → the audio is queued unheld.
+   */
+  async function sendNote(wav: Uint8Array, base: Pick<OutboxForm, 'sessionId' | 'drillId' | 'mode'>): Promise<void> {
+    const audio: OutboxForm = { ...base, audioB64: toB64(wav), text: null }
+    const tryText = online() && typeof d.api.transcribe === 'function'
     let item: OutboxItem
-    try { item = await d.outbox.enqueue(form) } catch (err) {
+    try { item = await d.outbox.enqueue(audio, tryText ? { holdUntil: Date.now() + HOLD_MS } : {}) } catch (err) {
       // Storage failed: try once directly so the note is not silently lost.
       console.error('[outbox] enqueue failed', err)
       dispatch({ type: 'sendStarted' })
-      try { return dispatch({ type: 'utteranceResult', res: await sendItem({ id: 'direct', createdAt: Date.now(), attempts: 0, form }) }) } catch { return dispatch({ type: 'utteranceEmpty', reason: 'not_understood' }) }
+      try { return dispatch({ type: 'utteranceResult', res: await sendItem({ id: 'direct', createdAt: Date.now(), attempts: 0, form: audio }) }) } catch { return dispatch({ type: 'utteranceEmpty', reason: 'not_understood' }) }
     }
-    inFlight += 1
-    try { return await flush(item.id) } finally { inFlight -= 1 }
+    if (tryText) {
+      const heard = await transcriptFirst(wav, base.sessionId)
+      if (heard === 'empty') {
+        await d.outbox.drop(item.id).catch(err => console.warn('[outbox] drop failed (the server will reject it)', err))
+        return dispatch({ type: 'utteranceEmpty', reason: 'not_understood' })
+      }
+      const settle = heard ? d.outbox.swap(item.id, { ...base, audioB64: null, text: heard.text }) : d.outbox.unhold(item.id)
+      // A failed write leaves the hold to expire on its own: the audio still goes on a later flush.
+      const swapped = await settle.catch(err => { console.warn('[outbox] update failed', err); return false })
+      if (heard && swapped) dispatch({ type: 'transcriptReady', transcript: heard.text })
+    }
+    return flush(item.id)
   }
 
   async function loadToday(): Promise<void> {
@@ -388,6 +404,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
       case 'flushOutbox': return backgroundFlush()
       case 'exit':
         exited = true
+        timers.keepWarm.clear(); timers.outboxRetry.clear()
         await setImu(false)
         await d.bridge.shutDownPageContainer(1)
         return
@@ -408,6 +425,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
       void setImu(false)
       suspended = true
       timers.keepWarm.clear()
+      timers.outboxRetry.clear()
       return
     }
     const le = toLensEvent(e)
@@ -419,6 +437,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
       if (!exited) void setImu(true, true)
       suspended = false
       keepWarm()
+      void d.outbox.count().then(armRetry, err => console.warn('[outbox] count failed', err))
       if (recorder.recording) void recorder.rearm().catch(err => console.warn('[mic] re-arm failed', err))
     }
     dispatch(le)

@@ -97,9 +97,16 @@ function homeTap(s: LensState): R {
   return s.today ? startClass(s, s.today.classId) : done(s, { type: 'loadToday' }, { type: 'loadClasses' })
 }
 
+/** A capture (note or roll call) is open: late events for an earlier note must not change the screen. */
+const capturing = (s: LensState) => s.screen === 'recording' || s.screen === 'attendance'
+/** The screen still waiting on the note just sent: "sending", or its transcript-first card. */
+const awaitingReply = (s: LensState) => s.screen === 'sending' || (s.screen === 'card' && Boolean(s.card?.provisional))
+/** A late outcome while a capture is open: note it in the status line, leave the screen and the capture alone. */
+const lateStatus = (s: LensState, status: string): R => done({ ...s, status }, expire)
+
 function utteranceResult(s: LensState, e: Extract<LensEvent, { type: 'utteranceResult' }>): R {
-  // A late reply while the coach is already recording the next note: keep the numbers, never steal the screen.
-  if (s.screen === 'recording' || s.screen === 'attendance') return done({ ...s, coverage: e.res.coverage, nextStudent: e.res.nextStudent })
+  // The coach moved on (recording the next note, or closed the card): keep the numbers, never steal the screen.
+  if (!awaitingReply(s)) return done({ ...s, coverage: e.res.coverage, nextStudent: e.res.nextStudent, pending: capturing(s) ? s.pending : null })
   const base = { ...s, coverage: e.res.coverage, nextStudent: e.res.nextStudent, pending: null }
   if (s.pending?.mode === 'attendance') return done({ ...base, screen: 'attendanceDone', attendanceLines: e.res.cardLines })
   const card = { lines: e.res.cardLines, transcript: e.res.transcript, utteranceId: e.res.utteranceId, runs: null, runsFinal: false, page: 0 }
@@ -132,12 +139,17 @@ function dataEvent(s: LensState, e: LensEvent, now: number): R | null {
     case 'micFailed': return back(s, 'Mic unavailable · check permission')
     case 'utteranceDelivered': {
       // The server saved it but its reply was unreadable: never resent; a neutral card, no undo.
+      if (!awaitingReply(s)) return lateStatus(s, 'Saved · details unavailable') // the coach moved on
       if (s.pending?.mode === 'attendance') return back(s, 'Roll call saved · details unavailable')
       const card = { lines: ['Saved · details unavailable'], transcript: '', utteranceId: null, runs: null, runsFinal: true, page: 0 }
       return done({ ...s, screen: 'card', card, pending: null, status: null })
     }
-    case 'utteranceQueued': return back(s, s.pending?.mode === 'attendance' ? ROLL_NOT_SAVED : '● Saved · will sync')
-    case 'utteranceEmpty': return back(s, emptyStatus(s.pending?.mode, e.reason))
+    case 'utteranceQueued':
+      if (capturing(s)) return lateStatus(s, '● Saved · will sync')
+      return back(s, s.pending?.mode === 'attendance' ? ROLL_NOT_SAVED : '● Saved · will sync')
+    case 'utteranceEmpty':
+      if (capturing(s)) return lateStatus(s, emptyStatus('note', e.reason))
+      return back(s, emptyStatus(s.pending?.mode, e.reason))
     case 'micLevel': {
       const m = s.mic
       if ((s.screen !== 'recording' && s.screen !== 'attendance') || (m && m.tick === e.tick && m.audio === e.audio && m.source === e.source)) return done(s)

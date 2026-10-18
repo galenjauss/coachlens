@@ -462,3 +462,37 @@ describe('transcript-first + offline queue', () => {
     expect(reduce(r.state, { type: 'outboxChanged', count: 2 }).state).toBe(r.state)
   })
 })
+
+describe('late outcomes never take over an open capture', () => {
+  const capture = (screen: 'recording' | 'attendance'): LensState => ({
+    ...initialState(true), screen, session: { id: 's1', startedAt: 0 }, mic: { tick: 0, audio: false, source: 'glasses' },
+    pending: { mode: screen === 'attendance' ? 'attendance' : 'note', returnTo: 'peek', viaLongPress: false, at: 0 },
+  })
+  const events: LensEvent[] = [{ type: 'utteranceQueued' }, { type: 'utteranceDelivered' }, { type: 'utteranceEmpty', reason: 'not_understood' }]
+  for (const screen of ['recording', 'attendance'] as const) {
+    for (const e of events) {
+      it(`${e.type} during ${screen} keeps the screen and the capture, notes a status`, () => {
+        const s = capture(screen)
+        const r = reduce(s, e)
+        expect(r.state.screen).toBe(screen)
+        expect(r.state.pending).toEqual(s.pending)
+        expect(r.state.mic).toEqual(s.mic)
+        expect(r.state.status).toBeTruthy()
+        expect(r.effects).toEqual([{ type: 'expireStatus', ms: STATUS_MS }])
+      })
+    }
+  }
+
+  it('a reply after the coach closed the provisional card only updates the numbers (no card pops up)', () => {
+    const sendingNote: LensState = { ...initialState(true), screen: 'sending', session: { id: 's1', startedAt: 0 }, pending: { mode: 'note', returnTo: 'peek', viaLongPress: false, at: 0 } }
+    const card = reduce(sendingNote, { type: 'transcriptReady', transcript: 'x' }).state
+    const closed = reduce(card, { type: 'tap' }).state
+    expect(closed.screen).toBe('peek')
+    const res = { utteranceId: 'u1', transcript: 'x', cardLines: ['✓ x'], coverage: { covered: 2, present: 3 }, nextStudent: null, disambiguation: null }
+    const r = reduce(closed, { type: 'utteranceResult', res })
+    expect(r.state.screen).toBe('peek')
+    expect(r.state.card).toBeNull()
+    expect(r.state.coverage).toEqual({ covered: 2, present: 3 })
+    expect(r.effects).toEqual([])
+  })
+})

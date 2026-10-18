@@ -106,13 +106,26 @@ export class Recorder {
    */
   push(pcm: Uint8Array, source?: string) {
     if (!this.recording) return
+    if (this.dual && !source && this.phoneOpen) this.untaggedInDual()
     let src: MicSource = this.source
     if (source === 'glasses' || source === 'phone') src = source
     else if (source) return
     if (!this.dual && src !== this.source) return
+    if (this.dual && src === 'phone' && !this.phoneOpen) return // phone mic closed (or never opened)
     const b = this.buf[src]
     b.chunks.push(pcm)
     b.bytes += pcm.length
+  }
+
+  /**
+   * The host sends untagged PCM: with both mics open the two streams would interleave in one buffer.
+   * Close the phone mic and record this note from the glasses only.
+   */
+  private untaggedInDual(): void {
+    console.warn('[mic] untagged audio with both mics open: closing the phone mic for this recording')
+    this.phoneOpen = false
+    this.buf.phone = { chunks: [], bytes: 0 }
+    void this.bridge.audioControl(false, AudioInputSource.Phone).catch(e => console.warn('[mic] phone close failed', e))
   }
 
   /** Close every mic this recording opened (dual: both, then the plain close). */

@@ -4,7 +4,11 @@ import { bus } from './bus'
 import { KEYS, type KV } from './storage'
 
 export type OutboxForm = { sessionId: string; drillId: string | null; mode: 'note' | 'attendance'; audioB64: string | null; text: string | null }
-export type OutboxItem = { id: string; createdAt: number; attempts: number; form: OutboxForm }
+/**
+ * `holdUntil`: not sent before this time (ms) — the audio waits while transcript-first may swap it to
+ * text. A flush stops at a held head (keeps order); after a kill/restart the hold has expired.
+ */
+export type OutboxItem = { id: string; createdAt: number; attempts: number; form: OutboxForm; holdUntil?: number }
 /** `delivered`: the server accepted the item but its reply was unreadable (no result; never retried). */
 export type FlushResult = { results: Map<string, UtteranceResponse>; dropped: Map<string, number>; delivered: Set<string>; remaining: number }
 const MAX_ATTEMPTS = 5
@@ -40,9 +44,30 @@ export class Outbox {
     return run
   }
 
-  enqueue(form: OutboxForm): Promise<OutboxItem> {
-    const item: OutboxItem = { id: crypto.randomUUID(), createdAt: Date.now(), attempts: 0, form }
+  enqueue(form: OutboxForm, opts: { holdUntil?: number } = {}): Promise<OutboxItem> {
+    const item: OutboxItem = { id: crypto.randomUUID(), createdAt: Date.now(), attempts: 0, form, ...(opts.holdUntil ? { holdUntil: opts.holdUntil } : {}) }
     return this.mutate(items => ({ items: [...items, item], value: item }))
+  }
+
+  /** Replace an item's form (e.g. audio → text) and release its hold. False if the item is gone (already sent/dropped). */
+  swap(id: string, form: OutboxForm): Promise<boolean> {
+    return this.mutate(items => {
+      const found = items.some(i => i.id === id)
+      return { items: items.map(i => (i.id === id ? { id: i.id, createdAt: i.createdAt, attempts: i.attempts, form } : i)), value: found }
+    })
+  }
+
+  /** Release an item's hold so the next flush sends it as is. False if the item is gone. */
+  unhold(id: string): Promise<boolean> {
+    return this.mutate(items => {
+      const found = items.some(i => i.id === id)
+      return { items: items.map(i => (i.id === id ? { id: i.id, createdAt: i.createdAt, attempts: i.attempts, form: i.form } : i)), value: found }
+    })
+  }
+
+  /** Remove an item without sending it. False if it was already gone. */
+  drop(id: string): Promise<boolean> {
+    return this.mutate(items => ({ items: items.filter(i => i.id !== id), value: items.some(i => i.id === id) }))
   }
 
   private remove(id: string) { return this.mutate(items => ({ items: items.filter(i => i.id !== id), value: undefined })) }
@@ -66,6 +91,7 @@ export class Outbox {
         let head: OutboxItem | undefined
         try { head = (await this.list())[0] } catch (err) { console.error('[outbox] read failed', err); break }
         if (!head) break
+        if (head.holdUntil && head.holdUntil > Date.now()) break // held (transcript-first may still swap it): keep order
         const id = head.id
         let sent: UtteranceResponse
         try {

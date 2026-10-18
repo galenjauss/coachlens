@@ -390,3 +390,60 @@ describe('outbox count + change events', () => {
     } finally { off() }
   })
 })
+
+describe('outbox hold + swap (transcript-first)', () => {
+  it('a held head is not sent by a concurrent flush, and holds back the items behind it (order kept)', async () => {
+    const o = new Outbox(memoryKV())
+    const held = await o.enqueue(form, { holdUntil: Date.now() + 60_000 })
+    await o.enqueue(form)
+    const send = vi.fn(async (i: { id: string }) => res(i.id))
+    const r = await o.flush(send)
+    expect(send).not.toHaveBeenCalled()
+    expect(r.remaining).toBe(2)
+    expect((await o.list())[0]).toMatchObject({ id: held.id, holdUntil: expect.any(Number) })
+  })
+
+  it('an expired hold is sent (e.g. after a kill and restart)', async () => {
+    const o = new Outbox(memoryKV())
+    const item = await o.enqueue(form, { holdUntil: Date.now() - 1 })
+    const r = await o.flush(async i => res(i.id))
+    expect([...r.results.keys()]).toEqual([item.id])
+    expect(await o.count()).toBe(0)
+  })
+
+  it('swap replaces the form and releases the hold; unhold just releases; both are false once the item is gone', async () => {
+    const o = new Outbox(memoryKV())
+    const audio = { ...form, audioB64: 'AAAA', text: null }
+    const a = await o.enqueue(audio, { holdUntil: Date.now() + 60_000 })
+    const b = await o.enqueue(audio, { holdUntil: Date.now() + 60_000 })
+    expect(await o.swap(a.id, { ...audio, audioB64: null, text: 'Priya guard up' })).toBe(true)
+    expect(await o.unhold(b.id)).toBe(true)
+    const [x, y] = await o.list()
+    expect(x).toEqual({ id: a.id, createdAt: a.createdAt, attempts: 0, form: { ...audio, audioB64: null, text: 'Priya guard up' } })
+    expect(y).toEqual({ id: b.id, createdAt: b.createdAt, attempts: 0, form: audio })
+    const sent: (string | null)[] = []
+    await o.flush(async i => { sent.push(i.form.text); return res(i.id) })
+    expect(sent).toEqual(['Priya guard up', null])
+    expect(await o.swap(a.id, form)).toBe(false)
+    expect(await o.unhold(b.id)).toBe(false)
+    expect(await o.drop(a.id)).toBe(false)
+    expect(await o.count()).toBe(0)
+  })
+})
+
+describe('dual recorder with untagged audio', () => {
+  it('closes the phone mic on the first untagged chunk and records from the glasses only', async () => {
+    const calls: unknown[][] = []
+    const r = new Recorder({ audioControl: async (...a: unknown[]) => { calls.push(a); return true } }, { dual: true })
+    await r.start()
+    r.push(new Uint8Array(500).fill(9), 'phone')
+    r.push(new Uint8Array(20_000).fill(1)) // untagged
+    r.push(new Uint8Array(20_000).fill(9), 'phone') // ignored: the phone mic is closed
+    expect(calls).toContainEqual([false, 'phone'])
+    expect([r.bytesFrom('glasses'), r.bytesFrom('phone')]).toEqual([20_000, 0])
+    const out = await r.stop()
+    expect(r.source).toBe('glasses')
+    expect(out.wav?.[44]).toBe(1)
+    expect(calls.slice(-2)).toEqual([[false, 'glasses'], [false]]) // the phone is not closed twice
+  })
+})

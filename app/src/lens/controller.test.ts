@@ -52,6 +52,7 @@ function fakeApi(over: Partial<Record<keyof Api, unknown>> = {}) {
     remind: vi.fn(async () => ({ ok: true })),
     classes: vi.fn(async () => []),
     utteranceRuns: vi.fn(async () => []),
+    health: vi.fn(async () => ({ ok: true })),
     ...over,
   } as unknown as Api
 }
@@ -645,6 +646,41 @@ describe('lens controller', () => {
       expect(utterance).toHaveBeenCalledTimes(1)
     })
 
+    it('the audio is saved (held) before transcribe answers: concurrent flushes skip it, success swaps it to text', async () => {
+      let heard: (v: string) => void = () => {}
+      const transcribe = vi.fn(() => new Promise<string>(r => { heard = r }))
+      const utterance = vi.fn(async () => okRes)
+      const b = await toPeek(fakeApi({ transcribe, utterance }))
+      await say(b, twenty(pcm()))
+      const saved = await new Outbox(b.kv).list()
+      expect(saved).toHaveLength(1)
+      expect(saved[0]).toMatchObject({ form: { text: null, audioB64: expect.any(String) }, holdUntil: expect.any(Number) })
+      bus.emit('outboxRetry', undefined); await flush()
+      lens!.dispatch({ type: 'resumed' }); await flush()
+      expect(utterance).not.toHaveBeenCalled() // held, and the note is in flight
+      heard('Priya guard up'); await flush()
+      expect(utterance).toHaveBeenCalledTimes(1)
+      expect(firstPayload(utterance)).toMatchObject({ text: 'Priya guard up', audio: null })
+      expect(await new Outbox(b.kv).count()).toBe(0)
+    })
+
+    it('killed during the transcribe window: the next start sends the saved audio once the hold expires', async () => {
+      const b = await toPeek(fakeApi({ transcribe: vi.fn(() => new Promise(() => {})) }))
+      await say(b, twenty(pcm()))
+      lens!.stop(); lens = null // app killed mid-transcribe: only what storage holds survives
+      const disk = memoryKV()
+      await disk.set(KEYS.firstRunSeen, '1')
+      await disk.set(KEYS.outbox, (await b.kv.get(KEYS.outbox))!)
+      expect(await new Outbox(disk).count()).toBe(1)
+      await vi.advanceTimersByTimeAsync(TRANSCRIBE_TIMEOUT_MS + 2000)
+      const utterance = vi.fn(async () => okRes)
+      const nb = fakeBridge()
+      lens = await startLens({ bridge: nb.bridge, api: fakeApi({ utterance }), kv: disk, outbox: new Outbox(disk), nod: NOD })
+      await flush()
+      expect(utterance).toHaveBeenCalledTimes(1)
+      expect(firstPayload(utterance).audio).toBeInstanceOf(Blob)
+    })
+
     it('a transcribe failure falls back to sending the audio (once)', async () => {
       const transcribe = vi.fn(async () => { throw new ApiError(500, 'stt down') })
       const utterance = vi.fn(async () => okRes)
@@ -710,6 +746,20 @@ describe('lens controller', () => {
         await vi.advanceTimersByTimeAsync(OUTBOX_RETRY_MS * 3)
         expect(utterance).toHaveBeenCalledTimes(3) // nothing left: no more retries
       } finally { off() }
+    })
+
+    it('no retries while the app is suspended; they resume on return', async () => {
+      const utterance = vi.fn(async () => { throw new NetworkError('offline') })
+      const b = await toPeek(fakeApi({ utterance }))
+      await say(b, twenty(pcm()))
+      expect(utterance).toHaveBeenCalledTimes(1)
+      b.emit({ sysEvent: { eventType: OsEventTypeList.FOREGROUND_EXIT_EVENT } }); await flush()
+      await vi.advanceTimersByTimeAsync(OUTBOX_RETRY_MS * 3)
+      expect(utterance).toHaveBeenCalledTimes(1)
+      b.emit({ sysEvent: { eventType: OsEventTypeList.FOREGROUND_ENTER_EVENT } }); await flush() // resume flushes once
+      const n = utterance.mock.calls.length
+      await vi.advanceTimersByTimeAsync(OUTBOX_RETRY_MS)
+      expect(utterance.mock.calls.length).toBe(n + 1)
     })
 
     it('the phone "Retry now" flushes the outbox', async () => {
