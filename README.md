@@ -26,8 +26,12 @@ These changes are in source and **not deployed**:
 - **Multi-instructor isolation.** Every query is scoped to the signed-in instructor, and each instructor has their own pairing code.
 - **Token expiry and Unpair.** Tokens expire after 90 days, and "Unpair this phone" revokes the token on the server. The deployed version uses one reusable pairing code, and uninstalling does not revoke the server token.
 - **Quiet display mode (the default).** During class, the idle display hides after 8 s, result cards dismiss after 6 s, and a tap always records. In the deployed version, the drill, timer and cards stay on screen until dismissed.
-
-Two known limits apply to the deployed version (audit findings F01 and F04). Recurring-issue counting does not tell praise from a problem. An "everyone except…" roll call is reliable only in the dedicated roll-call step, not when spoken as an ordinary note.
+- **Praise stays praise.** Each note keeps whether it is a concern, praise or improvement, and only current concerns count toward a recurring issue. Class questions follow the question's meaning ("who has excellent guard" lists praise). In the deployed version, recurring-issue counting does not tell praise from a problem (audit F01).
+- **Roll call anywhere.** "Everyone except Jake and Mia" works as an ordinary note too, and a sentence that changes nothing says "Nothing changed" with a hint. In the deployed version, an all-except roll call is reliable only in the dedicated roll-call step (audit F04).
+- **Zero model calls for simple commands.** Roll call, "how many are here" and "who hasn't been noted yet" are handled before the model.
+- **Insights are review prompts.** "Ready to test" became "review for next rank", which lists the evidence present and what is not tracked and drafts no email. A quiet issue now asks the coach to check it next class; an issue is marked resolved only after praise or improvement and an explicit accept. The mid-class "no observation yet" reminder is one class-level item instead of one per student.
+- **Urgent notes get a factual email.** The subject names the observation, with no tips or progress filler, and Review lists urgent drafts first.
+- **Status and degraded mode.** `GET /v1/status` reports Anthropic calls used and left today, whether speech-to-text is configured, and any degraded reasons. `OPENAI_API_KEY` is optional; without it transcription returns `503 stt_not_configured`.
 
 ## Who is this for?
 
@@ -57,7 +61,7 @@ CoachLens is more than a note-taker. Each note is tied to a student and drives f
 - A metric ("Maria hit 225 on deadlift") becomes a PR on her profile.
 - A question ("how's Priya doing?") returns a profile brief on the lens.
 - A class question ("who is forgetting to keep their guard up?") returns an ANSWER card built from the class's notes, for example `Guard: Priya (3), Leo (2)`. See [Class questions](#class-questions).
-- A roll call ("everyone except Jake and Mia") in the roll-call step marks attendance, which feeds the insights agent.
+- A roll call ("everyone except Jake and Mia") marks attendance, which feeds the insights agent. In the deployed version, use the roll-call step for this; in source it also works as an ordinary note.
 
 ## The lens flow
 
@@ -71,31 +75,32 @@ CoachLens is more than a note-taker. Each note is tied to a student and drives f
 
 - **Planning listen.** In the lobby, the coach double-taps and talks the plan through with their assistant instructor. The planner agent reshapes the drills, and the lens shows a diff summary (`+ Partner sparring 6m`, `- Kata 2`, `~ Warm-up 10→5m`). Double-tap undoes it.
 - **Agent card.** After the coach speaks, the card shows what they said and live agent progress, for example `√ Maria · deadlift 225 lb (PR +10)`. For a question, it shows the student's brief instead: rank and time in rank, attendance dots (`●●○●●●`), last notes and latest metric.
-- **Voice roll call.** In the roll-call step: "Everyone except Jake and Mia" or "Present: Priya, Leo, Maya".
+- **Voice roll call.** "Everyone except Jake and Mia" or "Present: Priya, Leo, Maya". Use the roll-call step in the deployed version.
 - **End-of-class summary.** Minutes, drills, note coverage and who has no note yet, agent actions, items to review, and the top insight. A tap puts the students without notes first in the next class. Note coverage counts recorded notes. It is a proxy and does not prove that feedback was given.
 
 ## Class questions
 
 The coach can tap and ask the lens about the whole class, not just one student. The answer appears as an ANSWER card:
 
-- "Who is forgetting to keep their guard up?" shows `Guard: Priya (3), Leo (2)`. In the deployed version this counts tagged notes and does not separate praise from problems (audit F01).
-- "Who hasn't gotten feedback today?" lists the students with no notes yet.
-- "How many are here?" is answered from attendance by deterministic code. The question still passes through one routing model call first.
+- "Who is forgetting to keep their guard up?" shows `Guard: Priya (3), Leo (2)`. In source the answer follows the question's meaning: concerns for a problem question, praise for "who has excellent guard?". The deployed version counts tagged notes and does not separate praise from problems (audit F01).
+- "Who hasn't been noted yet?" lists the students with no notes so far.
+- "How many are here?" is answered from attendance by deterministic code. In source, roll call, counts and coverage questions make **zero** model calls. The deployed version makes one routing model call first.
 - "What should I focus on next drill?" uses the fast model, grounded only in this class's data. When there are too few notes, it says "Not enough notes yet" instead of guessing.
 
 ## Opportunistic insights agent
 
-Agents also act without being asked. Deterministic detectors (no LLM) run when a session ends, when attendance changes and nightly. An insight check runs right after roll call, so a returning-student banner can appear shortly afterwards:
+Agents also act without being asked. The table describes the source version; differences in the deployed version are noted. Deterministic detectors (no LLM) run when a session ends, when attendance changes and nightly. An insight check runs right after roll call, so a returning-student banner can appear shortly afterwards:
 
 | Detector | Fires when | One-tap action |
 |---|---|---|
 | Attendance decline | Absent in 2 of the last 3 sessions, or attendance halved | Draft email |
 | Returning student | Present today after 2+ consecutive absences | Shown mid-class: `★ Jake's back after 3 missed` |
 | No notes | Present 3 sessions running with no notes | Put first next class |
-| Ready to test | Martial arts: 90+ days in rank, no open issues | Draft email. This is a time-and-record reminder, not an assessment of readiness. |
+| Review for next rank | Martial arts: 90+ days in rank and no open issues (thresholds configurable per school in source) | Shows the evidence present and what is not tracked (curriculum, your assessment); no email. The deployed version calls this "ready to test" and offers a draft email. |
 | New PR | Personal training: a PR in the last 7 days | Draft praise email |
 | Grade drop | Tutoring: latest test 10+ points below the previous one | Draft email |
-| Issue resolved | No new notes on an open issue for 21 days | Mark resolved, positive note. Note that a lack of new notes does not prove improvement (audit F09), so the coach should reassess before accepting. |
+| Issue quiet | No new notes on an open issue for 21 days | "Check next class". No notes is not evidence of improvement, so the issue stays open. |
+| Issue improving | Praise or improvement noted since the issue opened | "Mark resolved", only on the coach's explicit accept. |
 | Repeated billing | 2+ open billing flags for one student | Draft email |
 
 **Display policy.** Insights appear in the lobby and the end-of-class summary. Mid-class, only high-urgency items appear, such as a returning student or a kid who still has no note late in class. They show as a ★ banner, in the style of Even's Conversate AI insights. In the deployed version, the drill, timer and cards stay on screen until dismissed, and a tap while a banner is showing dismisses the banner. The Quiet mode in source changes both (see Status).
@@ -170,7 +175,7 @@ cp api/.env.example api/.env.local       # fill in values; never commit this fil
 |---|---|---|
 | `DATABASE_URL` | yes | Neon connection string |
 | `ANTHROPIC_API_KEY` | yes | router and writers |
-| `OPENAI_API_KEY` | yes | speech-to-text |
+| `OPENAI_API_KEY` | optional | speech-to-text; without it the API starts, `/v1/transcribe` returns `503 stt_not_configured`, and `/v1/status` reports speech-to-text as unconfigured |
 | `RESEND_API_KEY` | yes | email |
 | `MAIL_FROM` | yes (the example file has a default) | sender address |
 | `PAIRING_CODE` | yes, at least 6 characters | the demo instructor's pairing code |
@@ -207,7 +212,8 @@ What we checked on Oct 18, without real secrets:
 - With every required key set to a placeholder, it starts, and `GET /health` returns `{"ok":true}`.
 - `npm run dev -w app` serves on port 5173.
 - `npm run seed -w api` with no environment exits with a message asking for `DATABASE_URL` and `SEED_GUARDIAN_EMAILS`.
-- `npm test` passes in each workspace (13 shared, 279 api, 395 app on this branch). On a heavily loaded machine, some API tests can hit the 20 s timeout; rerun them on their own.
+- With every required key set to a placeholder and no `OPENAI_API_KEY`, it still starts and warns that speech-to-text is disabled.
+- The tests pass in each workspace (13 shared, 317 api, 395 app on this branch after merging batch 1). On a heavily loaded machine some API tests can hit the 20 s timeout; run `npx vitest run --maxWorkers=2` in `api/`.
 
 We did not run migrations, seeding or model calls in this check, because they need real credentials.
 
@@ -219,9 +225,9 @@ The app talks to `http://localhost:8787` in dev and to the production API in a b
 
 `AI_DAILY_CAP` (default 400 per America/Los_Angeles day) counts **Anthropic model calls only**, including failed ones. It does **not** cap tokens, OpenAI speech-to-text, email, database or hosting costs, so it is not a complete spending cap; set limits with each provider as well.
 
-When the cap is reached, the service runs in **degraded mode**. Model-backed agents fail soft with "Daily AI budget reached". Spoken notes are still saved, unsorted and waiting for review, and deterministic features (attendance counts, briefs, metrics, insights) keep working.
+When the cap is reached, the service runs in **degraded mode**. Model-backed agents fail soft with "Daily AI budget reached". Transcripts that the router cannot sort are still saved as unsorted notes for review, and deterministic features (briefs, metrics, insights) keep working. In source, roll call, attendance counts and coverage questions ("who hasn't been noted yet") make zero model calls, so they keep working past the cap and do not use it up; tag questions still use one routing call.
 
-In source, `GET /v1/status` also reports the calls used, the cap, whether speech-to-text and mail are configured, and whether the service is degraded. This is not deployed.
+In source, `GET /v1/status` reports Anthropic calls used and left today against the cap (failed calls included), whether speech-to-text is configured, and a list of degraded reasons (`ai_budget_reached`, `speech_to_text_unconfigured`). This is not deployed.
 
 ## Architecture
 
@@ -269,7 +275,7 @@ Plain speech, no syntax. The transcript shows first, the agent card confirms, an
 
 ### Execution
 *"Can a judge put on G2 and experience the core idea right now?"*
-Yes, on the loaner, which is paired at the table. We ran development builds on a real G2 during the hackathon. The installed-Beta acceptance run is still open ([`docs/beta-acceptance.md`](docs/beta-acceptance.md)). The Oct 18 audit ran the suite at 687 passing tests (13 shared, 279 api, 395 app), and the remediation adds more. In an earlier run, 43 of 44 router eval cases passed on the live model; we have not rerun it since.
+Yes, on the loaner, which is paired at the table. We ran development builds on a real G2 during the hackathon. The installed-Beta acceptance run is still open ([`docs/beta-acceptance.md`](docs/beta-acceptance.md)). The Oct 18 audit ran the suite at 687 passing tests (13 shared, 279 api, 395 app); with the remediation merged so far, this branch passes 725 (13, 317, 395). In an earlier run, 43 of 44 router eval cases passed on the live model; we have not rerun it since.
 
 ## Policy and security
 
