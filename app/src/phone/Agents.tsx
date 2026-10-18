@@ -1,23 +1,20 @@
+import { useState } from 'react'
+import type { AgentTask } from '@matside/shared'
 import type { Api } from '../core/api'
-import { usePoll } from './usePoll'
+import { AgentRunDetailView } from './AgentRunDetail'
+import { AgentsTiles } from './AgentsTiles'
+import { AgentTopic } from './AgentTopic'
 
-const LABEL: Record<string, string> = { router: 'Router agent', progress: 'Progress agent', parent_email: 'Parent email agent', planner: 'Planner agent', billing: 'Billing agent', attendance: 'Attendance', report_card: 'Report card agent', mailer: 'Mailer' }
-const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+type View = { page: 'tiles' } | { page: 'topic'; task: AgentTask } | { page: 'run'; id: string; task: AgentTask; fromTopic: boolean }
 
 export function Agents({ api }: { api: Api }) {
-  const { data, error } = usePoll(() => api.feed(), 2000)
-  return (
-    <main className="screen">
-      <h1>Agents at work</h1>
-      <div className="sub" aria-live="polite">{data ? `${data.length} recent actions · live` : 'Loading…'}</div>
-      {error && <p className="error" role="alert">{error}</p>}
-      {data?.map(r => (
-        <article key={r.id} className={`feed ${r.status === 'error' ? 'error' : ''}`}>
-          <div className="row"><b className="grow">{LABEL[r.agent] ?? r.agent}</b><time className="muted" dateTime={r.createdAt}>{time(r.createdAt)}</time></div>
-          <div>{r.summary}</div>
-          <div className="muted">{r.reason}</div>
-        </article>
-      ))}
-    </main>
-  )
+  const [view, setView] = useState<View>({ page: 'tiles' })
+  if (view.page === 'run') {
+    const back = () => setView(view.fromTopic ? { page: 'topic', task: view.task } : { page: 'tiles' })
+    return <AgentRunDetailView api={api} id={view.id} onBack={back} backLabel={view.fromTopic ? 'Back' : 'Agents'} />
+  }
+  if (view.page === 'topic') {
+    return <AgentTopic api={api} task={view.task} onBack={() => setView({ page: 'tiles' })} onOpenRun={id => setView({ page: 'run', id, task: view.task, fromTopic: true })} />
+  }
+  return <AgentsTiles api={api} onOpenTopic={task => setView({ page: 'topic', task })} onOpenRun={(id, task) => setView({ page: 'run', id, task, fromTopic: false })} />
 }

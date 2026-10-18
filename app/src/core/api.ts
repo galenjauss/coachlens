@@ -1,5 +1,5 @@
 import {
-  Alternatives, AgentRunView, Coverage, Deck, ModeId, NextStudent, ReviewItem, RosterStudent, StartSessionResponse, StudentDetail,
+  Alternatives, AgentRunDetail, AgentRunView, AgentsSummary, AgentTaskRun, RedraftResponse, type AgentTask, Coverage, Deck, ModeId, NextStudent, ReviewItem, RosterStudent, StartSessionResponse, StudentDetail,
   SuggestResponse, Today, UtteranceResponse, WrapUp, type DeckPatch,
 } from '@matside/shared'
 import { z } from 'zod'
@@ -80,6 +80,11 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
     students: () => req('/v1/students', {}, z.array(RosterStudent)),
     student: (id: string) => req(`/v1/students/${id}`, {}, StudentDetail),
     feed: (since?: string) => req(`/v1/agents/feed${since ? `?since=${encodeURIComponent(since)}` : ''}`, {}, z.array(AgentRunView)),
+    agentsSummary: () => req('/v1/agents/summary', {}, AgentsSummary),
+    agentTask: (task: AgentTask, limit = 50) => req(`/v1/agents/${task}?limit=${limit}`, {}, z.array(AgentTaskRun)),
+    agentRun: (id: string) => req(`/v1/agents/runs/${encodeURIComponent(id)}`, {}, AgentRunDetail),
+    redraft: (outboxId: string, instruction: string) => post(`/v1/review/outbox/${outboxId}/redraft`, { instruction }, RedraftResponse),
+    patchStudentAliases: (id: string, aliases: string[]) => req(`/v1/students/${id}`, { method: 'PATCH', json: { aliases } }, z.object({ id: z.string(), aliases: z.array(z.string()) })),
     runReportCards: (studentIds?: string[]) => post('/v1/report-cards/run', { studentIds }, z.object({ started: z.number() })),
   }
 }

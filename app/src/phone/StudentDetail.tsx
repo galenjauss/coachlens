@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Api } from '../core/api'
+import { AliasEditor } from './AliasEditor'
 import { outcomeFor, studentOutcome } from './reviewLogic'
 import { useAction } from './useAction'
 import { usePoll } from './usePoll'
@@ -35,6 +36,7 @@ export function StudentDetailView({ api, id, onBack }: { api: Api; id: string; o
       {back}
       <h1>{s.name}</h1>
       <div className="sub">{s.belt} · age {s.age} · {s.classCount} classes</div>
+      <AliasEditor api={api} studentId={s.id} firstName={s.name.split(' ')[0] ?? s.name} />
       <section className="card" aria-labelledby="sd-work"><div className="label" id="sd-work">Working on</div>
         {open.map(i => <div key={i.tag} className="dot">{i.tag} <span className="pill high">recurring</span></div>)}
         {!open.length && <div className="muted">Nothing flagged.</div>}
