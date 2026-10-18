@@ -59,14 +59,14 @@ export async function seed(db: Db, opts: { today: string; guardianEmail: (i: num
     { studentId: by('Ava').id, tag: 'guard', openedAt: at(9) },
   ])
 
-  // Ranks: everyone has a rank date. Priya ~8 months (her open focus issue keeps her off ready-to-test); Gus 120 days
-  // with no open issues -> ready_to_test. Everyone else is under 90 days.
+  // Ranks: everyone has a rank date. Priya ~8 months (her open focus issue keeps her off the rank review); Gus 120 days
+  // with no open issues -> rank_review. Everyone else is under 90 days.
   const RANK_DAYS: Record<string, number> = { Priya: 243, Gus: 120, Leonardo: 75, Jake: 60, Mia: 45, Maya: 70, Sam: 50, Ava: 80, Ben: 30, Cal: 65, Dee: 40, Eli: 21, Fay: 55, Ivy: 85 }
   for (const k of kids) {
     const days = RANK_DAYS[k.name.split(' ')[0]!] ?? 30
     await db.update(t.students).set({ rankSince: addDays(opts.today, -days) }).where(eq(t.students.id, k.id))
   }
-  // issue_resolved: Priya's focus issue, opened 25 days ago with no focus notes since. (Not guard: the live demo's
+  // issue_reassess: Priya's focus issue, opened 25 days ago with no focus notes since (a re-check prompt, not "resolved"). (Not guard: the live demo's
   // third guard note must still mark guard recurring and adjust the plan, which an open guard issue would block.)
   await db.insert(t.issues).values({ studentId: by('Priya').id, tag: 'focus', openedAt: at(25) })
   // billing_repeat: two open notes for Leo's family (notes only, never a payment).

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  attendanceDecline, billingRepeat, dedupeKey, detectAll, gradeDrop, isoWeek, issueResolved, liveNoFeedback, newPr, noFeedback,
-  readyToTest, returningStudent, runSummary, type AttendanceRec, type DetectCtx, type StudentFacts,
+  attendanceDecline, billingRepeat, dedupeKey, detectAll, gradeDrop, isoWeek, issueImproving, issueReassess, liveNoFeedback, newPr, noFeedback,
+  rankReview, returningStudent, runSummary, DEFAULT_RANK_REVIEW, type AttendanceRec, type DetectCtx, type StudentFacts,
 } from './insights'
 import { addDays } from '../logic/dates'
 
@@ -99,32 +99,52 @@ describe('no_feedback', () => {
   })
 })
 
-describe('liveNoFeedback (high, in class)', () => {
-  const snap = (elapsed: number) => ({
-    sessionId: 'live', today: TODAY, elapsed, notedIds: new Set(['st2']),
-    present: [{ id: 'st1', name: 'Jake Ross', classId: 'c1', mode: 'martial_arts' as const }, { id: 'st2', name: 'Maria Lopez', classId: 'c1', mode: 'martial_arts' as const }],
+describe('liveNoFeedback (F11: one restrained reminder per class)', () => {
+  const kid = (id: string, name: string) => ({ id, name, classId: 'c1', mode: 'martial_arts' as const })
+  const snap = (elapsed: number, noted = ['st2']) => ({
+    sessionId: 'live', today: TODAY, elapsed, notedIds: new Set(noted),
+    present: [kid('st1', 'Jake Ross'), kid('st2', 'Maria Lopez'), kid('st3', 'Leo Diaz'), kid('st4', 'Ava Kim')],
   })
-  it('only once 70% of class time has passed, for present students with no note', () => {
+  it('only once 70% of class time has passed; one class-level item naming who has no observation yet', () => {
     expect(liveNoFeedback(snap(0.69))).toEqual([])
     const out = liveNoFeedback(snap(0.7))
     expect(out).toHaveLength(1)
-    expect(out[0]).toMatchObject({ kind: 'no_feedback', urgency: 'high', studentId: 'st1', title: 'Jake: no note yet today', action: { type: 'none', label: null }, dedupeKey: 'no_feedback_high:st1:2026-W43' })
-    expect(out[0]!.detail).toContain('70% done')
+    expect(out[0]).toMatchObject({ kind: 'no_feedback', studentId: null, classId: 'c1', title: '3 students have no observation yet', action: { type: 'none', label: null }, dedupeKey: 'no_feedback_live:live' })
+    expect(out[0]!.detail).toBe('Not noted yet: Jake, Leo, Ava · class 70% done.')
+    expect(out[0]!.title).not.toMatch(/feedback/i)
+  })
+  it('one missing student reads singular; everyone noted gives nothing', () => {
+    expect(liveNoFeedback(snap(0.8, ['st2', 'st3', 'st4']))[0]!.title).toBe('1 student has no observation yet')
+    expect(liveNoFeedback(snap(0.8, ['st1', 'st2', 'st3', 'st4']))).toEqual([])
+  })
+  it('uses the mode word', () => {
+    const pt = { ...snap(0.9), present: [{ id: 'm', name: 'Maria Lopez', classId: 'c2', mode: 'personal_training' as const }], notedIds: new Set<string>() }
+    expect(liveNoFeedback(pt)[0]!.title).toBe('1 client has no observation yet')
   })
 })
 
-describe('ready_to_test (martial arts only)', () => {
-  it('fires at ≥90 days in rank with no open issues', () => {
-    const d = readyToTest(facts({ rankSince: addDays(TODAY, -90) }), ctx)!
-    expect(d).toMatchObject({ kind: 'ready_to_test', title: 'Jake may be ready to test', action: { type: 'draft_email', purpose: 'ready_to_test' } })
-    expect(d.detail).toContain('yellow belt')
-    expect(readyToTest(facts({ rankSince: addDays(TODAY, -89) }), ctx)).toBeNull()
+describe('rank_review (F10: a review reminder with evidence, martial arts only)', () => {
+  it('fires at the default thresholds (≥90 days at rank, no open issues) and shows present and missing evidence', () => {
+    const d = rankReview(facts({ name: 'Gus Hill', belt: 'green', rankSince: addDays(TODAY, -120), attendance: att('PPPP'), notes: [{ sessionId: 's1', tags: ['kicks'], createdAt: daysAgo(3), valence: 'positive', text: 'sharp kicks' }] }), ctx)!
+    expect(d).toMatchObject({ kind: 'rank_review', urgency: 'low', title: 'Gus: review for next rank', action: { type: 'none', label: null } })
+    expect(d.detail).toBe('Have: 4 mo at green, 4/4 classes in 8 wk, 0 open issues, 1 positive note. Not tracked: curriculum, your assessment.')
+    expect(d.title + d.detail).not.toMatch(/ready/i)
+    expect(rankReview(facts({ rankSince: addDays(TODAY, -89) }), ctx)).toBeNull()
   })
-  it('open issue, no rank date, or another mode: no', () => {
-    expect(readyToTest(facts({ rankSince: '2026-01-01', openIssues: [{ id: 'i', tag: 'guard', openedAt: daysAgo(3) }] }), ctx)).toBeNull()
-    expect(readyToTest(facts({ rankSince: null }), ctx)).toBeNull()
-    expect(readyToTest(facts({ rankSince: '2026-01-01', mode: 'tutoring' }), ctx)).toBeNull()
-    expect(readyToTest(facts({ rankSince: '2026-01-01', mode: 'personal_training' }), ctx)).toBeNull()
+  it('open issue, no rank date, or another mode: no (with the default settings)', () => {
+    expect(rankReview(facts({ rankSince: '2026-01-01', openIssues: [{ id: 'i', tag: 'guard', openedAt: daysAgo(3) }] }), ctx)).toBeNull()
+    expect(rankReview(facts({ rankSince: null }), ctx)).toBeNull()
+    expect(rankReview(facts({ rankSince: '2026-01-01', mode: 'tutoring' }), ctx)).toBeNull()
+    expect(rankReview(facts({ rankSince: '2026-01-01', mode: 'personal_training' }), ctx)).toBeNull()
+  })
+  it('school settings change the thresholds: days at rank, minimum attendance in the window, open issues allowed', () => {
+    const s = facts({ rankSince: addDays(TODAY, -60), attendance: att('PPAP'), openIssues: [{ id: 'i', tag: 'guard', openedAt: daysAgo(3) }] })
+    expect(rankReview(s, ctx)).toBeNull()
+    const loose = { ...ctx, rankReview: { ...DEFAULT_RANK_REVIEW, minDaysAtRank: 60, requireNoOpenIssues: false } }
+    expect(rankReview(s, loose)!.detail).toContain('3/4 classes in 8 wk, 1 open issue,')
+    expect(rankReview(s, { ...loose, rankReview: { ...loose.rankReview, minAttendance: 4 } })).toBeNull()
+    expect(rankReview(s, { ...loose, rankReview: { ...loose.rankReview, attendanceWindowDays: 14 } })!.detail).toContain('2/3 classes in 2 wk')
+    expect(DEFAULT_RANK_REVIEW).toEqual({ minDaysAtRank: 90, minAttendance: 0, attendanceWindowDays: 56, requireNoOpenIssues: true })
   })
 })
 
@@ -164,17 +184,44 @@ describe('grade_drop (tutoring only)', () => {
   })
 })
 
-describe('issue_resolved', () => {
+describe('issue_reassess (F09: silence is a prompt to check, never a resolution)', () => {
   const issue = { id: 'iss1', tag: 'guard', openedAt: daysAgo(40) }
-  it('fires when the tag has had no new notes for 21 days', () => {
-    const d = issueResolved(facts({ openIssues: [issue], notes: [{ sessionId: 'x', tags: ['guard'], createdAt: daysAgo(21) }] }), ctx)!
-    expect(d).toMatchObject({ kind: 'issue_resolved', title: "Jake's guard looks resolved", action: { type: 'resolve_issue', issueId: 'iss1', studentId: 'st1', notify: true, label: 'Resolve + praise' } })
-    expect(d.detail).toContain('guard drops')
+  it('fires when the tag has had no notes for 21 days; asks for a check-in, never resolves or praises', () => {
+    const d = issueReassess(facts({ openIssues: [issue], notes: [{ sessionId: 'x', tags: ['guard'], createdAt: daysAgo(21), valence: 'concern', text: 'guard low' }] }), ctx)!
+    expect(d).toMatchObject({ kind: 'issue_reassess', urgency: 'low', title: "Jake's guard: no recent notes", action: { type: 'plan_focus', classId: 'c1', studentId: 'st1', label: 'Check next class' } })
+    expect(d.detail).toBe('No guard drops notes in 21+ days. No notes is not evidence it improved: check it next class.')
+    expect(d.title + d.detail).not.toMatch(/resolved|praise/i)
+    expect(d.action.type === 'plan_focus' && d.action.text).toContain('re-check')
   })
   it('a recent note on the tag, or a recently opened issue: no; other tags do not count', () => {
-    expect(issueResolved(facts({ openIssues: [issue], notes: [{ sessionId: 'x', tags: ['guard'], createdAt: daysAgo(20) }] }), ctx)).toBeNull()
-    expect(issueResolved(facts({ openIssues: [{ ...issue, openedAt: daysAgo(10) }] }), ctx)).toBeNull()
-    expect(issueResolved(facts({ openIssues: [issue], notes: [{ sessionId: 'x', tags: ['kicks'], createdAt: daysAgo(1) }] }), ctx)).not.toBeNull()
+    expect(issueReassess(facts({ openIssues: [issue], notes: [{ sessionId: 'x', tags: ['guard'], createdAt: daysAgo(20) }] }), ctx)).toBeNull()
+    expect(issueReassess(facts({ openIssues: [{ ...issue, openedAt: daysAgo(10) }] }), ctx)).toBeNull()
+    expect(issueReassess(facts({ openIssues: [issue], notes: [{ sessionId: 'x', tags: ['kicks'], createdAt: daysAgo(1) }] }), ctx)).not.toBeNull()
+  })
+  it('positive evidence since the issue opened is reported as improving instead', () => {
+    const s = facts({ openIssues: [issue], notes: [{ sessionId: 'x', tags: ['guard'], createdAt: daysAgo(30), valence: 'positive', text: 'kept his guard up' }] })
+    expect(issueReassess(s, ctx)).toBeNull()
+    expect(issueImproving(s, ctx)).not.toBeNull()
+  })
+})
+
+describe('issue_improving (F01/F09: resolution needs positive evidence and the instructor)', () => {
+  const issue = { id: 'iss1', tag: 'guard', openedAt: daysAgo(10) }
+  it('praise or improvement on the tag since the issue opened suggests resolving, on explicit accept only', () => {
+    const d = issueImproving(facts({ openIssues: [issue], notes: [
+      { sessionId: 'x', tags: ['guard'], createdAt: daysAgo(12), valence: 'positive', text: 'before the issue' },
+      { sessionId: 'x', tags: ['guard'], createdAt: daysAgo(5), valence: 'improving', text: 'guard getting better' },
+      { sessionId: 'x', tags: ['guard'], createdAt: daysAgo(2), valence: 'positive', text: 'kept his guard up all class' },
+    ] }), ctx)!
+    expect(d).toMatchObject({ kind: 'issue_improving', title: "Jake's guard: improving", action: { type: 'resolve_issue', issueId: 'iss1', studentId: 'st1', notify: false, label: 'Mark resolved' } })
+    expect(d.detail).toContain('2 positive guard notes since')
+    expect(d.detail).toContain('"kept his guard up all class"')
+  })
+  it('concerns, historical praise or praise before the issue opened: no', () => {
+    const n = (valence: 'concern' | 'positive', ago: number, historical = false) => ({ sessionId: 'x', tags: ['guard'], createdAt: daysAgo(ago), valence, text: 't', historical })
+    expect(issueImproving(facts({ openIssues: [issue], notes: [n('concern', 2)] }), ctx)).toBeNull()
+    expect(issueImproving(facts({ openIssues: [issue], notes: [n('positive', 2, true)] }), ctx)).toBeNull()
+    expect(issueImproving(facts({ openIssues: [issue], notes: [n('positive', 12)] }), ctx)).toBeNull()
   })
 })
 
@@ -203,6 +250,7 @@ describe('detectAll + limits + summary', () => {
   })
   it('summarizes a run', () => {
     expect(runSummary([])).toBe('No new insights')
-    expect(runSummary([{ kind: 'attendance_decline', studentName: 'Jake Ross' }, { kind: 'ready_to_test', studentName: 'Maria Lopez' }])).toBe('2 new: Jake attendance, Maria ready to test')
+    expect(runSummary([{ kind: 'attendance_decline', studentName: 'Jake Ross' }, { kind: 'rank_review', studentName: 'Maria Lopez' }])).toBe('2 new: Jake attendance, Maria rank review')
+    expect(runSummary([{ kind: 'no_feedback', studentName: null }])).toBe('1 new: no observations')
   })
 })

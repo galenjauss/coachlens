@@ -381,19 +381,36 @@ export const AUTONOMY_RULES: Record<AutonomyTask, { default: Autonomy; allowed: 
 export const MAX_VOCAB = 200
 export const VOCAB_TERM_MAX = 40
 export const VocabTerm = z.string().trim().min(1).max(VOCAB_TERM_MAX)
+/**
+ * The school's thresholds for the rank-review reminder (F10). Defaults reproduce the original rule: 90 days at rank,
+ * no open focus areas, no attendance minimum. The attendance window is capped at the 56 days the detectors load.
+ */
+export const RankReviewSettings = z.object({
+  minDaysAtRank: z.number().int().min(0).max(3650),
+  minAttendance: z.number().int().min(0).max(200),
+  attendanceWindowDays: z.number().int().min(7).max(56),
+  requireNoOpenIssues: z.boolean(),
+})
+export type RankReviewSettings = z.infer<typeof RankReviewSettings>
+export const DEFAULT_RANK_REVIEW: RankReviewSettings = { minDaysAtRank: 90, minAttendance: 0, attendanceWindowDays: 56, requireNoOpenIssues: true }
 export const SettingsPatch = z.object({
   autonomy: z.partialRecord(AutonomyTask, Autonomy).optional(),
   vocabulary: z.array(VocabTerm).max(MAX_VOCAB).optional(),
+  rankReview: RankReviewSettings.partial().optional(),
 })
 export type SettingsPatch = z.infer<typeof SettingsPatch>
 export const SettingsResponse = z.object({
   autonomy: z.record(AutonomyTask, Autonomy),
   vocabulary: z.array(z.string()),
+  /** Optional on the wire so an older server still parses. */
+  rankReview: RankReviewSettings.optional(),
 })
 export type SettingsResponse = z.infer<typeof SettingsResponse>
 
 // ---- Opportunistic insights (agents notice things and suggest or act) ----
-export const InsightKind = z.enum(['attendance_decline', 'returning_student', 'no_feedback', 'ready_to_test', 'new_pr', 'grade_drop', 'issue_resolved', 'billing_repeat'])
+// rank_review replaced ready_to_test (F10) and issue_reassess/issue_improving replaced issue_resolved (F09); old rows keep
+// their kind string, which clients treat as opaque.
+export const InsightKind = z.enum(['attendance_decline', 'returning_student', 'no_feedback', 'rank_review', 'new_pr', 'grade_drop', 'issue_improving', 'issue_reassess', 'billing_repeat'])
 export type InsightKind = z.infer<typeof InsightKind>
 export const InsightStatus = z.enum(['new', 'accepted', 'dismissed', 'auto_done'])
 export type InsightStatus = z.infer<typeof InsightStatus>
@@ -409,7 +426,7 @@ const label = z.string().min(1).max(INSIGHT_LABEL_MAX)
 export const InsightAction = z.discriminatedUnion('type', [
   z.object({ type: z.literal('draft_email'), studentId: z.string(), purpose: z.string(), label }),
   z.object({ type: z.literal('plan_focus'), classId: z.string(), studentId: z.string(), text: z.string(), label }),
-  // notify: also draft a positive note home once the issue is resolved.
+  // Runs only on the instructor's explicit accept, never in auto mode. notify (legacy rows only): also draft a note home.
   z.object({ type: z.literal('resolve_issue'), issueId: z.string(), studentId: z.string(), notify: z.boolean(), label }),
   z.object({ type: z.literal('none'), label: z.null() }),
 ])
