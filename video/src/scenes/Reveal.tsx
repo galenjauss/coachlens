@@ -65,7 +65,7 @@ function Wordmark() {
             <Word text="CoachLens" at={markAt} size={210} color={C.paper} mode="letters" stagger={1.3} />
           </div>
           <div style={{ marginTop: 34 }}>
-            <Serif text="hands-free AI agents for coaches, on Even G2" at={R.tagline - R.ring} size={66} color={C.green} />
+            <Serif text="eyes-up AI follow-up for coaches, on Even G2" at={R.tagline - R.ring} size={66} color={C.green} />
           </div>
         </AbsoluteFill>
       </IrisReveal>

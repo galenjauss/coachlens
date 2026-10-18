@@ -66,7 +66,7 @@ function Zero() {
         <Word text={String(APPS_FOR_COACHES)} at={0} size={760} color={C.black} mode="slam" />
       </AbsoluteFill>
       <div style={{ position: 'absolute', left: 0, right: 0, top: 860, textAlign: 'center', fontFamily: FONT.mono, fontSize: 34, letterSpacing: '0.34em', color: C.black, opacity: lin(f, [6, 12], [0, 1]) }}>
-        OF {APPS_CHECKED}+ · FOR COACHES & TEACHERS
+        FOR COACHES IN OUR ~{APPS_CHECKED}-APP SURVEY
       </div>
     </AbsoluteFill>
   )
