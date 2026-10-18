@@ -17,7 +17,7 @@ function G2() {
   const f = useCurrentFrame()
   const dollyFrom = Q.dolly - Q.g2
   const dollyTo = Q.glass - Q.g2
-  const focus = lin(f, [0, 30], [8, 0])
+  const focus = lin(f, [0, 14], [8, 0])
   const fadeOut = lin(f, [dollyTo, dollyTo + 6], [1, 0])
   return (
     <AbsoluteFill style={{ opacity: fadeOut }}>
@@ -25,6 +25,7 @@ function G2() {
       <AbsoluteFill style={{ filter: focus > 0.3 ? `blur(${focus}px)` : undefined }}>
         <G2Model width={1920} height={1080} display="captures/lens/peekTick/01.png" litAt={Q.tap - Q.g2 + 4} dollyFrom={dollyFrom} dollyTo={dollyTo} />
       </AbsoluteFill>
+      <AbsoluteFill style={{ background: 'radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0,0,0,0.5) 100%)', opacity: lin(f, [dollyFrom, dollyTo], [1, 0]) }} />
       <div style={{ position: 'absolute', left: 150, top: 160, fontFamily: FONT.mono, fontSize: 18, letterSpacing: '0.3em', color: 'rgba(236,239,234,0.6)', opacity: lin(f, [24, 40], [0, 1]) * lin(f, [dollyFrom - 10, dollyFrom], [1, 0]) }}>
         EVEN G2 · MAGNESIUM FRAME · TITANIUM TEMPLES · 36 G
       </div>
