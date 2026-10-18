@@ -33,22 +33,27 @@ function useImuDebugFlag(kv: KV): boolean {
   return on
 }
 
-/** Settings switch for the readout (works in a Beta build, no URL params needed). */
+/**
+ * Today → Settings: the "Show motion readout" switch (label left and wrapping, switch right) and,
+ * when on, the readout right below it. Works in a Beta build, no URL params needed.
+ */
 export function MotionToggle({ kv }: { kv: KV }) {
   const on = useImuDebugFlag(kv)
   return (
     <details className="card">
       <summary className="label">Settings</summary>
-      <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-        <input type="checkbox" checked={on} onChange={e => { void writeImuDebug(kv, e.currentTarget.checked) }} />
-        Show motion readout (nod calibration)
+      <label style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8, cursor: 'pointer' }}>
+        <span style={{ flex: 1, minWidth: 0, textAlign: 'left', overflowWrap: 'anywhere' }}>Show motion readout (nod calibration)</span>
+        <input type="checkbox" role="switch" checked={on} onChange={e => { void writeImuDebug(kv, e.currentTarget.checked) }}
+          style={{ width: 'auto', flex: 'none', margin: 0, padding: 0, accentColor: 'var(--accent)', inlineSize: 22, blockSize: 22 }} />
       </label>
+      <ImuDebug kv={kv} />
     </details>
   )
 }
 
 /**
- * Nod calibration readout, fed by the lens over the bus. While it is shown the lens keeps the IMU on,
+ * Nod calibration readout (inside Today → Settings), fed by the lens over the bus. While it is shown the lens keeps the IMU on,
  * so it works before a class starts. Shows "waiting" until the IMU reports.
  */
 export function ImuDebug({ kv }: { kv: KV }) {
@@ -70,18 +75,18 @@ export function ImuDebug({ kv }: { kv: KV }) {
   if (!on) return null
   return (
     <aside aria-label="Motion readout" style={{
-      margin: '8px 16px', padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 'var(--radius)',
+      marginTop: 10, padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 'var(--radius)',
       background: 'var(--card)', color: 'var(--text)', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 13, lineHeight: 1.5,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <strong>Motion · nod calibration</strong>
-        <button type="button" onClick={() => { void writeImuDebug(kv, false) }} style={{ font: 'inherit' }}>Hide</button>
+        <button type="button" onClick={() => { void writeImuDebug(kv, false) }} style={{ font: 'inherit', flex: 'none' }}>Hide</button>
       </div>
       {!view ? <p className="muted" role="status">Waiting for motion samples from the glasses…</p> : (
         <>
           <div aria-live="off">
             {AXES.map(a => (
-              <div key={a} style={{ fontWeight: a === NOD.axis ? 700 : 400 }}>
+              <div key={a} style={{ fontWeight: a === NOD.axis ? 700 : 400, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
                 {a}: {fmt(view.last[a])}   swing {fmt(view.range[a][0])} … {fmt(view.range[a][1])} ({(view.range[a][1] - view.range[a][0]).toFixed(2)})
               </div>
             ))}

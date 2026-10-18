@@ -111,7 +111,7 @@ describe('lens reducer', () => {
   })
 
   it('swipe pages through a long transcript on the card (clamped); a short one ignores swipes', () => {
-    const long = 'word '.repeat(120).trim()
+    const long = 'word '.repeat(90).trim()
     let c = run(inPeek(), { type: 'tap' }, { type: 'tap' }, { ...note(['✓ x']), res: { ...note(['✓ x']).res, transcript: long } }).state
     expect(c.card?.page).toBe(0)
     c = run(c, { type: 'swipeUp' }).state
@@ -119,11 +119,30 @@ describe('lens reducer', () => {
     c = run(c, { type: 'swipeDown' }, { type: 'swipeDown' }).state
     expect(c.card?.page).toBe(2)
     c = run(c, { type: 'swipeDown' }, { type: 'swipeDown' }).state
-    expect(c.card?.page).toBe(2) // 120 words → 3 pages
+    expect(c.card?.page).toBe(2) // 90 words → 13 lines → 3 pages
     expect(run(c, { type: 'swipeUp' }).state.card?.page).toBe(1)
     expect(c.screen).toBe('card')
     const short = run(inPeek(), { type: 'tap' }, { type: 'tap' }, note(['✓ x'])).state
     expect(reduce(short, { type: 'swipeDown' }).state).toBe(short)
+  })
+
+  it('an empty recording says why: no audio from glasses vs too short vs not understood', () => {
+    const empty = (reason: 'no_audio' | 'too_short' | 'not_understood') => run(inPeek(), { type: 'tap' }, { type: 'tap' }, { type: 'utteranceEmpty', reason }).state.status
+    expect(empty('no_audio')).toBe("No audio from glasses — tap and speak after 'Listening'")
+    expect(empty('too_short')).toBe('Too short — speak, then tap')
+    expect(empty('not_understood')).toBe("Didn't catch that · tap to retry")
+  })
+
+  it('recording keeps a start time (static header) and a live mic indicator; micLevel only applies while recording', () => {
+    let r = run(inPeek(), { type: 'tap', now: 5000 })
+    expect(r.state.pending?.at).toBe(5000)
+    expect(r.state.mic).toEqual({ seconds: 0, bars: 0, source: 'glasses' })
+    r = run(r.state, { type: 'micLevel', seconds: 2, bars: 3, source: 'phone' })
+    expect(r.state.mic).toEqual({ seconds: 2, bars: 3, source: 'phone' })
+    const same = reduce(r.state, { type: 'micLevel', seconds: 2, bars: 3, source: 'phone' })
+    expect(same.state).toBe(r.state)
+    const p = inPeek()
+    expect(reduce(p, { type: 'micLevel', seconds: 1, bars: 1, source: 'glasses' }).state).toBe(p)
   })
 
   it('runsLoaded updates only the matching card', () => {
@@ -156,7 +175,7 @@ describe('lens reducer', () => {
     let r = run(inPeek(), { type: 'tap' }, { type: 'tap' }, { type: 'utteranceQueued' })
     expect(r.state).toMatchObject({ screen: 'peek', status: '● Saved · will sync' })
     expect(r.effects).toContainEqual({ type: 'expireStatus', ms: STATUS_MS })
-    r = run(inPeek(), { type: 'tap' }, { type: 'tap' }, { type: 'utteranceEmpty' })
+    r = run(inPeek(), { type: 'tap' }, { type: 'tap' }, { type: 'utteranceEmpty', reason: 'not_understood' })
     expect(r.state.status).toBe("Didn't catch that · tap to retry")
     r = run(r.state, { type: 'statusExpired' })
     expect(r.state).toMatchObject({ screen: 'peek', status: null })
@@ -240,7 +259,8 @@ describe('lens reducer', () => {
 
   it('attendance empty/queued report that roll call was not saved', () => {
     const att = () => run(initialState(true), { type: 'todayLoaded', today }, { type: 'tap' }, { type: 'sessionStarted', res: resumeRes, resumed: false, now: 1 }, { type: 'tap' })
-    expect(run(att().state, { type: 'utteranceEmpty' }).state.status).toBe('Roll call not saved · use phone roster')
+    expect(run(att().state, { type: 'utteranceEmpty', reason: 'not_understood' }).state.status).toBe('Roll call not saved · use phone roster')
+    expect(run(att().state, { type: 'utteranceEmpty', reason: 'no_audio' }).state.status).toBe('No audio from glasses · use phone roster')
     expect(run(att().state, { type: 'utteranceQueued' }).state.status).toBe('Roll call not saved · use phone roster')
   })
 

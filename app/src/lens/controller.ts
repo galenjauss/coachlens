@@ -1,6 +1,6 @@
-import { AudioInputSource, ImuReportPace, type EvenAppBridge } from '@evenrealities/even_hub_sdk'
+import { ImuReportPace, type EvenAppBridge } from '@evenrealities/even_hub_sdk'
 import { ApiError, NetworkError, type Api } from '../core/api'
-import { MAX_RECORD_MS, Recorder } from '../core/audio'
+import { MAX_RECORD_MS, Recorder, type StopResult } from '../core/audio'
 import { bus } from '../core/bus'
 import type { FlushResult, Outbox, OutboxItem } from '../core/outbox'
 import { KEYS, type KV } from '../core/storage'
@@ -21,7 +21,15 @@ import type { Effect, LensEvent, LensState } from './state'
  */
 export const TICK_MS = 1000
 const TICK_SLACK_MS = 20
-const TICKING = new Set<LensState['screen']>(['peek', 'recording'])
+// Only the peek ticks. While recording/sending the display stays still: on G2, display updates
+// compete with mic audio on Bluetooth (a busy link delivered almost no PCM).
+const TICKING = new Set<LensState['screen']>(['peek'])
+/** Glasses audio must start arriving within this long, else the phone mic takes over. */
+export const MIC_FALLBACK_MS = 1500
+/** The "hearing you" line refreshes at most this often. */
+export const MIC_METER_MS = 500
+/** A stop tap this soon after recording starts is a double-trigger: ignored. */
+export const STOP_DEBOUNCE_MS = 600
 
 export type LensBridge = GlassesBridge & Pick<EvenAppBridge, 'audioControl' | 'imuControl' | 'shutDownPageContainer' | 'onEvenHubEvent'>
 export interface LensDeps {
@@ -47,7 +55,8 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
   const glasses = new Glasses(d.bridge)
   const recorder = new Recorder(d.bridge)
   const detector = new NodDetector(d.nod)
-  const timers = { status: slot(), timerEnded: slot(), recordMax: slot() }
+  const timers = { status: slot(), timerEnded: slot(), recordMax: slot(), micFallback: slot(), micMeter: slot() }
+  let recStartedAt = 0
   let state: LensState = initialState(await readFirstRunSeen(d.kv))
   let imuOn = false
   let imuDebug = false // phone readout open (read from KV below)
@@ -119,21 +128,25 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
       return
     }
     // Dropped = the server rejected it (422 empty transcript, other 4xx, or retries exhausted): nothing was saved.
-    if (r.dropped.has(currentId)) return dispatch({ type: 'utteranceEmpty' })
+    if (r.dropped.has(currentId)) return dispatch({ type: 'utteranceEmpty', reason: 'not_understood' })
     dispatch({ type: 'utteranceQueued' }) // still in the outbox (offline / 5xx / not paired)
   }
 
   async function stopAndSend(eff: Extract<Effect, { type: 'stopMicAndSend' }>): Promise<void> {
-    timers.recordMax.clear()
-    let wav: Uint8Array | null
-    try { wav = await recorder.stop() } catch (err) { console.error('[mic] stop failed', err); return dispatch({ type: 'utteranceEmpty' }) }
-    if (!wav) return dispatch({ type: 'utteranceEmpty' })
+    stopMicTimers()
+    let res: StopResult
+    try { res = await recorder.stop() } catch (err) { console.error('[mic] stop failed', err); return dispatch({ type: 'utteranceEmpty', reason: 'no_audio' }) }
+    if (!res.wav) {
+      console.warn('[mic] nothing to send', res.reason, res.bytes, 'bytes from', recorder.source)
+      return dispatch({ type: 'utteranceEmpty', reason: res.reason })
+    }
+    const wav = res.wav
     const form = { sessionId: eff.sessionId, drillId: eff.drillId, mode: eff.mode, audioB64: toB64(wav), text: null }
     let item: OutboxItem
     try { item = await d.outbox.enqueue(form) } catch (err) {
       // Storage failed: try once directly so the note is not silently lost.
       console.error('[outbox] enqueue failed', err)
-      try { return dispatch({ type: 'utteranceResult', res: await sendItem({ id: 'direct', createdAt: Date.now(), attempts: 0, form }) }) } catch { return dispatch({ type: 'utteranceEmpty' }) }
+      try { return dispatch({ type: 'utteranceResult', res: await sendItem({ id: 'direct', createdAt: Date.now(), attempts: 0, form }) }) } catch { return dispatch({ type: 'utteranceEmpty', reason: 'not_understood' }) }
     }
     return flush(item.id)
   }
@@ -175,6 +188,28 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     void tick()
   }
 
+  function stopMicTimers(): void {
+    timers.recordMax.clear(); timers.micFallback.clear(); timers.micMeter.clear()
+  }
+
+  const micLevel = () => ({ type: 'micLevel' as const, seconds: Math.floor((Date.now() - recStartedAt) / 1000), bars: recorder.bars(), source: recorder.source })
+
+  /** Refresh the "hearing you" line every MIC_METER_MS while recording (the reducer drops no-change updates). */
+  function meter(): void {
+    timers.micMeter.set(MIC_METER_MS, () => {
+      if (!recorder.recording) return
+      dispatch(micLevel())
+      meter()
+    })
+  }
+
+  /** No glasses audio yet: switch to the phone mic and say so on the lens. */
+  async function fallbackToPhone(): Promise<void> {
+    if (!recorder.recording || recorder.bytes > 0) return
+    console.warn('[mic] no glasses audio after', MIC_FALLBACK_MS, 'ms: switching to the phone mic')
+    if (await recorder.switchToPhone()) dispatch(micLevel())
+  }
+
   async function run(eff: Effect): Promise<void> {
     switch (eff.type) {
       case 'markFirstRunSeen': return d.kv.set(KEYS.firstRunSeen, '1')
@@ -202,14 +237,17 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
       }
       case 'startMic':
         try {
+          recStartedAt = Date.now()
           await recorder.start()
           timers.recordMax.set(MAX_RECORD_MS, () => {
             if (state.screen === 'recording' || state.screen === 'attendance') dispatch({ type: 'tap', now: Date.now() })
           })
-        } catch (err) { console.error('[mic] start failed', err); dispatch({ type: 'micFailed' }) }
+          timers.micFallback.set(MIC_FALLBACK_MS, () => { void fallbackToPhone() })
+          meter()
+        } catch (err) { console.error('[mic] start failed', err); stopMicTimers(); dispatch({ type: 'micFailed' }) }
         return
       case 'cancelMic':
-        timers.recordMax.clear()
+        stopMicTimers()
         return recorder.cancel()
       case 'stopMicAndSend': return stopAndSend(eff)
       case 'logDrill':
@@ -255,10 +293,12 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     }
     const le = toLensEvent(e)
     if (!le) return
+    // A stop tap right after recording started is a double-trigger: keep recording.
+    if (le.type === 'tap' && (state.screen === 'recording' || state.screen === 'attendance') && Date.now() - recStartedAt < STOP_DEBOUNCE_MS) return
     if (le.type === 'resumed') {
       // The host may close sensors while we're in the background: re-arm what was on.
       if (imuOn) void setImu(true, true)
-      if (recorder.recording) void d.bridge.audioControl(true, AudioInputSource.Glasses).catch(err => console.warn('[mic] re-arm failed', err))
+      if (recorder.recording) void recorder.rearm().catch(err => console.warn('[mic] re-arm failed', err))
     }
     dispatch(le)
     if (le.type === 'resumed') {

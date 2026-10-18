@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { NOD } from '../config'
 import { MIN_DIP_MS, NodDetector, type NodConfig } from './nod'
 
 const cfg: NodConfig = { enabled: true, axis: 'y', threshold: 0.3, windowMs: 600, cooldownMs: 1500 }
@@ -69,5 +70,15 @@ describe('NodDetector', () => {
     const { d, clock } = make()
     const fired = [0, 100, 250, 350].map(t => { clock.t = t; return d.push(t === 0 || t === 350 ? { x: 1 } : { y: 0.5 }) })
     expect(fired).toEqual([false, false, false, true])
+  })
+
+  it("calibrated config (Galen's G2: x rests ≈ -0.11, dips to ≈ -0.55): a nod fires, jitter does not", () => {
+    expect(NOD).toMatchObject({ enabled: true, axis: 'x', threshold: -0.22 })
+    const clock = { t: 0 }
+    const d = new NodDetector(NOD, () => clock.t)
+    const at = (t: number, x: number, y = 0.01) => { clock.t = t; return d.push({ x, y, z: 0.9 }) }
+    const jitter = [-0.11, -0.16, -0.07, -0.13, -0.09, -0.18, -0.1].map((x, i) => at(i * 100, x, i % 2 ? -0.07 : 0.02))
+    expect(jitter.some(Boolean)).toBe(false)
+    expect([at(1000, -0.11), at(1100, -0.55), at(1200, -0.52), at(1300, -0.4), at(1400, -0.12)]).toEqual([false, false, false, false, true])
   })
 })

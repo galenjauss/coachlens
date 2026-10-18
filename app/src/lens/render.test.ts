@@ -100,40 +100,39 @@ describe('render', () => {
   const longSaid = 'Priya keep your guard up when you throw the round kick, reset your stance after every kick, and Jake needs to work on his horse stance because his knees keep collapsing inward during holds today'
   const mkCard = (transcript: string, page = 0) => ({ lines: ['✓ Priya · guard (3rd time)', '→ added to report card'], transcript, utteranceId: 'u', runs: null, runsFinal: false, page })
 
-  it('agent card: main result header, wide transcript column (capture), narrow ASCII agent column', () => {
+  it('agent card: result header, FULL-WIDTH transcript (capture), one compact agent line + hints at the bottom', () => {
     let p = render({ ...s, screen: 'card', card: mkCard('Priya keep your guard up') }, 0)
     expect(p.key).toBe('card')
     expect(p.texts.find(t => t.name === 'hdr')?.content).toBe('✓ Priya · guard (3rd time)')
     const said = p.texts.find(t => t.name === 'said')!
-    expect(said).toMatchObject({ capture: true, content: '"Priya keep your guard up"' })
+    expect(said).toMatchObject({ capture: true, x: 0, w: 576, content: '"Priya keep your guard up"' })
     const agents = p.texts.find(t => t.name === 'agents')!
-    expect(said.w / 576).toBeGreaterThan(0.65)
-    expect(agents.w).toBeLessThan(200)
-    expect(agents.content).toBe('… working')
+    expect(agents).toMatchObject({ x: 0, w: 576 })
+    expect(agents.y).toBeGreaterThanOrEqual(said.y + said.h)
+    expect(agents.content).toBe('… working\ntap: close · 2×: undo')
     const runs = [{ agent: 'router', summary: '', status: 'ok', createdAt: '' }, { agent: 'progress', summary: '', status: 'ok', createdAt: '' }]
-    p = render({ ...s, screen: 'card', card: { ...mkCard('x'), runs } }, 0)
-    expect(p.texts.find(t => t.name === 'agents')?.content).toBe('ok sorted\nok logged')
-    expect(p.texts.find(t => t.name === 'foot')?.content).toContain('2×: undo')
+    p = render({ ...s, screen: 'card', card: { ...mkCard('x'), lines: ['✓ x', '→ parent note drafting'], runs } }, 0)
+    expect(p.texts.find(t => t.name === 'agents')?.content).toBe('ok sorted · ok logged · .. email\ntap: close · 2×: undo')
+    const many = ['router', 'progress', 'billing', 'attendance', 'parent_email', 'planner'].map(agent => ({ agent, summary: '', status: 'ok', createdAt: '' }))
+    const lines = p.texts.length && render({ ...s, screen: 'card', card: { ...mkCard('x'), runs: many } }, 0).texts.find(t => t.name === 'agents')!.content.split('\n')
+    expect(lines).toHaveLength(2) // progress wraps to 2 lines max (hints yield)
+    for (const l of lines as string[]) expect(l.length).toBeLessThanOrEqual(SAID_COLS)
   })
 
-  it('a ~200-char transcript is shown WHOLE: wrapped to ≤6 lines per page, paged when longer, nothing cut', () => {
+  it('a ~200-char transcript is shown WHOLE across the full width: ≤5 lines × ≤38 cols per page, paged, nothing cut', () => {
     expect(longSaid.length).toBeGreaterThan(190)
+    expect(SAID_COLS).toBe(38)
     const said = (transcript: string, page: number) => render({ ...s, screen: 'card', card: mkCard(transcript, page) }, 0).texts.find(t => t.name === 'said')!.content
-    const all = (transcript: string) => {
-      const pages = transcriptPages(transcript)
-      return pages.map((_, i) => said(transcript, i).split('\n'))
-    }
+    const all = (transcript: string) => transcriptPages(transcript).map((_, i) => said(transcript, i).split('\n'))
     const p = all(longSaid)
-    for (const page of p) { expect(page.length).toBeLessThanOrEqual(6); for (const l of page) expect(l.length).toBeLessThanOrEqual(SAID_COLS) }
+    expect(p.length).toBe(2)
+    expect(p[0]).toHaveLength(5)
+    for (const page of p) for (const l of page) expect(l.length).toBeLessThanOrEqual(38)
     expect(p.flat().join(' ')).toBe(`"${longSaid}"`)
     expect(p.flat().join('')).not.toContain('…')
-    const longer = `${longSaid}. Also Mia was great at the front kick drill so tell her mom she earned a stripe and remind Ben to bring his sparring gear on Thursday`
-    const q = all(longer)
-    expect(q.length).toBe(2)
-    expect(q[0]).toHaveLength(6)
-    expect(q.flat().join(' ')).toBe(`"${longer}"`)
-    expect(render({ ...s, screen: 'card', card: mkCard(longer, 1) }, 0).texts.find(t => t.name === 'foot')?.content).toBe('page 2/2 · swipe · tap: close · 2×: undo')
-    expect(said(longer, 9)).toBe(said(longer, 1)) // clamped
+    const hdr = (page: number) => render({ ...s, screen: 'card', card: mkCard(longSaid, page) }, 0).texts.find(t => t.name === 'hdr')!.content
+    expect(hdr(1)).toBe('2/2 swipe · ✓ Priya · guard (3rd time)')
+    expect(said(longSaid, 9)).toBe(said(longSaid, 1)) // clamped
   })
 
   it('no clipping: long cue, next line, roll-call result and missed list wrap instead of being cut', () => {
@@ -169,13 +168,19 @@ describe('render', () => {
     expect(render({ ...s, screen: 'home' }, 0).texts.find(t => t.name === 'foot')?.content).toBe('2×: exit')
   })
   it('recording panel: drill + time header, listening body with the (wrapping) next-feedback line', () => {
-    const p = render({ ...s, screen: 'recording', pending: { mode: 'note', returnTo: 'dark', viaLongPress: false } }, 79_000)
+    const rec = { ...s, screen: 'recording' as const, pending: { mode: 'note' as const, returnTo: 'peek' as const, viaLongPress: false, at: 79_000 }, mic: { seconds: 0, bars: 0, source: 'glasses' as const } }
+    const p = render(rec, 79_000)
     expect(p.texts.find(t => t.name === 'hdr')?.content).toBe('HORSE STANCE HOLDS · 3m left')
-    expect(p.texts.find(t => t.name === 'body')?.content).toBe('● Listening… tap to send\n\n> Next feedback: Priya (guard)')
+    expect(p.texts.find(t => t.name === 'body')?.content).toBe('● Listening… speak, then tap\n\n> Next feedback: Priya (guard)')
+    expect(p.texts.find(t => t.name === 'mic')?.content).toBe('○○○○○ waiting for audio… 0s')
+    // static time: minutes later the header still shows the time from when recording started
+    expect(render(rec, 79_000 + 120_000).texts.find(t => t.name === 'hdr')?.content).toBe('HORSE STANCE HOLDS · 3m left')
+    expect(render({ ...rec, mic: { seconds: 3, bars: 3, source: 'glasses' } }, 0).texts.find(t => t.name === 'mic')?.content).toBe('●●●○○ 3s')
+    expect(render({ ...rec, mic: { seconds: 2, bars: 2, source: 'phone' } }, 0).texts.find(t => t.name === 'mic')?.content).toBe('●●○○○ 2s · Using phone mic')
   })
-  it('long-press recording says release to send', () => {
-    const p = render({ ...s, screen: 'recording', pending: { mode: 'note', returnTo: 'dark', viaLongPress: true } }, 0)
-    expect(p.texts.find(t => t.name === 'body')?.content.split('\n')[0]).toBe('● Listening… release to send')
+  it('long-press recording says speak, then release', () => {
+    const p = render({ ...s, screen: 'recording', pending: { mode: 'note', returnTo: 'dark', viaLongPress: true, at: 0 } }, 0)
+    expect(p.texts.find(t => t.name === 'body')?.content.split('\n')[0]).toBe('● Listening… speak, then release')
   })
   it('deck uses a capturing list with ≤64-char items and the planUnit header', () => {
     const p = render({ ...s, screen: 'deck' }, 0)

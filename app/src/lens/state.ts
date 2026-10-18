@@ -1,5 +1,6 @@
 import type { Coverage, Disambiguation, NextStudent, StartSessionResponse, Today, UtteranceResponse, WrapUp } from '@matside/shared'
 import type { UtteranceRun } from '../core/api'
+import type { EmptyReason, MicSource } from '../core/audio'
 
 export type Screen = 'firstRun' | 'home' | 'attendance' | 'attendanceDone' | 'dark' | 'peek' | 'deck' | 'recording' | 'sending' | 'card' | 'disambiguation' | 'confirmEnd' | 'wrapup'
 export type Mode = 'note' | 'attendance'
@@ -31,7 +32,10 @@ export interface LensState {
   card: Card | null
   disambiguation: Disambiguation | null
   wrapup: WrapUp | null
-  pending: { mode: Mode; returnTo: Screen; viaLongPress: boolean } | null
+  /** A capture in progress; `at` = when it started (the recording header shows a static time from it). */
+  pending: { mode: Mode; returnTo: Screen; viaLongPress: boolean; at: number } | null
+  /** Live "hearing you" indicator while recording: seconds, level 0..5, which mic. */
+  mic: { seconds: number; bars: number; source: MicSource } | null
   attendanceLines: string[]
   status: string | null
   loadError: string | null
@@ -49,7 +53,8 @@ export type LensEvent =
   | { type: 'loadFailed'; message: string }
   | { type: 'sessionStarted'; res: StartSessionResponse; resumed: boolean; now: number }
   | { type: 'utteranceResult'; res: UtteranceResponse }
-  | { type: 'utteranceQueued' } | { type: 'utteranceEmpty' } | { type: 'micFailed' }
+  | { type: 'utteranceQueued' } | { type: 'utteranceEmpty'; reason: EmptyReason } | { type: 'micFailed' }
+  | { type: 'micLevel'; seconds: number; bars: number; source: MicSource }
   | { type: 'coverageUpdated'; coverage: Coverage; nextStudent: NextStudent | null }
   | { type: 'runsLoaded'; utteranceId: string; runs: UtteranceRun[] | null; final: boolean }
   | { type: 'wrapupLoaded'; wrapup: WrapUp }

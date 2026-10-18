@@ -25,9 +25,12 @@ export function wrap(text: string, cols: number, maxLines = Number.POSITIVE_INFI
   return out
 }
 
-/** The transcript on the agent card: column width and lines per page (container height). */
-export const SAID_COLS = 36
-export const SAID_LINES = 6
+/**
+ * The transcript on the agent card spans the full 576 px. Conservative ~14.5 px per char (G2 font,
+ * from the 576 px ≈ 40 col history) → 38 columns; 5 lines fit the 164 px transcript container.
+ */
+export const SAID_COLS = 38
+export const SAID_LINES = 5
 
 /** The whole transcript, wrapped and split into pages of SAID_LINES lines (at least one page). */
 export function transcriptPages(transcript: string): string[][] {

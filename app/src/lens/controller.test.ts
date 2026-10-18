@@ -7,7 +7,8 @@ import { Outbox } from '../core/outbox'
 import { KEYS, memoryKV } from '../core/storage'
 import { CLASS_ID_KEY } from '../phone/classPref'
 import { RUNS_MAX_MS, RUNS_POLL_MS } from './agentRuns'
-import { startLens, TICK_MS, type LensBridge, type LensHandle } from './controller'
+import { AudioInputSource } from '@evenrealities/even_hub_sdk'
+import { MIC_FALLBACK_MS, MIC_METER_MS, startLens, STOP_DEBOUNCE_MS, TICK_MS, type LensBridge, type LensHandle } from './controller'
 import { STATUS_MS } from './reducer'
 
 const today = {
@@ -31,7 +32,7 @@ function fakeBridge() {
       sent.push(c.contentOffset === undefined ? `upgrade:${c.containerName}=${c.content}` : `partial:${c.containerName}@${c.contentOffset}+${c.contentLength}=${c.content}`)
       return true
     }),
-    audioControl: vi.fn(async () => true),
+    audioControl: vi.fn(async (_on?: boolean, _src?: string) => true),
     imuControl: vi.fn(async () => true),
     shutDownPageContainer: vi.fn(async () => true),
     onEvenHubEvent: vi.fn((cb: (e: EvenHubEvent) => void) => { handler = cb; return () => { handler = () => {} } }),
@@ -58,6 +59,7 @@ const dbl = { sysEvent: { eventType: OsEventTypeList.DOUBLE_CLICK_EVENT } }
 const imu = (y: number) => ({ sysEvent: { eventType: OsEventTypeList.IMU_DATA_REPORT, imuData: { x: 0.5, y, z: 1 } } })
 const swipe = { textEvent: { eventType: OsEventTypeList.SCROLL_BOTTOM_EVENT } }
 const NOD = { enabled: true, axis: 'y' as const, threshold: 0.3, windowMs: 600, cooldownMs: 1200 }
+const pcm = (n = 1000) => ({ audioEvent: { audioPcm: new Uint8Array(n) } })
 const flush = () => vi.advanceTimersByTimeAsync(0)
 
 describe('lens controller', () => {
@@ -277,6 +279,7 @@ describe('lens controller', () => {
     const b = await toPeek()
     b.emit(tap); await flush() // recording
     for (let i = 0; i < 20; i++) b.emit({ audioEvent: { audioPcm: new Uint8Array(1000) } })
+    await vi.advanceTimersByTimeAsync(STOP_DEBOUNCE_MS)
     b.emit(tap); await flush()
     expect(b.sent.join('\n')).toContain("Didn't catch that")
   })
@@ -322,6 +325,7 @@ describe('lens controller', () => {
       const b = await toPeek(fakeApi({ utterance: vi.fn(async () => okRes), utteranceRuns }))
       b.emit(tap); await flush() // recording
       for (let i = 0; i < 20; i++) b.emit({ audioEvent: { audioPcm: new Uint8Array(1000) } })
+      await vi.advanceTimersByTimeAsync(STOP_DEBOUNCE_MS)
       b.emit(tap); await flush() // send → card
       return b
     }
@@ -330,9 +334,9 @@ describe('lens controller', () => {
       const utteranceRuns = vi.fn().mockResolvedValueOnce([r('router')]).mockResolvedValue([r('router'), r('progress')])
       const b = await toCard(utteranceRuns)
       expect(b.sent.join('\n')).toContain('"Priya keep your guard up"')
-      expect(b.sent.join('\n')).toContain('ok sorted\n.. email')
+      expect(b.sent.join('\n')).toContain('ok sorted · .. email')
       await vi.advanceTimersByTimeAsync(RUNS_POLL_MS)
-      expect(b.sent.at(-1)).toBe('upgrade:agents=ok sorted\nok logged\n.. email')
+      expect(b.sent.at(-1)).toBe('upgrade:agents=ok sorted · ok logged · .. email\ntap: close · 2×: undo')
       expect(utteranceRuns).toHaveBeenCalledTimes(2)
       await vi.advanceTimersByTimeAsync(60_000)
       expect(b.sent.some(x => x.startsWith('rebuild:STANCES'))).toBe(true) // (from before the card)
@@ -351,7 +355,7 @@ describe('lens controller', () => {
       const b = await toCard(utteranceRuns)
       await vi.advanceTimersByTimeAsync(RUNS_POLL_MS * 5)
       expect(utteranceRuns).toHaveBeenCalledTimes(2)
-      expect(b.sent.at(-1)).toBe('upgrade:agents=ok sorted\nok logged\nok email')
+      expect(b.sent.at(-1)).toBe('upgrade:agents=ok sorted · ok logged · ok email\ntap: close · 2×: undo')
     })
 
     it('stops polling when the endpoint is missing (404 → null) and shows the server card lines', async () => {
@@ -359,7 +363,7 @@ describe('lens controller', () => {
       const b = await toCard(utteranceRuns)
       await vi.advanceTimersByTimeAsync(RUNS_POLL_MS * 5)
       expect(utteranceRuns).toHaveBeenCalledTimes(1)
-      expect(b.sent.join('\n')).toContain('✓ Priya · guard\n→ parent note for Priya drafting')
+      expect(b.sent.join('\n').replace(/\n/g, ' ')).toContain('✓ Priya · guard · → parent note for Priya drafting')
     })
 
     it('stops polling once the card is tapped away', async () => {
@@ -390,6 +394,78 @@ describe('lens controller', () => {
         b.emit(tap); await flush()
         expect(startSession).toHaveBeenCalledWith('c2')
       } finally { off() }
+    })
+  })
+
+  describe('recording robustness (BLE)', () => {
+    it('pauses the per-second ticks while recording and sending; ticks resume on the peek', async () => {
+      const b = await toDrill()
+      await vi.advanceTimersByTimeAsync(1100)
+      b.emit(tap); await flush() // recording
+      b.emit(pcm())
+      const n = b.sent.length
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(b.sent.slice(n).filter(x => x.startsWith('upgrade:timer=') || x.startsWith('upgrade:hdr='))).toEqual([]) // static time
+      expect(b.sent.slice(n).every(x => x.startsWith('upgrade:mic='))).toBe(true) // only the small mic line moves
+      b.emit(dbl); await flush() // cancel → peek
+      const m = b.sent.length
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(b.sent.slice(m).filter(x => x.startsWith('upgrade:timer=')).length).toBe(2)
+    })
+
+    it('mic line updates at most every 500 ms and shows audio arriving', async () => {
+      const b = await toPeek()
+      b.emit(tap); await flush()
+      const n = b.sent.length
+      for (let i = 0; i < 10; i++) { b.emit(pcm(3200)); await vi.advanceTimersByTimeAsync(100) }
+      const mic = b.sent.slice(n).filter(x => x.startsWith('upgrade:mic='))
+      expect(mic.length).toBeLessThanOrEqual(1000 / MIC_METER_MS)
+      expect(mic.at(-1)).toMatch(/^upgrade:mic=●○○○○ 1s$/)
+    })
+
+    it('no glasses audio within 1.5 s → switches to the phone mic and says so', async () => {
+      const b = await toPeek()
+      b.emit(tap); await flush()
+      await vi.advanceTimersByTimeAsync(MIC_FALLBACK_MS - 100)
+      expect(b.raw.audioControl).not.toHaveBeenCalledWith(true, AudioInputSource.Phone)
+      await vi.advanceTimersByTimeAsync(200)
+      expect(b.raw.audioControl).toHaveBeenLastCalledWith(true, AudioInputSource.Phone)
+      expect(b.sent.at(-1)).toContain('Using phone mic')
+    })
+
+    it('glasses audio arriving in time → no phone fallback', async () => {
+      const b = await toPeek()
+      b.emit(tap); await flush()
+      b.emit(pcm())
+      await vi.advanceTimersByTimeAsync(MIC_FALLBACK_MS * 2)
+      expect(b.raw.audioControl).not.toHaveBeenCalledWith(true, AudioInputSource.Phone)
+    })
+
+    it('debounce: a stop tap within 600 ms keeps recording; a later tap sends', async () => {
+      const utterance = vi.fn(async () => { throw new ApiError(422, 'empty_transcript') })
+      const b = await toPeek(fakeApi({ utterance }))
+      b.emit(tap); await flush() // recording
+      b.raw.audioControl.mockClear()
+      await vi.advanceTimersByTimeAsync(300)
+      b.emit(tap); await flush() // double-trigger: ignored
+      expect(b.sent.at(-1)).not.toContain('Sending')
+      expect(b.raw.audioControl).not.toHaveBeenCalledWith(false)
+      for (let i = 0; i < 20; i++) b.emit(pcm())
+      await vi.advanceTimersByTimeAsync(STOP_DEBOUNCE_MS)
+      b.emit(tap); await flush()
+      expect(b.raw.audioControl).toHaveBeenCalledWith(false)
+      expect(utterance).toHaveBeenCalledTimes(1)
+    })
+
+    it('no audio at all → says the glasses sent nothing (never reaches the API)', async () => {
+      const utterance = vi.fn()
+      const b = await toPeek(fakeApi({ utterance, }))
+      b.raw.audioControl.mockImplementation(async (on?: boolean, src?: string) => !(on && src === AudioInputSource.Phone)) // phone mic refused too
+      b.emit(tap); await flush()
+      await vi.advanceTimersByTimeAsync(2000)
+      b.emit(tap); await flush()
+      expect(b.sent.join('\n')).toContain('No audio from glasses')
+      expect(utterance).not.toHaveBeenCalled()
     })
   })
 })

@@ -1,5 +1,5 @@
 import { progressLines } from './agentRuns'
-import { clip, transcriptPages, wrap } from './text'
+import { SAID_COLS, clip, transcriptPages, wrap } from './text'
 
 export { clip, wrap } from './text'
 import type { LensState } from './state'
@@ -73,7 +73,7 @@ function context(s: LensState, now: number) {
   const active = drills.find(d => d.id === s.active?.drillId) ?? null
   const time = active && s.active ? minutesLeft(active.minutes, s.active.startedAt, now) : ''
   const cov = `Feedback ${s.coverage.covered}/${s.coverage.present}`
-  const nextLine = s.nextStudent ? `> Next feedback: ${s.nextStudent.name} (${s.nextStudent.reason})` : s.coverage.present ? '> Everyone has feedback ✓' : ''
+  const nextLine = s.nextStudent ? `> Next feedback: ${s.nextStudent.name} (${s.nextStudent.reason})` : s.coverage.present ? '> Everyone has feedback' : ''
   const drillHeader = active ? `${active.name.toUpperCase()} · ${time}` : cov
   return { drills, active, time, cov, nextLine, drillHeader }
 }
@@ -125,27 +125,49 @@ function peek(s: LensState, now: number): PageSpec {
 }
 
 /**
- * Agent card: main result (header), the WHOLE transcript (wide left column, 6 lines per page, swipe
- * pages through it), live agent progress (narrow right column, short ASCII lines), footer.
+ * Agent card: main result (header), the WHOLE transcript across the full width (5 lines per page,
+ * swipe pages through longer ones), then ONE compact agent-progress line (wraps to 2) + hints.
  */
 function card(s: LensState, now: number): PageSpec {
   const c = context(s, now)
   const cd = s.card
   const pages = transcriptPages(cd?.transcript ?? '')
   const page = Math.min(cd?.page ?? 0, pages.length - 1)
-  const foot = pages.length > 1 ? `page ${page + 1}/${pages.length} · swipe · tap: close · 2×: undo` : `${c.cov} · tap: close · 2×: undo`
+  const pageTag = pages.length > 1 ? `${page + 1}/${pages.length} swipe · ` : ''
+  const progress = cd ? wrap(progressLines(cd).join(' · '), SAID_COLS, 2) : []
+  const bottom = [...progress, 'tap: close · 2×: undo'].slice(0, 2)
   return { key: 'card', list: null, texts: [
-    t(1, 'hdr', 0, 0, W, 40, clip(cd?.lines[0] ?? c.drillHeader, LINE_MAX)),
-    t(2, 'said', 0, 44, 392, 200, pages[page]!.join('\n'), { border: true, capture: true }),
-    t(3, 'agents', 396, 44, 180, 200, cd ? progressLines(cd).join('\n') : ''),
-    t(4, 'foot', 0, 248, W, 40, foot),
+    t(1, 'hdr', 0, 0, W, 40, clip(`${pageTag}${cd?.lines[0] ?? c.drillHeader}`, LINE_MAX)),
+    t(2, 'said', 0, 44, W, 164, pages[page]!.join('\n'), { border: true, capture: true }),
+    t(3, 'agents', 0, 212, W, 76, bottom.join('\n')),
+  ] }
+}
+
+/** "Hearing you" line: level dots + seconds, or a waiting hint; says when the phone mic took over. */
+function micLine(s: LensState): string {
+  const m = s.mic
+  if (!m) return ''
+  const level = m.bars ? `${'●'.repeat(m.bars)}${'○'.repeat(5 - m.bars)} ${m.seconds}s` : `○○○○○ waiting for audio… ${m.seconds}s`
+  return m.source === 'phone' ? `${level} · Using phone mic` : level
+}
+
+/**
+ * Capture layout (recording + roll call): header, body (capture), a small live mic line, footer.
+ * Only the mic line changes while recording (≤ every 500 ms); the header time is static.
+ */
+function capture(header: string, body: string, s: LensState, footer: string): PageSpec {
+  return { key: 'rec', list: null, texts: [
+    t(1, 'hdr', 0, 0, W, 40, clip(header, LINE_MAX)),
+    t(2, 'body', 0, 44, W, 156, body, { border: true, capture: true }),
+    t(3, 'mic', 0, 204, W, 40, micLine(s)),
+    t(4, 'foot', 0, 248, W, 40, footer),
   ] }
 }
 
 function attendance(s: LensState): PageSpec {
   const enrolled = s.today?.roster.length ?? 0
-  return panel(clip(`${(s.today?.className ?? '').toUpperCase()} · ${(s.today?.theme ?? '').toUpperCase()}`, LINE_MAX),
-    `Roll call · ${enrolled} enrolled\nSay "Everyone except …"\nor "Present: …"\n\n● Listening… tap when done`, '2×: skip · or check in on phone')
+  return capture(`${(s.today?.className ?? '').toUpperCase()} · ${(s.today?.theme ?? '').toUpperCase()}`,
+    `Roll call · ${enrolled} enrolled\nSay "Everyone except …"\nor "Present: …"\n\n● Listening… speak, then tap`, s, '2×: skip · or check in on phone')
 }
 
 function wrapup(s: LensState): PageSpec {
@@ -180,10 +202,10 @@ export function render(s: LensState, now: number): PageSpec {
         c.drills.map(d => `${d.name} · ${d.minutes}m${d.focusStudentIds.length ? ` (${d.focusStudentIds.length} kids)` : ''}`))
     }
     case 'recording': {
-      const c = context(s, now)
-      return panel(clip(c.drillHeader, LINE_MAX), [`● Listening… ${s.pending?.viaLongPress ? 'release' : 'tap'} to send`, '', ...wrap(c.nextLine, LINE_MAX, 2)].join('\n'), '')
+      const c = context(s, s.pending?.at ?? now) // static time: no display updates compete with mic audio
+      return capture(c.drillHeader, [`● Listening… speak, then ${s.pending?.viaLongPress ? 'release' : 'tap'}`, '', ...wrap(c.nextLine, LINE_MAX, 2)].join('\n'), s, '2×: cancel')
     }
-    case 'sending': return panel(clip(context(s, now).drillHeader, LINE_MAX), '● Sending to agents…', '')
+    case 'sending': return panel(clip(context(s, s.pending?.at ?? now).drillHeader, LINE_MAX), '● Sending to agents…', '')
     case 'card': return card(s, now)
     case 'disambiguation': {
       const d = s.disambiguation

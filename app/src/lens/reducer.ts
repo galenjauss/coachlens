@@ -1,3 +1,4 @@
+import type { EmptyReason } from '../core/audio'
 import type { Effect, LensEvent, LensState, Mode, Screen } from './state'
 import { transcriptPages } from './text'
 
@@ -12,7 +13,7 @@ export function initialState(firstRunSeen: boolean): LensState {
   return {
     screen: firstRunSeen ? 'home' : 'firstRun', today: null, classes: [], selectedClassId: null, session: null, active: null,
     coverage: { covered: 0, present: 0 }, nextStudent: null, card: null, disambiguation: null, wrapup: null,
-    pending: null, attendanceLines: [], status: null, loadError: null, starting: false,
+    pending: null, mic: null, attendanceLines: [], status: null, loadError: null, starting: false,
   }
 }
 
@@ -45,8 +46,16 @@ function resumeDrill(s: LensState, now: number): R {
   return peek({ ...s, active: { drillId: live.id, startedAt: Date.parse(live.startedAt) } })
 }
 
-function record(s: LensState, mode: Mode, returnTo: Screen, viaLongPress: boolean): R {
-  return done({ ...s, screen: mode === 'attendance' ? 'attendance' : 'recording', pending: { mode, returnTo, viaLongPress }, status: null }, { type: 'startMic' })
+function record(s: LensState, mode: Mode, returnTo: Screen, viaLongPress: boolean, now: number): R {
+  return done({ ...s, screen: mode === 'attendance' ? 'attendance' : 'recording', pending: { mode, returnTo, viaLongPress, at: now },
+    mic: { seconds: 0, bars: 0, source: 'glasses' }, status: null }, { type: 'startMic' })
+}
+
+/** Why nothing was sent, in words the coach can act on. */
+function emptyStatus(mode: Mode | undefined, reason: EmptyReason): string {
+  if (reason === 'no_audio') return mode === 'attendance' ? 'No audio from glasses · use phone roster' : "No audio from glasses — tap and speak after 'Listening'"
+  if (mode === 'attendance') return ROLL_NOT_SAVED
+  return reason === 'too_short' ? 'Too short — speak, then tap' : "Didn't catch that · tap to retry"
 }
 
 function send(s: LensState): R {
@@ -87,7 +96,7 @@ function utteranceResult(s: LensState, e: Extract<LensEvent, { type: 'utteranceR
 }
 
 /** Events that carry data or timers: they apply on any screen. Null = not one of them. */
-function dataEvent(s: LensState, e: LensEvent): R | null {
+function dataEvent(s: LensState, e: LensEvent, now: number): R | null {
   switch (e.type) {
     case 'todayLoaded': return done({ ...s, today: e.today, loadError: null, selectedClassId: null })
     case 'classesLoaded': return done({ ...s, classes: e.classes })
@@ -102,11 +111,16 @@ function dataEvent(s: LensState, e: LensEvent): R | null {
     case 'sessionStarted': {
       if (s.session?.id === e.res.sessionId) return done(s)
       const next = { ...s, starting: false, session: { id: e.res.sessionId, startedAt: Date.parse(e.res.startedAt) }, coverage: e.res.coverage, nextStudent: e.res.nextStudent }
-      return e.resumed ? resumeDrill(next, e.now) : record(next, 'attendance', 'peek', false)
+      return e.resumed ? resumeDrill(next, e.now) : record(next, 'attendance', 'peek', false, now)
     }
     case 'micFailed': return back(s, 'Mic unavailable · check permission')
     case 'utteranceQueued': return back(s, s.pending?.mode === 'attendance' ? ROLL_NOT_SAVED : '● Saved · will sync')
-    case 'utteranceEmpty': return back(s, s.pending?.mode === 'attendance' ? ROLL_NOT_SAVED : "Didn't catch that · tap to retry")
+    case 'utteranceEmpty': return back(s, emptyStatus(s.pending?.mode, e.reason))
+    case 'micLevel': {
+      const m = s.mic
+      if ((s.screen !== 'recording' && s.screen !== 'attendance') || (m && m.seconds === e.seconds && m.bars === e.bars && m.source === e.source)) return done(s)
+      return done({ ...s, mic: { seconds: e.seconds, bars: e.bars, source: e.source } })
+    }
     case 'utteranceResult': return utteranceResult(s, e)
     case 'runsLoaded': {
       if (!s.card || s.card.utteranceId !== e.utteranceId) return done(s)
@@ -130,7 +144,7 @@ function dataEvent(s: LensState, e: LensEvent): R | null {
 
 export function reduce(s: LensState, e: LensEvent): R {
   const now = 'now' in e && typeof e.now === 'number' ? e.now : Date.now()
-  const data = dataEvent(s, e)
+  const data = dataEvent(s, e, now)
   if (data) return data
 
   // Gestures depend on the screen.
@@ -156,10 +170,10 @@ export function reduce(s: LensState, e: LensEvent): R {
     case 'dark':
       // The lens is off by choice: a tap only wakes it (never records). Other gestures work as in peek.
       if (e.type === 'tap') return peek(s)
-      return restGesture(s, e)
+      return restGesture(s, e, now)
     case 'peek':
-      if (e.type === 'tap') return record(s, 'note', 'peek', false)
-      return restGesture(s, e)
+      if (e.type === 'tap') return record(s, 'note', 'peek', false, now)
+      return restGesture(s, e, now)
     case 'deck':
       if (e.type === 'listSelect') return startDrill(s, e.index, now)
       if (e.type === 'doubleTap') return peek(s)
@@ -211,8 +225,8 @@ export function reduce(s: LensState, e: LensEvent): R {
 }
 
 /** Gestures shared by peek and dark: long-press = hold to talk, swipe = deck, double-tap = end class. */
-function restGesture(s: LensState, e: LensEvent): R {
-  if (e.type === 'longPress') return record(s, 'note', 'peek', true)
+function restGesture(s: LensState, e: LensEvent, now: number): R {
+  if (e.type === 'longPress') return record(s, 'note', 'peek', true, now)
   if (e.type === 'swipeUp' || e.type === 'swipeDown') return done({ ...s, screen: 'deck', status: null })
   if (e.type === 'doubleTap') return done({ ...s, screen: 'confirmEnd', status: null })
   return done(s)
