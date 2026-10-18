@@ -49,6 +49,14 @@ describe('names', () => {
     expect(next[9]).toBe('Preeya')
     expect(next[0]).toBe('ax')
   })
+  it('addAlias learns only name-like strings and collapses spelling variants', () => {
+    const s = { name: 'Priya Rao', nickname: null, aliases: [] as string[] }
+    for (const junk of ['he', 'She', 'the new kid', 'the twins', 'everyone', 'that kid', 'Priya 2', 'x', 'a b', 'one two three four']) expect(addAlias(s, junk)).toBe(s.aliases)
+    const once = addAlias(s, 'Pree-ya')
+    expect(once).toEqual(['Pree-ya'])
+    expect(addAlias({ ...s, aliases: once }, 'Preeya')).toEqual(['Pree-ya'])
+    expect(addAlias(s, "O'Neil")).toEqual(["O'Neil"])
+  })
 })
 
 describe('attendance', () => {
@@ -123,6 +131,13 @@ describe('cardLines', () => {
       .toEqual(['✓ Leo · focus', '⚠ urgent · parent note drafting'])
     expect(buildCardLines([{ kind: 'feedback', name: 'Leo', tag: 'focus', count: 3, recurring: true, urgent: true }]))
       .toEqual(['✓ Leo · focus (3rd time)', '⚠ urgent · parent note drafting', '→ added to report card', '→ added to next deck'])
+  })
+  it('urgent lines go first so overflow never cuts them', () => {
+    expect(buildCardLines([
+      { kind: 'feedback', name: 'Sam', tag: 'forms', count: 3, recurring: true },
+      { kind: 'billing', name: 'Leo', urgency: 'high' },
+      { kind: 'urgent_unassigned' },
+    ])).toEqual(['⚠ urgent · pick student', '+2 more'])
   })
   it('combines feedback and billing and caps at 4 lines', () => {
     const lines = buildCardLines([

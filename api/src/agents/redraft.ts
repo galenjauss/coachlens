@@ -1,7 +1,7 @@
-import { and, eq } from 'drizzle-orm'
+import { and, desc, eq, gte } from 'drizzle-orm'
 import type { RedraftResponse, ReportCardContent } from '@matside/shared'
 import type { Deps } from '../deps'
-import { outbox, reportCards } from '../db/schema'
+import { drills, notes, outbox, reportCards } from '../db/schema'
 import { modeForStudent } from '../services/context'
 import { withRun } from './runs'
 import { EmailOut, parentEmailInstructions } from './parentEmail'
@@ -21,12 +21,17 @@ export async function redraftOutbox(deps: Deps, id: string, instruction: string)
   if (row.status !== 'pending_review') return { ok: false, code: 'not_pending', error: 'draft is not pending' }
   const mode = await modeForStudent(db, row.studentId, row.sessionId)
   const [card] = row.kind === 'report_card' ? await db.select().from(reportCards).where(eq(reportCards.outboxId, id)) : []
+  const since = new Date(deps.now().getTime() - 30 * 86_400_000)
+  const recent = await db.select({ text: notes.text, at: notes.createdAt, drill: drills.name }).from(notes).leftJoin(drills, eq(drills.id, notes.drillId))
+    .where(and(eq(notes.studentId, row.studentId), gte(notes.createdAt, since))).orderBy(desc(notes.createdAt)).limit(10)
   const prompt = [
     `Coach: ${deps.env.instructorName}`,
     `Coach's instruction: """${instruction}"""`,
     `Current subject: ${row.subject}`,
     'Current body:', row.body,
     ...(card ? ['Current report card (JSON):', JSON.stringify(card.content)] : []),
+    'Recent coach notes (newest first; ground any new detail in these):',
+    ...(recent.length ? recent.map(r => `- ${r.at.toISOString().slice(0, 10)} [${r.drill ?? 'class'}] ${r.text}`) : ['- none']),
   ].join('\n')
   const out = await withRun(deps, { agent: row.kind, trigger: 'redraft', sessionId: row.sessionId, links: { outboxId: id, studentId: row.studentId } }, async () => {
     let next: { subject: string; body: string }

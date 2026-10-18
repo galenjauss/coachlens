@@ -96,7 +96,7 @@ async function applyIntent(deps: Deps, ctx: SessionContext, utteranceId: string,
     case 'attendance': return applyAttendanceIntent(deps, ctx, utteranceId, intent)
     case 'plan_request': {
       safeDefer(deps, 'plan_request', (async () => {
-        const deckId = await nextDeckFor(deps, ctx.classId, ctx.forDate)
+        const deckId = await nextDeckFor(deps, ctx.classId, ctx.forDate, utteranceId)
         if (deckId) await suggestDiff(deps, deckId, intent.content, ctx.sessionId, utteranceId)
       })())
       return { actions: [{ kind: 'plan_request' }], disambiguation: null }
@@ -131,21 +131,31 @@ async function applyFeedback(deps: Deps, ctx: SessionContext, utteranceId: strin
   const actions: CardAction[] = []
   let disambiguation: Disambiguation | null = null
   const base = { sessionId: ctx.sessionId, utteranceId, drillId: ctx.drill?.id ?? null, text: intent.content, tags: intent.skillTags }
+  // Urgent feedback we can't attach to a student keeps its urgency on the note and gets one loud line.
+  const unresolvedBase = { ...base, urgent: intent.urgent }
+  const unassigned = (): CardAction => (intent.urgent ? { kind: 'urgent_unassigned' } : { kind: 'unassigned' })
   if (!intent.studentNames.length) {
-    await db.insert(notes).values(base)
-    return { actions: [{ kind: 'unassigned' }], disambiguation: null }
+    await db.insert(notes).values(unresolvedBase)
+    return { actions: [unassigned()], disambiguation: null }
+  }
+  let urgentFlagged = false
+  const flagUrgent = () => {
+    if (!intent.urgent || urgentFlagged) return
+    urgentFlagged = true
+    actions.push({ kind: 'urgent_unassigned' })
   }
   for (const heard of intent.studentNames) {
     const m = resolveName(heard, ctx.roster)
     if (m.kind === 'ambiguous') {
-      const [n] = await db.insert(notes).values({ ...base, heard }).returning()
-      if (disambiguation) actions.push({ kind: 'unassigned' })
-      else disambiguation = { noteId: n!.id, heard, options: m.options }
+      const [n] = await db.insert(notes).values({ ...unresolvedBase, heard }).returning()
+      if (disambiguation) { if (intent.urgent) flagUrgent(); else actions.push({ kind: 'unassigned' }) }
+      else { disambiguation = { noteId: n!.id, heard, options: m.options }; flagUrgent() }
       continue
     }
     if (m.kind === 'none') {
-      await db.insert(notes).values({ ...base, heard })
-      actions.push({ kind: 'unassigned' })
+      await db.insert(notes).values({ ...unresolvedBase, heard })
+      if (intent.urgent) flagUrgent()
+      else actions.push({ kind: 'unassigned' })
       continue
     }
     const s = m.student

@@ -34,7 +34,11 @@ export function parentEmailInstructions(mode: ModeConfig): string {
 export const EmailOut = z.object({ subject: z.string().min(3).max(80), body: z.string().min(40) })
 const DAY = 86_400_000
 export const EMAIL_COOLDOWN_DAYS = 30
-/** Triggers that are automatic and not urgent: at most one such email per student per cooldown window. */
+/**
+ * Triggers that are automatic and not urgent: at most one such email per student per cooldown window.
+ * Since v2 nothing in the live pipeline drafts a 'recurring' email (recurring issues feed the report card);
+ * the cooldown exists so any future automatic trigger added here is rate-limited by default.
+ */
 const AUTO_TRIGGERS = ['recurring'] as const
 
 export type EmailTrigger =

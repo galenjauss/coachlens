@@ -62,14 +62,14 @@ async function planningContext(deps: Deps, classId: string, forDate: string) {
   return { text, theme: cur?.theme ?? 'General skills', mode, instructions: plannerInstructions(mode) }
 }
 
-export async function draftDeck(deps: Deps, classId: string, forDate: string): Promise<string | null> {
+export async function draftDeck(deps: Deps, classId: string, forDate: string, utteranceId: string | null = null): Promise<string | null> {
   const existing = await findDeck(deps.db, classId, forDate)
   if (existing) {
     const [has] = await deps.db.select({ id: drills.id }).from(drills).where(eq(drills.deckId, existing.id)).limit(1)
     if (has) return existing.id
     await deps.db.delete(decks).where(eq(decks.id, existing.id)) // empty leftover from a failed draft
   }
-  return withRun(deps, { agent: 'planner', trigger: 'draft', sessionId: null }, async () => {
+  return withRun(deps, { agent: 'planner', trigger: 'draft', sessionId: null, utteranceId }, async () => {
     const ctx = await planningContext(deps, classId, forDate)
     const out = await deps.llm.object({ name: 'planner.draft', instructions: ctx.instructions, prompt: `Plan the class on ${forDate}.\n${ctx.text}`, schema: DraftOut })
     const [deck] = await deps.db.insert(decks).values({ classId, forDate }).onConflictDoNothing().returning()
@@ -137,14 +137,14 @@ export async function acceptDiff(deps: Deps, diffId: string, opts: { remember: b
   return getDeck(db, deck.id)
 }
 
-export async function nextDeckFor(deps: Deps, classId: string, afterDate: string): Promise<string | null> {
+export async function nextDeckFor(deps: Deps, classId: string, afterDate: string, utteranceId: string | null = null): Promise<string | null> {
   const [c] = await deps.db.select().from(classes).where(eq(classes.id, classId))
   if (!c) return null
-  return draftDeck(deps, classId, nextDateForWeekday(afterDate, c.weekday))
+  return draftDeck(deps, classId, nextDateForWeekday(afterDate, c.weekday), utteranceId)
 }
 
 export async function autoAdjustNextDeck(deps: Deps, a: { classId: string; afterDate: string; requestText: string; sessionId: string | null; utteranceId?: string | null }) {
-  const deckId = await nextDeckFor(deps, a.classId, a.afterDate)
+  const deckId = await nextDeckFor(deps, a.classId, a.afterDate, a.utteranceId ?? null)
   if (!deckId) return
   const s = await suggestDiff(deps, deckId, a.requestText, a.sessionId, a.utteranceId ?? null)
   if (s) await acceptDiff(deps, s.diffId, { remember: false })

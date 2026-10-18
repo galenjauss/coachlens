@@ -65,11 +65,42 @@ describe('agents v2 http', () => {
     expect(list.find(s => s.id === ss[0]!.id)!.aliases).toEqual(['Preeya', 'Pree'])
   })
 
+  it('learns no alias from pronouns or descriptors; spelling variants are learned once', async () => {
+    const { app, h, db, ss } = await setup(() => ({ intents: [] }))
+    const ids = await db.insert(notes).values(['he', 'the new kid', 'Pree-ya', 'Preeya'].map(heard => ({ heard, text: 'good kicks' }))).returning()
+    for (const n of ids) expect((await app.request(`/v1/notes/${n.id}/assign`, { method: 'POST', headers: h, body: JSON.stringify({ studentId: ss[0]!.id }) })).status).toBe(200)
+    const [p] = await db.select().from(students).where(eq(students.id, ss[0]!.id))
+    expect(p!.aliases).toEqual(['Pree-ya'])
+    expect((await app.request(`/v1/students/${ss[0]!.id}`, { method: 'PATCH', headers: h, body: JSON.stringify({ aliases: ['he'] }) })).status).toBe(400)
+    expect(await (await app.request(`/v1/students/${ss[0]!.id}`, { method: 'PATCH', headers: h, body: JSON.stringify({ aliases: ['Pree-ya', 'Preeya'] }) })).json()).toEqual({ id: ss[0]!.id, aliases: ['Pree-ya'] })
+    expect((await app.request('/v1/utterances/nope/runs', { headers: h })).status).toBe(404)
+  })
+
+  it('an urgent note with an unresolved name keeps its urgency; assigning it drafts the urgent email', async () => {
+    const { app, h, db, deps, ss, say } = await setup(({ name }) => (name === 'router'
+      ? { intents: [intent({ type: 'billing', studentNames: ['Jake'], content: 'owes', urgency: 'low' }), intent({ type: 'billing', studentNames: ['Leo'], content: 'owes', urgency: 'low' }), intent({ type: 'billing', studentNames: ['Priya'], content: 'owes', urgency: 'low' }), intent({ studentNames: ['Zed'], content: 'fell and hit his head', skillTags: ['focus'], urgent: true })] }
+      : email))
+    const u = await say('three billing notes and Zed fell and hit his head')
+    expect(u.cardLines[0]).toBe('⚠ urgent · pick student')
+    expect(u.cardLines).toHaveLength(4)
+    await deps.flush()
+    expect(await db.select().from(outbox)).toHaveLength(0)
+    const [n] = await db.select().from(notes).where(eq(notes.heard, 'Zed'))
+    expect(n!.urgent).toBe(true)
+    expect((await app.request(`/v1/notes/${n!.id}/assign`, { method: 'POST', headers: h, body: JSON.stringify({ studentId: ss[1]!.id }) })).status).toBe(200)
+    await deps.flush()
+    const [mail] = await db.select().from(outbox)
+    expect(mail).toMatchObject({ studentId: ss[1]!.id, trigger: 'urgent', status: 'pending_review' })
+    const [run] = await db.select().from(agentRuns).where(eq(agentRuns.agent, 'parent_email'))
+    expect(run).toMatchObject({ utteranceId: u.utteranceId, trigger: 'urgent', links: { outboxId: mail!.id } })
+  })
+
   it('redraft re-runs the email or report-card agent on the same pending row', async () => {
     let fail = false
     const { app, h, db, ss } = await setup(({ name, prompt }) => {
       if (fail) throw new Error('gateway down')
       expect(prompt).toContain('make it shorter')
+      expect(prompt).toContain('Recent coach notes')
       if (name === 'parent_email.redraft') return { subject: 'Shorter', body: 'Hi! Short version: Leo rested his knee and was fine after class today.' }
       if (name === 'report_card.redraft') return { content: { ...card, nextGoal: 'kick height' }, subject: 'October card', body: 'x'.repeat(80) }
       throw new Error(`unexpected ${name}`)

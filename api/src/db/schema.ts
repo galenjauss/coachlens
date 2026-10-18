@@ -1,4 +1,4 @@
-import { pgTable, text, integer, real, timestamp, jsonb, primaryKey, uniqueIndex, index } from 'drizzle-orm/pg-core'
+import { pgTable, text, integer, real, timestamp, jsonb, primaryKey, uniqueIndex, index, boolean } from 'drizzle-orm/pg-core'
 import type { ModeId, SkillTag, Urgency, DeckDiff, ReportCardContent, AgentRunLinks } from '@matside/shared'
 
 const id = () => text('id').primaryKey().$defaultFn(() => crypto.randomUUID())
@@ -70,6 +70,7 @@ export const notes = pgTable('notes', {
   id: id(), sessionId: text('session_id'), utteranceId: text('utterance_id'), studentId: text('student_id'),
   heard: text('heard'), drillId: text('drill_id'), text: text('text').notNull(),
   tags: jsonb('tags').$type<SkillTag[]>().notNull().default([]), createdAt: createdAt(),
+  urgent: boolean('urgent').notNull().default(false), // urgent feedback still waiting for a student pick
 })
 export const issues = pgTable('issues', {
   id: id(), studentId: text('student_id').notNull(), tag: text('tag').$type<SkillTag>().notNull(),

@@ -1,0 +1,1 @@
+ALTER TABLE "notes" ADD COLUMN "urgent" boolean DEFAULT false NOT NULL;

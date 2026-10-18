@@ -5,7 +5,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { AgentTask, DeckPatch, MAX_ALIASES, RedraftRequest, StudentPatch, UtteranceForm } from '@matside/shared'
 import type { Deps } from './deps'
-import { attendance, billingFlags, enrollments, instructors, notes, sessions, students, classes } from './db/schema'
+import { attendance, billingFlags, enrollments, instructors, notes, sessions, students, classes, utterances } from './db/schema'
 import { hashToken } from './http/auth'
 import { timingSafeEqual } from 'node:crypto'
 import { allow, isBlocked, recordFailure } from './http/rateLimit'
@@ -18,7 +18,8 @@ import { runReportCards } from './agents/reportCard'
 import { agentFeed, getStudentDetail, listStudents } from './services/students'
 import { acceptDiff, alternativesFor, nextDeckFor, suggestDiff, undoDiff } from './agents/planner'
 import { applyDiff, totalMinutes } from './logic/deckDiff'
-import { addAlias } from './logic/names'
+import { addAlias, aliasKey } from './logic/names'
+import { draftParentEmail } from './agents/parentEmail'
 import { redraftOutbox } from './agents/redraft'
 import { agentRunDetail, agentTaskRuns, agentsSummary, utteranceRuns } from './services/agents'
 import { localDate } from './logic/dates'
@@ -152,7 +153,11 @@ export function createApp(deps: Deps) {
     return c.json({ coverage })
   })
 
-  app.get('/v1/utterances/:id/runs', async c => c.json(await utteranceRuns(db, c.req.param('id'))))
+  app.get('/v1/utterances/:id/runs', async c => {
+    const [u] = await db.select({ id: utterances.id }).from(utterances).where(eq(utterances.id, c.req.param('id')))
+    if (!u) throw new HTTPException(404, { message: 'utterance not found' })
+    return c.json(await utteranceRuns(db, u.id))
+  })
 
   app.post('/v1/notes/:id/assign', async c => {
     const { studentId } = await json(c.req.raw, z.object({ studentId: z.string().min(1) }))
@@ -168,6 +173,11 @@ export function createApp(deps: Deps) {
     }
     await db.update(notes).set({ studentId }).where(eq(notes.id, n.id))
     if (n.heard) await learnAlias(studentId, n.heard)
+    // An urgent note that was waiting for a student now drafts its urgent note home.
+    if (n.urgent && !n.studentId) {
+      deps.defer(draftParentEmail(deps, { studentId, sessionId: n.sessionId, utteranceId: n.utteranceId, trigger: { kind: 'urgent', content: n.text } })
+        .catch(e => console.error('[defer:parent_email]', e)))
+    }
     if (!n.sessionId) return c.json({ coverage: null, nextStudent: null })
     await markPresent(db, n.sessionId, studentId, 'backstop')
     const ctx = await loadSessionContext(db, n.sessionId, null)
@@ -271,7 +281,7 @@ export function createApp(deps: Deps) {
   app.get('/v1/students/:id', async c => c.json(await guard(getStudentDetail(deps, c.req.param('id')))))
   app.patch('/v1/students/:id', async c => {
     const { aliases } = await json(c.req.raw, StudentPatch)
-    const uniq = aliases.filter((a, i) => aliases.findIndex(b => b.toLowerCase() === a.toLowerCase()) === i).slice(0, MAX_ALIASES)
+    const uniq = aliases.filter((a, i) => aliases.findIndex(b => aliasKey(b) === aliasKey(a)) === i).slice(0, MAX_ALIASES)
     const [row] = await db.update(students).set({ aliases: uniq }).where(eq(students.id, c.req.param('id'))).returning({ id: students.id, aliases: students.aliases })
     if (!row) throw new HTTPException(404, { message: 'student not found' })
     return c.json(row)

@@ -83,7 +83,18 @@ export type DeckDiff = z.infer<typeof DeckDiff>
 export const StudentRef = z.object({ id: z.string(), name: z.string() })
 export type StudentRef = z.infer<typeof StudentRef>
 
-export const Alias = z.string().trim().min(1).max(40)
+// A learned STT spelling must look like a name: 1-3 words of letters, hyphens or apostrophes, each ≥2 chars,
+// and not a pronoun, descriptor or group word ("he", "the new kid", "everyone").
+const NAME_LIKE = /^[A-Za-z'\u2019-]{2,}(?: [A-Za-z'\u2019-]{2,}){0,2}$/
+const ALIAS_STOP = new Set(['he', 'she', 'him', 'her', 'his', 'hers', 'they', 'them', 'their', 'it', 'kid', 'kids', 'boy', 'girl', 'guy', 'everyone', 'everybody', 'all', 'twins', 'someone', 'somebody', 'you', 'me', 'we', 'us'])
+export function isNameLike(s: string): boolean {
+  const t = s.trim().replace(/\s+/g, ' ')
+  if (!NAME_LIKE.test(t)) return false
+  const lower = t.toLowerCase()
+  if (lower.startsWith('the ')) return false
+  return !lower.split(' ').some(w => ALIAS_STOP.has(w.replace(/['\u2019]s$/, '')))
+}
+export const Alias = z.string().trim().min(2).max(40).refine(isNameLike, 'not a name')
 export const MAX_ALIASES = 10
 export const RosterStudent = StudentRef.extend({ nickname: z.string().nullable(), belt: z.string(), aliases: z.array(z.string()).optional() })
 export type RosterStudent = z.infer<typeof RosterStudent>

@@ -1,4 +1,4 @@
-import type { RosterStudent, StudentRef } from '@matside/shared'
+import { isNameLike, type RosterStudent, type StudentRef } from '@matside/shared'
 
 export const AUTO_MATCH = 0.88
 export const AMBIGUOUS = 0.75
@@ -57,11 +57,15 @@ export function resolveName(heard: string, roster: RosterStudent[]): NameMatch {
  * Learn a heard spelling as an alias: deduped (case/punctuation-insensitive), skipped when it already
  * equals the name, first name or nickname, keeping the most recent `max`.
  */
+/** Dedupe key for aliases: "Pree-ya", "Preeya" and "preeya's" collapse. */
+export const aliasKey = (s: string) => norm(s).replace(/[^a-z]/g, '')
+
 export function addAlias(s: { name: string; nickname: string | null; aliases: string[] }, heard: string | null, max = 10): string[] {
-  const h = heard?.trim() ?? ''
-  const key = norm(h)
+  const h = heard?.trim().replace(/\s+/g, ' ') ?? ''
+  if (!isNameLike(h)) return s.aliases
+  const key = aliasKey(h)
   if (!key) return s.aliases
-  const known = [s.name, s.name.split(' ')[0] ?? '', s.nickname ?? ''].map(norm)
-  if (known.includes(key) || s.aliases.some(a => norm(a) === key)) return s.aliases
+  const known = [s.name, s.name.split(' ')[0] ?? '', s.nickname ?? ''].map(aliasKey)
+  if (known.includes(key) || s.aliases.some(a => aliasKey(a) === key)) return s.aliases
   return [...s.aliases, h.slice(0, 40)].slice(-max)
 }

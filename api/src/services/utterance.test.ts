@@ -52,11 +52,12 @@ describe('handleUtterance', () => {
     expect(await w.db.select().from(outbox)).toHaveLength(0)
     // every run, including the deferred planner, is linked to the utterance
     const runs = await w.db.select().from(agentRuns).where(eq(agentRuns.utteranceId, r.utteranceId))
-    expect(runs.map(x => x.agent).sort()).toEqual(['planner', 'progress', 'router'])
+    expect(runs.map(x => x.agent).sort()).toEqual(['planner', 'planner', 'progress', 'router']) // next deck draft + diff
     const progress = runs.find(x => x.agent === 'progress')!
     expect(progress.links).toMatchObject({ studentId: w.ss[0]!.id })
     expect(progress.links?.noteId).toBeTruthy()
-    expect(runs.find(x => x.agent === 'planner')!.links?.diffId).toBeTruthy()
+    expect(runs.find(x => x.agent === 'planner' && x.trigger === 'suggest')!.links?.diffId).toBeTruthy()
+    expect(runs.some(x => x.agent === 'planner' && x.trigger === 'draft')).toBe(true)
   })
 
   it('an urgent note drafts a parent email right away, bypassing the cooldown', async () => {

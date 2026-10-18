@@ -9,6 +9,7 @@ export type CardAction =
   | { kind: 'plan_request' }
   | { kind: 'add_drill'; name: string; minutes: number }
   | { kind: 'unassigned' }
+  | { kind: 'urgent_unassigned' }
   | { kind: 'saved_unsorted' }
   | { kind: 'rollcall_unclear'; names: string[] }
 
@@ -32,13 +33,18 @@ function linesFor(a: CardAction): string[] {
     case 'plan_request': return ['✓ Planner: next deck suggestion queued']
     case 'add_drill': return [`✓ Added: ${a.name} · ${a.minutes}m`]
     case 'unassigned': return ['● Saved · pick student in Review']
+    case 'urgent_unassigned': return ['⚠ urgent · pick student']
     case 'saved_unsorted': return ['● Saved · sorting failed, see Review']
     case 'rollcall_unclear': return [`Didn't catch: ${a.names.join(', ')}`, 'Say it again or use phone roster']
   }
 }
 
+const isUrgent = (a: CardAction) => a.kind === 'urgent_unassigned' || (a.kind === 'feedback' && Boolean(a.urgent))
+
 export function buildCardLines(actions: CardAction[]): string[] {
-  const groups = actions.map(linesFor)
+  // Urgent groups go first so the "+N more" overflow can never cut them.
+  const ordered = [...actions.filter(isUrgent), ...actions.filter(a => !isUrgent(a))]
+  const groups = ordered.map(linesFor)
   const total = groups.reduce((n, g) => n + g.length, 0)
   if (total <= MAX_LINES) return groups.flat().map(clip)
   // Over budget: keep whole groups while leaving the last line for "+N more".
