@@ -13,7 +13,7 @@ type RunRow = typeof agentRuns.$inferSelect
 // Each topic tile is fed by the agent names its runs are logged under (the agent name equals the task).
 const TASK_AGENTS: Record<AgentTask, string[]> = {
   progress: ['progress'], parent_email: ['parent_email'], report_card: ['report_card'],
-  billing: ['billing'], planner: ['planner'], attendance: ['attendance'],
+  billing: ['billing'], planner: ['planner'], attendance: ['attendance'], insights: ['insights'],
 }
 const taskOf = (agent: string): AgentTask | null =>
   (AgentTask.options.find(t => TASK_AGENTS[t].includes(agent)) ?? null)
@@ -70,6 +70,7 @@ async function pendingCounts(db: Db): Promise<Record<AgentTask, { pending: numbe
     billing: { pending: n(bi), urgent: n(biU) },
     planner: { pending: n(pl), urgent: 0 },
     attendance: { pending: 0, urgent: 0 },
+    insights: { pending: 0, urgent: 0 }, // placeholder until the insights API counts new items
   }
 }
 

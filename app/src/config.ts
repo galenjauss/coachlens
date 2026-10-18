@@ -31,3 +31,9 @@ export const QUEUED_GLYPH: string = '⟳'
 export const PLAN_CHUNK_MS: number = 20_000
 /** Planning listen: hard cap on one recording; it stops and applies on its own after this long. */
 export const PLAN_MAX_MS: number = 180_000
+/** Lens glyph for agent insights (banner, `💡1` suffix). Verify on G2 hardware; swap to '✦' if emoji don't render. */
+export const INSIGHT_GLYPH: string = '💡'
+/** In-session insight poll: GET /v1/insights?scope=class&sessionId=… this often while class runs. */
+export const INSIGHT_POLL_MS: number = 30_000
+/** A new high-urgency insight shows atop peek this long, then collapses to the status-row suffix. */
+export const INSIGHT_BANNER_MS: number = 8_000

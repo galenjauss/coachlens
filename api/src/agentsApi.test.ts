@@ -143,7 +143,7 @@ describe('agents v2 http', () => {
     await db.update(agentRuns).set({ createdAt: deps.now() }) // rows are stamped by the db clock; the test clock is fixed
 
     const summary = AgentsSummary.parse(await (await app.request('/v1/agents/summary', { headers: h })).json())
-    expect(summary.map(t => t.task)).toEqual(['progress', 'parent_email', 'report_card', 'billing', 'planner', 'attendance'])
+    expect(summary.map(t => t.task)).toEqual(['progress', 'parent_email', 'report_card', 'billing', 'planner', 'attendance', 'insights'])
     const tile = (t: string) => summary.find(x => x.task === t)!
     expect(tile('parent_email')).toMatchObject({ label: 'Parent emails', counts: { today: 1, pending: 1, urgent: 1 }, color: 'red' })
     expect(tile('billing')).toMatchObject({ counts: { today: 1, pending: 1, urgent: 1 }, color: 'red' })

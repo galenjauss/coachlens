@@ -1,7 +1,7 @@
 import {
   Alternatives, AgentRunDetail, AgentRunView, AgentsSummary, AgentTaskRun, RedraftResponse, type AgentTask, Coverage, Deck, ModeId, NextStudent, ReviewItem, RosterStudent, StartSessionResponse, StudentDetail, StudentMetric,
   SuggestResponse, Today, TranscribeResponse, VoicePlanResponse, type ReplaceSource, UtteranceResponse, WrapUp, type DeckPatch,
-  SettingsResponse, type SettingsPatch,
+  SettingsResponse, type SettingsPatch, InsightsResponse, InsightAcceptResponse,
   ExtractResponse, OnboardingCommitResponse, OnboardingStatus, type ExtractRequest, type OnboardingCommit,
 } from '@matside/shared'
 import { z } from 'zod'
@@ -145,6 +145,15 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
     deleteMetric: (id: string) => req(`/v1/metrics/${id}`, { method: 'DELETE' }, ok),
     settings: () => req('/v1/settings', {}, SettingsResponse),
     patchSettings: (patch: SettingsPatch) => req('/v1/settings', { method: 'PATCH', json: patch }, SettingsResponse),
+    /** Opportunistic insights. Throws ApiError(404) while the insights API is not deployed: callers show nothing. */
+    insights: (params: { scope: 'all' | 'class'; classId?: string; sessionId?: string }) => {
+      const q = new URLSearchParams({ scope: params.scope })
+      if (params.classId) q.set('classId', params.classId)
+      if (params.sessionId) q.set('sessionId', params.sessionId)
+      return req(`/v1/insights?${q.toString()}`, {}, InsightsResponse)
+    },
+    acceptInsight: (id: string) => post(`/v1/insights/${encodeURIComponent(id)}/accept`, {}, InsightAcceptResponse),
+    dismissInsight: (id: string) => post(`/v1/insights/${encodeURIComponent(id)}/dismiss`, {}, ok),
     runReportCards: (studentIds?: string[]) => post('/v1/report-cards/run', { studentIds }, z.object({ started: z.number() })),
     onboardingStatus: () => req('/v1/onboarding/status', {}, OnboardingStatus),
     onboardingExtract: (body: ExtractRequest) => post('/v1/onboarding/extract', body, ExtractResponse),

@@ -16,7 +16,7 @@ const s: LensState = {
   session: { id: 's', startedAt: 0 }, active: { drillId: 'd1', startedAt: 0 },
   coverage: { covered: 3, present: 12 }, nextStudent: { id: 'p', name: 'Priya', reason: 'guard' },
 }
-const ALL: Screen[] = ['firstRun', 'home', 'attendance', 'attendanceDone', 'dark', 'peek', 'deck', 'drillDetail', 'recording', 'sending', 'card', 'disambiguation', 'confirmEnd', 'wrapup', 'lobby', 'planning', 'planApplying', 'planResult']
+const ALL: Screen[] = ['firstRun', 'home', 'attendance', 'attendanceDone', 'dark', 'peek', 'deck', 'drillDetail', 'recording', 'sending', 'card', 'disambiguation', 'confirmEnd', 'wrapup', 'lobby', 'planning', 'planApplying', 'planResult', 'insight']
 
 describe('minutesLeft', () => {
   it('whole minutes left, <1m, and minutes over', () => {
@@ -159,8 +159,7 @@ describe('render', () => {
     const wrap2 = { sessionId: 's', minutes: 45, drillsRun: 5, coverage: { covered: 4, present: 12 }, agentActions: 4, pendingReview: 2,
       missed: ['Alexander', 'Benjamin', 'Charlotte', 'Dominique', 'Evangeline', 'Francesca', 'Gabriella'].map((name, i) => ({ id: `${i}`, name })) }
     const body = render({ ...s, screen: 'wrapup', wrapup: wrap2 }, 0).texts.find(t => t.name === 'body')!.content
-    expect(body.split('\n')[0]).toBe('Missed: Alexander, Benjamin,')
-    expect(body.split('\n')[1]).toMatch(/^Charlotte, .*…$/) // two lines max, cut between names
+    expect(body.split('\n')[1]).toBe('Missed: Alexander, Benjamin +5') // one row, cut between names
     const att = render({ ...s, screen: 'attendanceDone', attendanceLines: ['11 present', 'absent: Jake Thompson, Mia Rodriguez-Lopez'] }, 0)
     expect(att.texts.find(t => t.name === 'body')?.content.replace(/\n/g, ' ')).toContain('absent: Jake Thompson, Mia Rodriguez-Lopez')
   })
@@ -221,9 +220,9 @@ describe('render', () => {
     const w = { sessionId: 's', minutes: 45, drillsRun: 5, coverage: { covered: 9, present: 12 }, agentActions: 4, pendingReview: 2,
       missed: ['Jake', 'Leo', 'Mia'].map((name, i) => ({ id: `${i}`, name })) }
     const p = render({ ...s, screen: 'wrapup', wrapup: w }, 0)
-    expect(p.texts.find(t => t.name === 'body')?.content.split('\n')[0]).toBe('Missed: Jake, Leo, Mia')
-    expect(p.texts.find(t => t.name === 'foot')?.content).toBe('Tap = coach them first next class\n2x = done')
-    expect(render({ ...s, screen: 'wrapup', wrapup: { ...w, missed: [] } }, 0).texts.find(t => t.name === 'foot')?.content).toBe('Tap = done')
+    expect(p.texts.find(t => t.name === 'body')?.content.split('\n')[1]).toBe('Missed: Jake, Leo, Mia')
+    expect(p.texts.find(t => t.name === 'foot')?.content).toBe('tap: put Jake, Leo first next class\n2×: done')
+    expect(render({ ...s, screen: 'wrapup', wrapup: { ...w, missed: [] } }, 0).texts.find(t => t.name === 'foot')?.content).toBe('tap: done')
   })
   it('deck uses a capturing list with ≤64-char items and the planUnit header', () => {
     const p = render({ ...s, screen: 'deck' }, 0)

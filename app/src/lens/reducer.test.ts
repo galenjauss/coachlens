@@ -511,7 +511,7 @@ describe('late outcomes never take over an open capture', () => {
     it('home tap enters the lobby (no session yet); home swipe still cycles classes; home 2× still exits', () => {
       const r = run(home(), { type: 'tap' })
       expect(r.state.screen).toBe('lobby')
-      expect(r.effects).toEqual([])
+      expect(r.effects).toEqual([{ type: 'loadInsights', classId: 'c1' }]) // the lobby's insight slot
       expect(run(home(), { type: 'doubleTap' }).effects).toEqual([{ type: 'exit' }])
     })
 

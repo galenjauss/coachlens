@@ -90,3 +90,16 @@ export function paginate(lines: string[], size: number): string[][] {
 export function transcriptPages(transcript: string): string[][] {
   return paginate(wrap(transcript ? `"${transcript}"` : '(no transcript)', SAID_COLS), SAID_LINES)
 }
+
+/**
+ * Names joined with ", " within `room` chars. `more` (default): names that don't fit become "+N", and
+ * "N kids" when even one doesn't. Without it, the names that don't fit are simply left out (the
+ * list is shown in full elsewhere); "N kids" when even the first doesn't fit.
+ */
+export function fitNames(names: readonly string[], room: number, more = true): string {
+  for (let k = names.length; k >= 1; k--) {
+    const shown = `${names.slice(0, k).join(', ')}${k < names.length && more ? ` +${names.length - k}` : ''}`
+    if (shown.length <= room) return shown
+  }
+  return `${names.length} ${names.length === 1 ? 'kid' : 'kids'}`
+}

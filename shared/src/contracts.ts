@@ -288,11 +288,11 @@ export const StudentPatch = z.object({
 export type StudentPatch = z.infer<typeof StudentPatch>
 
 // ---- Agents UI: topic tiles -> color-coded runs -> run detail ----
-export const AgentTask = z.enum(['progress', 'parent_email', 'report_card', 'billing', 'planner', 'attendance'])
+export const AgentTask = z.enum(['progress', 'parent_email', 'report_card', 'billing', 'planner', 'attendance', 'insights'])
 export type AgentTask = z.infer<typeof AgentTask>
 export const AGENT_TASK_LABELS: Record<AgentTask, string> = {
   progress: 'Progress notes', parent_email: 'Parent emails', report_card: 'Report cards',
-  billing: 'Billing flags', planner: 'Planner', attendance: 'Attendance',
+  billing: 'Billing flags', planner: 'Planner', attendance: 'Attendance', insights: 'Insights',
 }
 /** red = urgent and unhandled (or failed); amber = waiting for review; green = done. */
 export const AgentColor = z.enum(['red', 'amber', 'green'])
@@ -344,7 +344,7 @@ export const RedraftResponse = z.object({ id: z.string(), kind: z.enum(['parent_
 export type RedraftResponse = z.infer<typeof RedraftResponse>
 
 // ---- Agent autonomy + custom vocabulary (Settings) ----
-/** Agents with an autonomy setting. 'insights' has no Agents tile yet (its agent lands in a later task). */
+/** Agents with an autonomy setting (every Agents tile has one). */
 export const AutonomyTask = z.enum(['progress', 'parent_email', 'report_card', 'billing', 'planner', 'attendance', 'insights'])
 export type AutonomyTask = z.infer<typeof AutonomyTask>
 export const Autonomy = z.enum(['auto', 'review', 'off'])
@@ -371,3 +371,52 @@ export const SettingsResponse = z.object({
   vocabulary: z.array(z.string()),
 })
 export type SettingsResponse = z.infer<typeof SettingsResponse>
+
+// ---- Opportunistic insights (agents notice things and suggest or act) ----
+export const InsightKind = z.enum(['attendance_decline', 'returning_student', 'no_feedback', 'ready_to_test', 'new_pr', 'grade_drop', 'issue_resolved', 'billing_repeat'])
+export type InsightKind = z.infer<typeof InsightKind>
+export const InsightStatus = z.enum(['new', 'accepted', 'dismissed', 'auto_done'])
+export type InsightStatus = z.infer<typeof InsightStatus>
+export const InsightUrgency = z.enum(['low', 'high'])
+export type InsightUrgency = z.infer<typeof InsightUrgency>
+export const INSIGHT_TITLE_MAX = 60
+export const INSIGHT_DETAIL_MAX = 160
+export const INSIGHT_LABEL_MAX = 20
+export const INSIGHT_OUTCOME_MAX = 60
+
+/** What accepting an insight does (stored on the row). `label` is the button text, null for no button. */
+const label = z.string().min(1).max(INSIGHT_LABEL_MAX)
+export const InsightAction = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('draft_email'), studentId: z.string(), purpose: z.string(), label }),
+  z.object({ type: z.literal('plan_focus'), classId: z.string(), studentId: z.string(), text: z.string(), label }),
+  // notify: also draft a positive note home once the issue is resolved.
+  z.object({ type: z.literal('resolve_issue'), issueId: z.string(), studentId: z.string(), notify: z.boolean(), label }),
+  z.object({ type: z.literal('none'), label: z.null() }),
+])
+export type InsightAction = z.infer<typeof InsightAction>
+
+/** One insight as the lens and phone see it. kind and status stay loose strings so a newer server never breaks a client. */
+export const Insight = z.object({
+  id: z.string(),
+  kind: z.string(),
+  studentId: z.string().nullable(),
+  studentName: z.string().nullable(),
+  classId: z.string().nullable(),
+  title: z.string().max(INSIGHT_TITLE_MAX),
+  detail: z.string().max(INSIGHT_DETAIL_MAX),
+  urgency: InsightUrgency,
+  status: z.string(),
+  createdAt: z.string(),
+  actionLabel: z.string().max(INSIGHT_LABEL_MAX).nullable(),
+})
+export type Insight = z.infer<typeof Insight>
+export const InsightsResponse = z.object({ insights: z.array(Insight) })
+export type InsightsResponse = z.infer<typeof InsightsResponse>
+export const InsightAcceptResponse = z.object({ ok: z.literal(true), outcome: z.string().max(INSIGHT_OUTCOME_MAX) })
+export type InsightAcceptResponse = z.infer<typeof InsightAcceptResponse>
+export const InsightsQuery = z.object({
+  scope: z.enum(['all', 'class']).default('all'),
+  classId: z.string().min(1).max(64).optional(),
+  sessionId: z.string().min(1).max(64).optional(),
+})
+export type InsightsQuery = z.input<typeof InsightsQuery>

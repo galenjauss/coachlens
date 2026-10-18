@@ -10,7 +10,7 @@ import { RUNS_MAX_MS, RUNS_POLL_MS } from './agentRuns'
 import { AudioInputSource } from '@evenrealities/even_hub_sdk'
 import { KEEP_WARM_MS, MIC_FALLBACK_MS, MIC_METER_MS, OUTBOX_RETRY_MS, startLens, STOP_DEBOUNCE_MS, TICK_MS, type LensBridge, type LensHandle } from './controller'
 import { NetworkError, TRANSCRIBE_TIMEOUT_MS } from '../core/api'
-import { PLAN_CHUNK_MS, PLAN_MAX_MS, QUEUED_GLYPH } from '../config'
+import { INSIGHT_BANNER_MS, INSIGHT_GLYPH, INSIGHT_POLL_MS, PLAN_CHUNK_MS, PLAN_MAX_MS, QUEUED_GLYPH } from '../config'
 import { PLAN_TRANSCRIBE_TIMEOUT_MS } from './planListen'
 import { STATUS_MS } from './reducer'
 
@@ -304,7 +304,7 @@ describe('lens controller', () => {
     await vi.advanceTimersByTimeAsync(STATUS_MS)
     b.emit(dbl); await flush()
     b.emit(tap); await flush() // end → succeeds
-    expect(b.sent.join('\n')).toContain('CLASS DONE · 40 min')
+    expect(b.sent.join('\n')).toContain('40 min · 2 drills · 0/12 got feedback')
     expect(b.raw.imuControl).not.toHaveBeenCalledWith(false)
   })
 
@@ -338,7 +338,7 @@ describe('lens controller', () => {
     b.emit(dbl); await flush()
     b.emit(tap); await flush()
     expect(b.sent.join('\n')).toContain('Missed: Jake, Leo, Mia')
-    expect(b.sent.join('\n')).toContain('Tap = coach them first next class\n2x = done')
+    expect(b.sent.join('\n')).toContain('tap: put Jake, Leo first next class\n2×: done')
     b.emit(tap); await flush()
     expect(remind).toHaveBeenCalledWith('s1', ['j', 'l', 'm'])
     expect(b.sent.join('\n')).toContain('ok · Jake, Leo, Mia first next class')
@@ -958,5 +958,97 @@ describe('lens controller', () => {
       b.emit(dbl); await flush()
       expect(b.sent.at(-1)).toContain('Plan change undone')
     })
+  })
+})
+
+describe('lens controller · insights', () => {
+  let lens: LensHandle | null = null
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-20T17:00:00Z')) })
+  afterEach(() => { lens?.stop(); lens = null; vi.useRealTimers(); vi.restoreAllMocks() })
+
+  const insight = (id: string, o: Record<string, unknown> = {}) => ({
+    id, kind: 'no_feedback', studentId: 'j', studentName: 'Jake', classId: 'c1', title: 'Jake: no feedback in 3 classes',
+    detail: 'Last note Oct 2', urgency: 'high', status: 'new', createdAt: '2026-10-20T17:00:10Z', actionLabel: null, ...o,
+  })
+  async function toPeek(api: Api) {
+    const kv = memoryKV()
+    await kv.set(KEYS.firstRunSeen, '1')
+    const b = fakeBridge()
+    lens = await startLens({ bridge: b.bridge, api, kv, outbox: new Outbox(kv), nod: NOD })
+    await flush()
+    b.emit(tap); await flush() // home → lobby (fetches the lobby insight)
+    b.emit(tap); await flush() // start class → roll call
+    b.emit(dbl); await flush() // skip roll call → peek
+    return b
+  }
+  const sessionCalls = (fn: ReturnType<typeof vi.fn>) => fn.mock.calls.filter(c => (c[0] as { sessionId?: string }).sessionId)
+
+  it('the lobby shows the class insight fetched on enter', async () => {
+    const insights = vi.fn(async () => ({ insights: [insight('l', { urgency: 'low', title: 'Mia is close to her next belt' })] }))
+    const kv = memoryKV(); await kv.set(KEYS.firstRunSeen, '1')
+    const b = fakeBridge()
+    lens = await startLens({ bridge: b.bridge, api: fakeApi({ insights }), kv, outbox: new Outbox(kv), nod: NOD })
+    await flush()
+    b.emit(tap); await flush()
+    expect(insights).toHaveBeenCalledWith({ scope: 'class', classId: 'c1' })
+    expect(b.sent.join('\n')).toContain(`${INSIGHT_GLYPH} Mia is close to her next belt`)
+  })
+
+  it('polls every INSIGHT_POLL_MS during class: a new high item banners for 8 s, then becomes the 💡1 suffix', async () => {
+    const insights = vi.fn(async (p: { sessionId?: string }) => ({ insights: p.sessionId ? [insight('a')] : [] }))
+    const b = await toPeek(fakeApi({ insights }))
+    expect(sessionCalls(insights)).toHaveLength(0)
+    await vi.advanceTimersByTimeAsync(INSIGHT_POLL_MS)
+    expect(sessionCalls(insights)).toEqual([[{ scope: 'class', classId: 'c1', sessionId: 's1' }]])
+    expect(b.sent.join('\n')).toContain(`upgrade:hdr=${INSIGHT_GLYPH} Jake: no feedback in 3 classes`)
+    const before = b.sent.length
+    await vi.advanceTimersByTimeAsync(INSIGHT_BANNER_MS)
+    const after = b.sent.slice(before).join('\n')
+    expect(after).toContain('upgrade:hdr=STANCES')
+    expect(after).toContain(`${INSIGHT_GLYPH}1`)
+    // The same item on the next poll changes nothing on the lens.
+    const n = b.sent.length
+    await vi.advanceTimersByTimeAsync(INSIGHT_POLL_MS)
+    expect(sessionCalls(insights)).toHaveLength(2)
+    expect(b.sent.slice(n).filter(x => x.includes('hdr=') || x.includes(INSIGHT_GLYPH))).toEqual([])
+  })
+
+  it('the poll stops when class ends; the wrap-up gets the top insight row', async () => {
+    const insights = vi.fn(async (p: { sessionId?: string }) => ({ insights: p.sessionId ? [] : [insight('w', { title: 'Leo hit a new PR' })] }))
+    const b = await toPeek(fakeApi({ insights }))
+    await vi.advanceTimersByTimeAsync(INSIGHT_POLL_MS)
+    expect(sessionCalls(insights)).toHaveLength(1)
+    b.emit(dbl); await flush() // confirm end
+    b.emit(tap); await flush() // end class → wrap-up
+    expect(b.sent.join('\n')).toContain(`${INSIGHT_GLYPH} Leo hit a new PR`)
+    expect(b.sent.join('\n')).toContain('Missed: nobody!')
+    await vi.advanceTimersByTimeAsync(INSIGHT_POLL_MS * 3)
+    expect(sessionCalls(insights)).toHaveLength(1)
+  })
+
+  it('pauses while the app is backgrounded and resumes on return', async () => {
+    const insights = vi.fn(async () => ({ insights: [] }))
+    const b = await toPeek(fakeApi({ insights }))
+    b.emit({ sysEvent: { eventType: OsEventTypeList.FOREGROUND_EXIT_EVENT } }); await flush()
+    await vi.advanceTimersByTimeAsync(INSIGHT_POLL_MS * 2)
+    expect(sessionCalls(insights)).toHaveLength(0)
+    b.emit({ sysEvent: { eventType: OsEventTypeList.FOREGROUND_ENTER_EVENT } }); await flush()
+    await vi.advanceTimersByTimeAsync(INSIGHT_POLL_MS)
+    expect(sessionCalls(insights)).toHaveLength(1)
+  })
+
+  it('a 404 (insights API not deployed) is silent: nothing on the lens, nothing logged, no more polls', async () => {
+    const warn = vi.spyOn(console, 'warn')
+    const error = vi.spyOn(console, 'error')
+    const insights = vi.fn(async () => { throw new ApiError(404, 'not_found') })
+    const b = await toPeek(fakeApi({ insights }))
+    await vi.advanceTimersByTimeAsync(INSIGHT_POLL_MS * 3)
+    expect(sessionCalls(insights)).toHaveLength(1)
+    expect(b.sent.join('\n')).not.toContain(INSIGHT_GLYPH)
+    const logged = [...warn.mock.calls, ...error.mock.calls].map(c => String(c[0]))
+    expect(logged.filter(l => l.includes('insight'))).toEqual([])
+    b.emit(dbl); await flush()
+    b.emit(tap); await flush()
+    expect(b.sent.join('\n')).toContain('Missed: nobody!') // the wrap-up still shows, without an insight row
   })
 })

@@ -1,9 +1,10 @@
-import { QUEUED_GLYPH } from '../config'
+import type { Insight } from '@matside/shared'
+import { INSIGHT_GLYPH, QUEUED_GLYPH } from '../config'
 import { progressLines } from './agentRuns'
-import { SAID_COLS, clip, clipWithSuffix, classHeader, colsFor, paginate, rowsFor, transcriptPages, wrap } from './text'
+import { SAID_COLS, SAID_LINES, clip, clipWithSuffix, classHeader, colsFor, fitNames, paginate, rowsFor, transcriptPages, wrap } from './text'
 
 export { clip, wrap } from './text'
-import type { LensState } from './state'
+import type { Card, LensState } from './state'
 
 export type TextSpec = { id: number; name: string; x: number; y: number; w: number; h: number; border: boolean; capture: boolean; content: string }
 export type ListSpec = { id: number; name: string; x: number; y: number; w: number; h: number; items: string[] }
@@ -52,11 +53,6 @@ const ITEM_COLS = Math.min(MAX_ITEM_CHARS, FULL - 2)
 /** The "hearing you" line and the thinking dots step this often (≤ 1 lens update per 500 ms). */
 export const MIC_TICK_MS = 500
 
-const dots = (covered: number, present: number) => {
-  const c = Math.min(covered, 14)
-  return '●'.repeat(c) + '○'.repeat(Math.max(0, Math.min(present, 14) - c))
-}
-
 /** Every body line wrapped to the box's char budget (blank lines kept). */
 const boxed = (body: string, cols = BOXC): string => body.split('\n').flatMap(l => (l ? wrap(l, cols) : [''])).join('\n')
 
@@ -81,12 +77,24 @@ export const SORTING_LINE = '… sorting'
 /** Compact status-row suffix while notes wait in the outbox: ` ⟳ 2 queued` ('' when none). */
 export const queuedSuffix = (n: number): string => (n > 0 ? ` ${QUEUED_GLYPH} ${n} queued` : '')
 
+/** Compact status-row suffix for insights surfaced but not seen yet: ` 💡1` ('' when none). */
+export const insightSuffix = (n: number): string => (n > 0 ? ` ${INSIGHT_GLYPH}${n}` : '')
+
+/** The insight banner's two rows: `💡 title`, then the detail cut at a word boundary. */
+export function insightRows(i: Pick<Insight, 'title' | 'detail'>, cols = FULL, detailRows = 1): string[] {
+  return [clip(`${INSIGHT_GLYPH} ${i.title}`, cols), ...wrap(i.detail, cols, detailRows)]
+}
+
 /**
  * Status-row lines with the queued suffix: appended to the last line when it fits, else on a spare
  * row when `rows` allows one, else the last line is cut at a word boundary to make room.
  */
 function withQueued(lines: string[], n: number, rows = 1, cols = FULL): string[] {
-  const suffix = queuedSuffix(n)
+  return withSuffix(lines, queuedSuffix(n), rows, cols)
+}
+
+/** `withQueued` for any suffix (queued count, insight count, or both). */
+function withSuffix(lines: string[], suffix: string, rows = 1, cols = FULL): string[] {
   if (!suffix) return lines
   const last = lines.at(-1)
   if (!last) return [...lines.slice(0, -1), suffix.trim()]
@@ -172,31 +180,51 @@ function peek(s: LensState, now: number): PageSpec {
   const short = s.nextStudent ? `> Next: ${s.nextStudent.name}` : c.nextLine
   const nextText = s.status ?? (fit.more ? 'swipe: full drill in the deck' : fit.nextRows === 2 ? c.nextLine : short)
   const td = s.today
+  // A new insight banner takes the header (💡 title) and the drill-name rows (detail) for INSIGHT_BANNER_MS:
+  // two container updates in, two out; the clock, box and status row keep running.
+  const b = s.insightBanner
+  const header = b ? clip(`${INSIGHT_GLYPH} ${b.title}`, FULL) : td ? classHeader(td.theme, td.className, td.modeLabel, FULL) : ''
+  const drill = b ? wrap(b.detail, NAME_COLS, 2).join('\n') : a ? wrap(a.drill.name, NAME_COLS, 2).join('\n') : 'No drill running'
+  const suffix = queuedSuffix(s.queued) + insightSuffix(s.insightUnseen.length)
   return { key: `peek${fit.nextRows}`, list: null, texts: [
-    t(1, 'hdr', 0, 0, W, 40, td ? classHeader(td.theme, td.className, td.modeLabel, FULL) : ''),
-    t(2, 'drill', 0, 44, PEEK.nameW, 72, a ? wrap(a.drill.name, NAME_COLS, 2).join('\n') : 'No drill running'),
+    t(1, 'hdr', 0, 0, W, 40, header),
+    t(2, 'drill', 0, 44, PEEK.nameW, 72, drill),
     t(3, 'timer', PEEK.sideX, 44, PEEK.sideW, 36, a ? clock(a.drill.minutes, a.startedAt, now) : ''),
     t(4, 'cov', PEEK.sideX, 80, PEEK.sideW, 36, c.cov),
     t(5, 'box', 0, PEEK.boxY, W, nextY - 4 - PEEK.boxY, box, { border: true, capture: true }),
-    t(6, 'next', 0, nextY, W, H - nextY, withQueued(wrap(nextText, FULL, fit.nextRows), s.queued, fit.nextRows).join('\n')),
+    t(6, 'next', 0, nextY, W, H - nextY, withSuffix(wrap(nextText, FULL, fit.nextRows), suffix, fit.nextRows).join('\n')),
   ] }
 }
 
+/** Card pages: the student brief first (when the reply has one), then the transcript pages. */
+export function cardPageCount(cd: Pick<Card, 'transcript' | 'brief'>): number {
+  return (cd.brief ? 1 : 0) + transcriptPages(cd.transcript).length
+}
+
+/** Bottom hint on the brief page: swipe goes on to what the coach said. */
+export const BRIEF_HINT = 'swipe: what you said'
+
 /**
  * Agent card: main result (header), the WHOLE transcript across the full width (5 lines per page,
- * swipe pages through longer ones), then ONE compact agent-progress line (wraps to 2) + hints.
+ * swipe pages through longer ones), then ONE compact agent-progress line (wraps to 2) + hints. A
+ * student brief (≤5 lines of ≤38 chars) takes page 1 in place of the agent progress.
  */
 function card(s: LensState, now: number): PageSpec {
   const c = context(s, now)
   const cd = s.card
   const pages = transcriptPages(cd?.transcript ?? '')
-  const page = Math.min(cd?.page ?? 0, pages.length - 1)
-  const pageTag = pages.length > 1 ? `${page + 1}/${pages.length} swipe · ` : ''
-  const progress = cd ? wrap((cd.provisional ? [SORTING_LINE] : progressLines(cd)).join(' · '), SAID_COLS, 2) : []
+  const brief = cd?.brief ?? null
+  const total = (brief ? 1 : 0) + pages.length
+  const page = Math.min(cd?.page ?? 0, total - 1)
+  const onBrief = Boolean(brief) && page === 0
+  const pageTag = total > 1 ? `${page + 1}/${total} swipe · ` : ''
+  const said = brief && onBrief ? brief.lines.flatMap(l => wrap(l, SAID_COLS)).slice(0, SAID_LINES) : pages[page - (brief ? 1 : 0)]!
+  const progress = onBrief ? [BRIEF_HINT] : cd ? wrap((cd.provisional ? [SORTING_LINE] : progressLines(cd)).join(' · '), SAID_COLS, 2) : []
   const bottom = [...progress, cd?.provisional ? 'tap: close' : 'tap: close · 2×: undo'].slice(0, 2)
+  const title = brief && onBrief ? brief.name : cd?.lines[0] ?? c.drillHeader
   return { key: 'card', list: null, texts: [
-    t(1, 'hdr', 0, 0, W, 40, clip(`${pageTag}${cd?.lines[0] ?? c.drillHeader}`, FULL)),
-    t(2, 'said', 0, 44, W, 164, pages[page]!.join('\n'), { border: true, capture: true }),
+    t(1, 'hdr', 0, 0, W, 40, clip(`${pageTag}${title}`, FULL)),
+    t(2, 'said', 0, 44, W, 164, said.join('\n'), { border: true, capture: true }),
     t(3, 'agents', 0, 212, W, 76, bottom.join('\n')),
   ] }
 }
@@ -243,17 +271,31 @@ function attendance(s: LensState): PageSpec {
     `Roll call · ${enrolled} enrolled\nSay "Everyone except …"\nor "Present: …"\nspeak, then tap`, s, '2×: skip · or check in on phone')
 }
 
-/** Wrap-up: who was missed, then the explicit choice — tap queues them first next class, 2x just finishes. */
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+const REMIND_HINT = { head: 'tap: put ', tail: ' first next class' }
+/** `tap: put Jake, Mia first next class`: names that don't fit the line are left out (row 2 lists them all). */
+export function remindHint(names: readonly string[]): string {
+  return `${REMIND_HINT.head}${fitNames(names, FULL - REMIND_HINT.head.length - REMIND_HINT.tail.length, false)}${REMIND_HINT.tail}`
+}
+
+/**
+ * End-of-class summary, ≤4 rows: time · drills · feedback; who was missed; agent actions; the top
+ * insight. Then the choice: tap puts the missed kids first next class, 2× just finishes.
+ */
 function wrapup(s: LensState): PageSpec {
   const w = s.wrapup
   if (!w) return panel('CLASS DONE', 'Wrapping up…', '2×: back')
-  const missed = w.missed.length ? `Missed: ${w.missed.map(m => m.name).join(', ')}` : 'Missed: nobody!'
-  const body = [...wrap(missed, BOXC, 2), `Feedback ${w.coverage.covered}/${w.coverage.present} ${dots(w.coverage.covered, w.coverage.present)}`,
-    `${w.agentActions} agent actions · ${w.pendingReview} to review`]
+  const names = w.missed.map(m => m.name)
+  const rows = [
+    `${w.minutes} min · ${plural(w.drillsRun, 'drill')} · ${w.coverage.covered}/${w.coverage.present} got feedback`,
+    names.length ? `Missed: ${fitNames(names, BOXC - 'Missed: '.length)}` : 'Missed: nobody!',
+    `${plural(w.agentActions, 'agent action')} · ${w.pendingReview} to review`,
+    ...(s.wrapupInsight ? [`${INSIGHT_GLYPH} ${s.wrapupInsight.title}`] : []),
+  ].map(r => clip(r, BOXC))
   return { key: 'wrapup', list: null, texts: [
-    t(1, 'hdr', 0, 0, W, 40, clip(`CLASS DONE · ${w.minutes} min · ${w.drillsRun} drills`, FULL)),
-    t(2, 'body', 0, 44, W, 152, boxed(body.join('\n')), { border: true, capture: true }),
-    t(3, 'foot', 0, 200, W, 84, w.missed.length ? 'Tap = coach them first next class\n2x = done' : 'Tap = done'),
+    t(1, 'hdr', 0, 0, W, 40, 'CLASS DONE'),
+    t(2, 'body', 0, 44, W, 152, rows.join('\n'), { border: true, capture: true }),
+    t(3, 'foot', 0, 200, W, 84, names.length ? `${remindHint(names)}\n2×: done` : 'tap: done'),
   ] }
 }
 
@@ -265,7 +307,10 @@ export const LOBBY_HINT = 'tap start · 2× plan · swipe back'
 /** Plan items listed in the lobby. */
 const LOBBY_ITEMS = 3
 
-/** Lobby: class · start time · plan length, the first plan items, the insight slot (Task 32), the hint. */
+/**
+ * Lobby: class · start time · plan length, the first plan items, the hint. With an insight, the body
+ * gives up a row so the two-row banner (`💡 title`, detail) fits above the hint (its own layout key).
+ */
 function lobby(s: LensState): PageSpec {
   const td = s.today
   const drills = td?.deck.drills ?? []
@@ -275,13 +320,26 @@ function lobby(s: LensState): PageSpec {
   const more = drills.length > LOBBY_ITEMS ? [`+${drills.length - LOBBY_ITEMS} more`] : []
   const action = s.starting ? 'Starting class…' : s.loadError ? clip(`${s.loadError} · tap to retry`, BOXC) : null
   const body = [...(items.length ? [...items, ...more] : ['No plan yet · 2× to plan by voice']), ...(action ? [action] : [])]
-  return { key: 'lobby', list: null, texts: [
+  const foot = t(4, 'foot', 0, 248, W, 40, clip(s.status ?? LOBBY_HINT, FULL))
+  const i = s.lobbyInsight
+  if (!i) {
+    return { key: 'lobby', list: null, texts: [
+      t(1, 'hdr', 0, 0, W, 40, header),
+      t(2, 'body', 0, 44, W, 160, body.join('\n'), { border: true, capture: true }),
+      t(3, 'insight', 0, 208, W, 36, ''),
+      foot,
+    ] }
+  }
+  // 4 body rows: the items, then the start/error line in place of "+N more" when there is one.
+  const short = [...body.slice(0, LOBBY_ITEMS), ...(action ? [action] : more)].slice(0, LOBBY_BODY_ROWS_I)
+  return { key: 'lobbyI', list: null, texts: [
     t(1, 'hdr', 0, 0, W, 40, header),
-    t(2, 'body', 0, 44, W, 160, body.join('\n'), { border: true, capture: true }),
-    t(3, 'insight', 0, 208, W, 36, s.lobbyInsight ? clip(s.lobbyInsight, FULL) : ''),
-    t(4, 'foot', 0, 248, W, 40, clip(s.status ?? LOBBY_HINT, FULL)),
+    t(2, 'body', 0, 44, W, 128, short.join('\n'), { border: true, capture: true }),
+    t(3, 'insight', 0, 176, W, 68, insightRows(i).join('\n')),
+    foot,
   ] }
 }
+const LOBBY_BODY_ROWS_I = rowsFor(128, true)
 
 /** How much of the planning transcript the lens shows: its last ~60 chars, starting on a whole word. */
 export const PLAN_HEARD_CHARS = 60
@@ -338,8 +396,21 @@ function drillDetail(s: LensState): PageSpec {
   return panel(`${i + 1}/${list.length} · ${d.minutes}m${kids}${running}`, pages[page]!.join('\n'), `tap: start · 2×: back${more}`)
 }
 
+/** Insight detail: the title and detail wrapped (never cut mid-word); the action happens on the phone. */
+function insightDetail(s: LensState): PageSpec {
+  const i = s.insightDetail
+  if (!i) return panel(`${INSIGHT_GLYPH} INSIGHT`, 'Nothing new', 'tap: back')
+  const who = i.studentName ? ` · ${i.studentName}` : ''
+  const act = i.actionLabel ? ` · ${i.actionLabel} on phone` : ''
+  const body = [...wrap(i.title, BOXC, 2), ...wrap(i.detail, BOXC, DETAIL_ROWS - Math.min(2, wrap(i.title, BOXC).length))]
+  return panel(clipWithSuffix(`${INSIGHT_GLYPH} INSIGHT${who}`, act.length < FULL - 12 ? act : '', FULL), body.join('\n'), INSIGHT_HINT)
+}
+/** Insight detail footer. */
+export const INSIGHT_HINT = 'tap: got it · swipe: deck · 2×: back'
+
 export function render(s: LensState, now: number): PageSpec {
   switch (s.screen) {
+    case 'insight': return insightDetail(s)
     case 'dark': return DARK
     case 'peek': return peek(s, now)
     case 'home': return home(s)

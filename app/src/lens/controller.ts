@@ -1,5 +1,5 @@
 import { ImuReportPace, OsEventTypeList, type EvenAppBridge } from '@evenrealities/even_hub_sdk'
-import { MIC_DUAL_START } from '../config'
+import { INSIGHT_POLL_MS, MIC_DUAL_START } from '../config'
 import { ApiError, NetworkError, TRANSCRIBE_TIMEOUT_MS, type Api } from '../core/api'
 import { MAX_RECORD_MS, Recorder, type MicSource, type StopResult } from '../core/audio'
 import { bus } from '../core/bus'
@@ -15,6 +15,7 @@ import { createPlanListen } from './planListen'
 import { initialState, reduce } from './reducer'
 import { MIC_TICK_MS, render } from './render'
 import type { Effect, LensEvent, LensState } from './state'
+import type { Insight } from '@matside/shared'
 
 /**
  * While `peek` or `recording` is visible, re-render this often. Only changed containers are sent:
@@ -82,7 +83,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
   const glasses = new Glasses(d.bridge)
   const recorder = new Recorder(d.bridge, { dual: d.micDualStart ?? MIC_DUAL_START })
   const detector = new NodDetector(d.nod)
-  const timers = { status: slot(), timerEnded: slot(), recordMax: slot(), micFallback: slot(), micMeter: slot(), think: slot(), keepWarm: slot(), outboxRetry: slot() }
+  const timers = { status: slot(), timerEnded: slot(), recordMax: slot(), micFallback: slot(), micMeter: slot(), think: slot(), keepWarm: slot(), outboxRetry: slot(), insightPoll: slot(), banner: slot() }
   const online = () => (d.isOnline ? d.isOnline() : !(typeof navigator !== 'undefined' && navigator.onLine === false))
   /** Flushes reporting on the note just recorded; background retries wait so they never take its reply. */
   let inFlight = 0
@@ -94,6 +95,8 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
   let exited = false
   let todaySeq = 0 // only the latest today request may land (swiping classes fires several)
   let runsPoll: { utteranceId: string; stop(): void } | null = null
+  /** The insights API answered 404 (not deployed): no more in-class polls this session. */
+  let insightsMissingFor: string | null = null
 
   const plan = createPlanListen({ recorder, api: d.api, dispatch: e => dispatch(e), screen: () => state.screen, errText })
 
@@ -115,7 +118,36 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     if (state.active?.drillId !== prev.active?.drillId || state.active?.startedAt !== prev.active?.startedAt) armDrillTimer()
     else if (e.type === 'todayLoaded' && state.active && minutes(state) !== minutes(prev)) armDrillTimer()
     if (state.screen === 'sending' && prev.screen !== 'sending') thinkTicks()
-    if (Boolean(state.session) !== Boolean(prev.session)) keepWarm()
+    if (Boolean(state.session) !== Boolean(prev.session)) { keepWarm(); insightPoll() }
+    else if (state.screen === 'wrapup' && prev.screen !== 'wrapup') insightPoll() // class ended: the poll stops
+  }
+
+  /**
+   * Insights for one scope; null when there is nothing to show: the API is not deployed yet (404, silent),
+   * or the request failed (logged, the lens stays quiet either way).
+   */
+  async function fetchInsights(params: Parameters<Api['insights']>[0]): Promise<Insight[] | null> {
+    if (typeof d.api.insights !== 'function') return null
+    try { return (await d.api.insights(params)).insights } catch (err) {
+      if (err instanceof ApiError && err.status === 404) { if (params.sessionId) insightsMissingFor = params.sessionId; return null }
+      console.warn('[insights] unavailable', errText(err))
+      return null
+    }
+  }
+
+  /** While class runs (and the app is in front), poll this session's high-urgency insights every INSIGHT_POLL_MS. */
+  function insightPoll(): void {
+    const sessionId = state.session?.id
+    const over = state.screen === 'wrapup' // ended on the server; the session clears when the coach leaves the wrap-up
+    if (!sessionId || over || suspended || exited || insightsMissingFor === sessionId) return timers.insightPoll.clear()
+    if (timers.insightPoll.active) return
+    timers.insightPoll.set(INSIGHT_POLL_MS, () => { void pollInsightsOnce(sessionId) })
+  }
+  async function pollInsightsOnce(sessionId: string): Promise<void> {
+    if (state.session?.id !== sessionId || state.screen === 'wrapup' || suspended || exited) return
+    const insights = await fetchInsights({ scope: 'class', classId: state.today?.classId, sessionId })
+    if (insights && state.session?.id === sessionId) dispatch({ type: 'insightsLoaded', scope: 'session', insights })
+    insightPoll()
   }
 
   /** Ping /health every KEEP_WARM_MS while a session is active and the app is in front; else stop. */
@@ -387,13 +419,24 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
         if (r.coverage) dispatch({ type: 'coverageUpdated', coverage: r.coverage, nextStudent: state.nextStudent })
         return
       }
-      case 'endSession':
+      case 'endSession': {
+        const classId = state.today?.classId
         try {
           const w = await d.api.endSession(eff.sessionId)
           bus.emit('sessionChanged', null)
           dispatch({ type: 'wrapupLoaded', wrapup: w })
-        } catch (e) { dispatch({ type: 'actionFailed', message: errText(e) }) }
+        } catch (e) { return dispatch({ type: 'actionFailed', message: errText(e) }) }
+        // The wrap-up's top insight row (this session's first): it fills in when it lands, or never (404).
+        const insights = classId ? await fetchInsights({ scope: 'class', classId }) : null
+        if (insights) dispatch({ type: 'insightsLoaded', scope: 'wrapup', insights })
         return
+      }
+      case 'loadInsights': {
+        const insights = await fetchInsights({ scope: 'class', classId: eff.classId })
+        if (insights) dispatch({ type: 'insightsLoaded', scope: 'lobby', insights, classId: eff.classId })
+        return
+      }
+      case 'expireBanner': return timers.banner.set(eff.ms, () => dispatch({ type: 'bannerExpired' }))
       case 'remind':
         try {
           await d.api.remind(eff.sessionId, eff.studentIds)
@@ -421,7 +464,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
         return
       case 'exit':
         exited = true
-        timers.keepWarm.clear(); timers.outboxRetry.clear()
+        timers.keepWarm.clear(); timers.outboxRetry.clear(); timers.insightPoll.clear()
         await setImu(false)
         await d.bridge.shutDownPageContainer(1)
         return
@@ -447,6 +490,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
       }
       timers.keepWarm.clear()
       timers.outboxRetry.clear()
+      timers.insightPoll.clear()
       return
     }
     const le = toLensEvent(e)
@@ -458,6 +502,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
       if (!exited) void setImu(true, true)
       suspended = false
       keepWarm()
+      insightPoll()
       void d.outbox.count().then(armRetry, err => console.warn('[outbox] count failed', err))
       if (recorder.recording) void recorder.rearm().catch(err => console.warn('[mic] re-arm failed', err))
     }

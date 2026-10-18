@@ -1,8 +1,8 @@
-import type { Coverage, Disambiguation, NextStudent, StartSessionResponse, Today, UtteranceResponse, VoicePlanResponse, WrapUp } from '@matside/shared'
+import type { Brief, Coverage, Disambiguation, Insight, NextStudent, StartSessionResponse, Today, UtteranceResponse, VoicePlanResponse, WrapUp } from '@matside/shared'
 import type { UtteranceRun } from '../core/api'
 import type { EmptyReason, MicSource } from '../core/audio'
 
-export type Screen = 'firstRun' | 'home' | 'lobby' | 'planning' | 'planApplying' | 'planResult' | 'attendance' | 'attendanceDone' | 'dark' | 'peek' | 'deck' | 'recording' | 'sending' | 'card' | 'disambiguation' | 'confirmEnd' | 'wrapup' | 'drillDetail'
+export type Screen = 'firstRun' | 'home' | 'lobby' | 'planning' | 'planApplying' | 'planResult' | 'attendance' | 'attendanceDone' | 'dark' | 'peek' | 'deck' | 'recording' | 'sending' | 'card' | 'disambiguation' | 'confirmEnd' | 'wrapup' | 'drillDetail' | 'insight'
 export type Mode = 'note' | 'attendance'
 /** heard = recording stopped · sending = request in flight · thinking = still pending after THINK_AFTER_TICKS. */
 export type ThinkStage = 'heard' | 'sending' | 'thinking'
@@ -24,6 +24,8 @@ export interface Card {
   page: number
   /** Transcript-first: the transcript is back, the note itself is still on its way ("… sorting"). */
   provisional?: boolean
+  /** A student brief (student_query): page 0 shows it in place of agent progress; swipe pages to the transcript. */
+  brief?: Brief | null
 }
 
 export interface LensState {
@@ -63,8 +65,18 @@ export interface LensState {
   planning: { stage: PlanStage; sec: number; heard: string } | null
   /** The voice plan's summary (plan result screen); `diffId` null = nothing changed, no undo. */
   planResult: { diffId: string | null; lines: string[]; missed: number } | null
-  /** Lobby insight banner (Task 32 fills it; nothing is rendered while null). */
-  lobbyInsight: string | null
+  /** Lobby insight banner: the class's top insight, fetched on lobby enter (nothing is rendered while null). */
+  lobbyInsight: Insight | null
+  /** A new high-urgency insight shown atop peek for INSIGHT_BANNER_MS; then it collapses into `insightUnseen`. */
+  insightBanner: Insight | null
+  /** Surfaced but not seen yet: the peek status row shows a `💡N` suffix; swipe opens the newest. */
+  insightUnseen: Insight[]
+  /** Insight ids already surfaced this session, so a poll never shows one twice. */
+  insightKnown: string[]
+  /** The insight open on the detail screen. */
+  insightDetail: Insight | null
+  /** The top insight at class end (a wrap-up row). */
+  wrapupInsight: Insight | null
 }
 
 export type LensEvent =
@@ -103,6 +115,10 @@ export type LensEvent =
   /** Planning listen ended without a plan edit (mic failed, nothing heard, request failed). */
   | { type: 'planFailed'; message: string }
   | { type: 'planUndone'; ok: boolean; message?: string }
+  /** Insights fetched: `lobby` = on lobby enter (for `classId`), `session` = the in-class poll, `wrapup` = at class end. */
+  | { type: 'insightsLoaded'; scope: 'lobby' | 'session' | 'wrapup'; insights: Insight[]; classId?: string }
+  /** The insight banner's INSIGHT_BANNER_MS ran out. */
+  | { type: 'bannerExpired' }
 
 export type Effect =
   | { type: 'markFirstRunSeen' }
@@ -126,3 +142,5 @@ export type Effect =
   | { type: 'stopPlan' }
   | { type: 'cancelPlan' }
   | { type: 'undoPlan'; diffId: string }
+  | { type: 'loadInsights'; classId: string }
+  | { type: 'expireBanner'; ms: number }

@@ -1,7 +1,10 @@
+import type { Insight } from '@matside/shared'
+import { INSIGHT_BANNER_MS } from '../config'
 import type { EmptyReason } from '../core/audio'
 import type { DarkFrom, Effect, LensEvent, LensState, Mode, Screen } from './state'
-import { detailPages } from './render'
-import { colsFor, transcriptPages } from './text'
+import { NO_INSIGHTS, freshInsights, topInsight } from './insights'
+import { cardPageCount, detailPages } from './render'
+import { colsFor, fitNames } from './text'
 
 /** How long a one-line status (e.g. "Saved · will sync") stays on the peek before the next-kid line returns. */
 export const STATUS_MS = 5000
@@ -17,7 +20,7 @@ export function initialState(firstRunSeen: boolean): LensState {
     screen: firstRunSeen ? 'home' : 'firstRun', today: null, classes: [], selectedClassId: null, session: null, active: null,
     coverage: { covered: 0, present: 0 }, nextStudent: null, card: null, disambiguation: null, wrapup: null,
     pending: null, mic: null, thinking: null, detail: null, darkFrom: null, attendanceLines: [], status: null, loadError: null, starting: false, queued: 0,
-    planning: null, planResult: null, lobbyInsight: null,
+    planning: null, planResult: null, lobbyInsight: null, ...NO_INSIGHTS, wrapupInsight: null,
   }
 }
 
@@ -97,7 +100,7 @@ function homeTap(s: LensState, start = false): R {
     return s.loadError ? done({ ...s, loadError: null }, { type: 'loadToday' }) : done(s)
   }
   if (!s.today) return done(s, { type: 'loadToday' }, { type: 'loadClasses' })
-  return start ? startClass(s, s.today.classId) : done({ ...s, screen: 'lobby', status: null })
+  return start ? startClass(s, s.today.classId) : done({ ...s, screen: 'lobby', status: null }, { type: 'loadInsights', classId: s.today.classId })
 }
 
 /** Back to the lobby (plan refreshed by the caller), optionally with a status line. */
@@ -158,7 +161,7 @@ function utteranceResult(s: LensState, e: Extract<LensEvent, { type: 'utteranceR
   if (!awaitingReply(s)) return done({ ...s, coverage: e.res.coverage, nextStudent: e.res.nextStudent, pending: capturing(s) ? s.pending : null })
   const base = { ...s, coverage: e.res.coverage, nextStudent: e.res.nextStudent, pending: null }
   if (s.pending?.mode === 'attendance') return done({ ...base, screen: 'attendanceDone', attendanceLines: e.res.cardLines })
-  const card = { lines: e.res.cardLines, transcript: e.res.transcript, utteranceId: e.res.utteranceId, runs: null, runsFinal: false, page: 0 }
+  const card = { lines: e.res.cardLines, transcript: e.res.transcript, utteranceId: e.res.utteranceId, runs: null, runsFinal: false, page: 0, brief: e.res.brief ?? null }
   const poll: Effect[] = card.utteranceId ? [{ type: 'pollRuns', utteranceId: card.utteranceId }] : []
   if (e.res.disambiguation) return done({ ...base, screen: 'disambiguation', disambiguation: e.res.disambiguation, card }, ...poll)
   if (!card.lines.length && !card.transcript) return peek(base)
@@ -168,7 +171,10 @@ function utteranceResult(s: LensState, e: Extract<LensEvent, { type: 'utteranceR
 /** Events that carry data or timers: they apply on any screen. Null = not one of them. */
 function dataEvent(s: LensState, e: LensEvent, now: number): R | null {
   switch (e.type) {
-    case 'todayLoaded': return done({ ...s, today: e.today, loadError: null, selectedClassId: null })
+    case 'todayLoaded': {
+      const lobbyInsight = s.today?.classId === e.today.classId ? s.lobbyInsight : null // another class: its insight is not this one's
+      return done({ ...s, today: e.today, loadError: null, selectedClassId: null, lobbyInsight })
+    }
     case 'classesLoaded': return done({ ...s, classes: e.classes })
     case 'loadFailed': return done({ ...s, loadError: e.message }) // a pending lens pick stays: tap retries it
     case 'coverageUpdated': return done({ ...s, coverage: e.coverage, nextStudent: e.nextStudent })
@@ -182,7 +188,7 @@ function dataEvent(s: LensState, e: LensEvent, now: number): R | null {
     }
     case 'sessionStarted': {
       if (s.session?.id === e.res.sessionId) return done(s)
-      const next = { ...s, starting: false, session: { id: e.res.sessionId, startedAt: Date.parse(e.res.startedAt) }, coverage: e.res.coverage, nextStudent: e.res.nextStudent }
+      const next = { ...s, ...NO_INSIGHTS, starting: false, session: { id: e.res.sessionId, startedAt: Date.parse(e.res.startedAt) }, coverage: e.res.coverage, nextStudent: e.res.nextStudent }
       return e.resumed ? resumeDrill(next, e.now) : record(next, 'attendance', 'peek', false, now)
     }
     case 'micFailed': return back(s, 'Mic unavailable · check permission')
@@ -234,6 +240,8 @@ function dataEvent(s: LensState, e: LensEvent, now: number): R | null {
     }
     case 'wrapupLoaded': return done({ ...s, screen: 'wrapup', wrapup: e.wrapup })
     case 'statusExpired': return s.status ? done({ ...s, status: null }) : done(s)
+    case 'insightsLoaded': return insightsLoaded(s, e)
+    case 'bannerExpired': return s.insightBanner ? done(collapseBanner(s)) : done(s)
     case 'nod':
       if (NOD_IDLE.has(s.screen)) return done({ ...s, screen: 'dark', status: null, darkFrom: s.screen as DarkFrom })
       return s.screen === 'dark' ? wake(s) : done(s)
@@ -288,9 +296,20 @@ export function reduce(s: LensState, e: LensEvent): R {
       // it (never exits); during class the other gestures work as in peek.
       if (e.type === 'tap' || !s.session) return wake(s)
       return restGesture({ ...s, darkFrom: null }, e, now)
-    case 'peek':
-      if (e.type === 'tap') return record(s, 'note', 'peek', false, now)
-      return restGesture(s, e, now)
+    case 'peek': {
+      const b = s.insightBanner
+      // The banner owns tap (dismiss) and swipe (details) while it is up; hold-to-talk and end class still work.
+      if (b && e.type === 'tap') return done({ ...s, insightBanner: null })
+      if (b && (e.type === 'swipeUp' || e.type === 'swipeDown')) return openInsight({ ...s, insightBanner: null }, b)
+      const rest = b && (e.type === 'longPress' || e.type === 'doubleTap') ? collapseBanner(s) : s
+      if (e.type === 'tap') return record(rest, 'note', 'peek', false, now)
+      return restGesture(rest, e, now)
+    }
+    case 'insight':
+      // Seen on open: tap = got it, 2× = back, swipe = on to the deck.
+      if (e.type === 'swipeUp' || e.type === 'swipeDown') return done({ ...s, screen: 'deck', insightDetail: null })
+      if (e.type === 'tap' || e.type === 'doubleTap') return peek({ ...s, insightDetail: null })
+      return done(s)
     case 'deck':
       // Selecting an item opens its detail (full name + cues) first; tap there starts it.
       if (e.type === 'listSelect') return drills(s)[e.index] ? done({ ...s, screen: 'drillDetail', detail: { index: e.index, page: 0 } }) : done(s)
@@ -324,7 +343,7 @@ export function reduce(s: LensState, e: LensEvent): R {
       if (e.type === 'tap' || e.type === 'doubleTap') return peek({ ...s, card: null })
       if ((e.type === 'swipeDown' || e.type === 'swipeUp') && s.card) {
         // Swipe pages through a transcript longer than one page.
-        const last = transcriptPages(s.card.transcript).length - 1
+        const last = cardPageCount(s.card) - 1
         const page = Math.max(0, Math.min(last, s.card.page + (e.type === 'swipeDown' ? 1 : -1)))
         return page === s.card.page ? done(s) : done({ ...s, card: { ...s.card, page } })
       }
@@ -346,7 +365,7 @@ export function reduce(s: LensState, e: LensEvent): R {
     case 'wrapup': {
       if (!s.wrapup && e.type === 'doubleTap') return peek(s)
       if (!s.wrapup || !s.session) return done(s)
-      const reset = { ...s, screen: 'home' as const, darkFrom: null, session: null, active: null, wrapup: null, card: null, status: null, coverage: { covered: 0, present: 0 }, nextStudent: null }
+      const reset = { ...s, ...NO_INSIGHTS, screen: 'home' as const, darkFrom: null, session: null, active: null, wrapup: null, wrapupInsight: null, card: null, status: null, coverage: { covered: 0, present: 0 }, nextStudent: null }
       if (e.type === 'tap' && s.wrapup.missed.length) {
         return done(reset, { type: 'remind', sessionId: s.session.id, studentIds: s.wrapup.missed.map(m => m.id), names: s.wrapup.missed.map(m => m.name) }, { type: 'loadToday' })
       }
@@ -357,9 +376,11 @@ export function reduce(s: LensState, e: LensEvent): R {
   }
 }
 
-/** Gestures shared by peek and dark: long-press = hold to talk, swipe = deck, double-tap = end class. */
+/** Gestures shared by peek and dark: long-press = hold to talk, swipe = deck (an unseen insight first), double-tap = end class. */
 function restGesture(s: LensState, e: LensEvent, now: number): R {
   if (e.type === 'longPress') return record(s, 'note', 'peek', true, now)
+  const [unseen, ...older] = s.insightUnseen
+  if ((e.type === 'swipeUp' || e.type === 'swipeDown') && unseen) return openInsight({ ...s, insightUnseen: older }, unseen)
   if (e.type === 'swipeUp' || e.type === 'swipeDown') return done({ ...s, screen: 'deck', status: null })
   if (e.type === 'doubleTap') return done({ ...s, screen: 'confirmEnd', status: null })
   return done(s)
@@ -369,8 +390,38 @@ const REMIND_SUFFIX = ' first next class'
 /** "ok · Jake, Leo, Mia first next class", with "+N" for names that don't fit one footer line. */
 export function remindedStatus(names: string[]): string {
   const room = colsFor(576) - 'ok · '.length - REMIND_SUFFIX.length
-  let shown = names.join(', ')
-  for (let k = names.length - 1; shown.length > room && k >= 1; k--) shown = `${names.slice(0, k).join(', ')} +${names.length - k}`
-  if (shown.length > room) shown = `${names.length} kids`
-  return `ok · ${shown}${REMIND_SUFFIX}`
+  return `ok · ${fitNames(names, room)}${REMIND_SUFFIX}`
+}
+
+/** The insight detail screen (opening it counts as seeing it). */
+function openInsight(s: LensState, insight: Insight): R {
+  return done({ ...s, screen: 'insight', insightDetail: insight, status: null, darkFrom: null })
+}
+
+/** The banner's time is up (or the coach moved on): it waits behind the `💡N` suffix until seen. */
+function collapseBanner(s: LensState): LensState {
+  return s.insightBanner ? { ...s, insightBanner: null, insightUnseen: [s.insightBanner, ...s.insightUnseen] } : s
+}
+
+/**
+ * Insights arrived. Lobby: the class's top one fills the lobby slot. Wrap-up: the top one (this session's
+ * first) becomes a row. Session poll: a new high item shows as the banner atop peek; anywhere else
+ * (recording, the card, planning, dark) it never interrupts and waits behind the suffix instead.
+ */
+function insightsLoaded(s: LensState, e: Extract<LensEvent, { type: 'insightsLoaded' }>): R {
+  if (e.scope === 'lobby') {
+    if (!s.today || s.today.classId !== e.classId) return done(s)
+    const top = topInsight(e.insights)
+    return top?.id === s.lobbyInsight?.id ? done(s) : done({ ...s, lobbyInsight: top })
+  }
+  if (e.scope === 'wrapup') {
+    const top = s.screen === 'wrapup' ? topInsight(e.insights, s.session?.startedAt ?? null) : null
+    return top && top.id !== s.wrapupInsight?.id ? done({ ...s, wrapupInsight: top }) : done(s)
+  }
+  const fresh = s.session ? freshInsights(s, e.insights) : []
+  if (!fresh.length) return done(s)
+  const insightKnown = [...s.insightKnown, ...fresh.map(i => i.id)]
+  if (s.screen !== 'peek' || s.insightBanner) return done({ ...s, insightKnown, insightUnseen: [...fresh, ...s.insightUnseen] })
+  const [first, ...rest] = fresh
+  return done({ ...s, insightKnown, insightBanner: first!, insightUnseen: [...rest, ...s.insightUnseen] }, { type: 'expireBanner', ms: INSIGHT_BANNER_MS })
 }
