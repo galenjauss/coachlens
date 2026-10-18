@@ -33,7 +33,7 @@ export async function handleUtterance(
   if (parsed) {
     actions.push(await applyRollCall(deps, ctx, parsed))
   } else {
-    const intents = await routeUtterance(deps, { sessionId: ctx.sessionId, transcript: input.transcript, roster: ctx.roster, drillName: ctx.drill?.name ?? null, theme: ctx.theme })
+    const intents = await routeUtterance(deps, { sessionId: ctx.sessionId, transcript: input.transcript, roster: ctx.roster, drillName: ctx.drill?.name ?? null, theme: ctx.theme, mode: ctx.mode })
     if (!intents) {
       await db.insert(notes).values({ sessionId: ctx.sessionId, utteranceId, drillId: ctx.drill?.id ?? null, text: input.transcript })
       actions.push({ kind: 'saved_unsorted' })
@@ -158,7 +158,7 @@ async function applyFeedback(deps: Deps, ctx: SessionContext, utteranceId: strin
       if (recurring) {
         await db.insert(issues).values({ studentId: s.id, tag })
         safeDefer(deps, 'parent_email', draftParentEmail(deps, { studentId: s.id, sessionId: ctx.sessionId, trigger: { kind: 'recurring', tag } }))
-        safeDefer(deps, 'auto_adjust', autoAdjustNextDeck(deps, { classId: ctx.classId, afterDate: ctx.forDate, sessionId: ctx.sessionId, requestText: `Add a short, fun drill targeting ${tag} for ${s.name} [${s.id}] (recurring issue).` }))
+        safeDefer(deps, 'auto_adjust', autoAdjustNextDeck(deps, { classId: ctx.classId, afterDate: ctx.forDate, sessionId: ctx.sessionId, requestText: `Add a short${ctx.mode.recipient === 'parent' ? ', fun' : ''} ${ctx.mode.planItem} targeting ${tag} for ${s.name} [${s.id}] (recurring issue).` }))
       }
     }
     await withRun(deps, { agent: 'progress', trigger: 'feedback', sessionId: ctx.sessionId }, async () => ({

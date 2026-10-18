@@ -13,8 +13,8 @@ export async function makeTestDb(): Promise<Db> {
   return db as unknown as Db
 }
 
-export function fakeLlm(handler: (a: { name: string; prompt: string }) => unknown): Llm {
-  return { async object({ name, prompt, schema }) { return schema.parse(await handler({ name, prompt })) } }
+export function fakeLlm(handler: (a: { name: string; prompt: string; instructions: string }) => unknown): Llm {
+  return { async object({ name, prompt, instructions, schema }) { return schema.parse(await handler({ name, prompt, instructions })) } }
 }
 
 export type TestDeps = Deps & { deferred: Promise<unknown>[]; sent: MailMsg[]; flush(): Promise<void> }

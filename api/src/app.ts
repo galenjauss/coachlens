@@ -9,7 +9,7 @@ import { attendance, billingFlags, enrollments, instructors, notes, sessions, st
 import { hashToken } from './http/auth'
 import { timingSafeEqual } from 'node:crypto'
 import { allow, isBlocked, recordFailure } from './http/rateLimit'
-import { getToday } from './services/today'
+import { getToday, listClasses } from './services/today'
 import { endSession, logDrill, requireSession, startSession } from './services/sessions'
 import { handleUtterance } from './services/utterance'
 import { listReview, approveOutbox, skipOutbox, approveAllOutbox, handleBilling, noteBilling, dismissNote, type ActionResult } from './services/review'
@@ -83,7 +83,6 @@ export function createApp(deps: Deps) {
     await next()
   })
 
-  app.get('/v1/today', async c => c.json(await getToday(deps)))
 
   app.post('/v1/sessions', async c => {
     const { classId } = await json(c.req.raw, z.object({ classId: z.string().min(1) }))
@@ -206,6 +205,13 @@ export function createApp(deps: Deps) {
     throw e
   }
   const guard = async <T>(p: Promise<T>): Promise<T> => p.catch(httpErr)
+
+  app.get('/v1/classes', async c => c.json(await listClasses(db)))
+  app.get('/v1/today', async c => {
+    const classId = c.req.query('classId')
+    if (classId !== undefined && (classId.length < 1 || classId.length > 64)) throw new HTTPException(400, { message: 'bad classId' })
+    return c.json(await guard(getToday(deps, classId)))
+  })
 
   app.get('/jobs/plan', async c => {
     if (!deps.env.cronSecret || !codesMatch(c.req.header('authorization') ?? '', `Bearer ${deps.env.cronSecret}`)) throw new HTTPException(401, { message: 'cron only' })

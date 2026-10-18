@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { Intent, RouterOutput, DeckDiff, UtteranceResponse, ReviewItem } from './contracts'
+import { Intent, RouterOutput, DeckDiff, UtteranceResponse, ReviewItem, routerOutputFor } from './contracts'
 
 describe('contracts', () => {
   it('parses a router output with feedback + billing', () => {
@@ -13,7 +13,10 @@ describe('contracts', () => {
   })
 
   it('rejects unknown skill tags', () => {
-    expect(() => Intent.parse({ type: 'feedback', studentNames: [], content: 'x', skillTags: ['karate'], urgency: null, amount: null, minutes: null, attendanceStatus: null })).toThrow()
+    const i = { type: 'feedback', studentNames: [], content: 'x', skillTags: ['karate'], urgency: null, amount: null, minutes: null, attendanceStatus: null }
+    expect(() => routerOutputFor('martial_arts').parse({ intents: [i] })).toThrow()
+    expect(() => Intent.parse({ ...i, skillTags: [''] })).toThrow()
+    expect(() => Intent.parse({ ...i, skillTags: ['x'.repeat(25)] })).toThrow()
   })
 
   it('parses a deck diff and an utterance response', () => {

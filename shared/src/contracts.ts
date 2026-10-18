@@ -1,7 +1,11 @@
 import { z } from 'zod'
+import { MODES, ModeId } from './modes'
 
-export const SKILL_TAGS = ['stance', 'guard', 'kicks', 'strikes', 'forms', 'footwork', 'focus', 'effort', 'respect', 'sparring'] as const
-export const SkillTag = z.enum(SKILL_TAGS)
+// Tags are per-mode (see modes.ts). On the wire a tag is any short string; the router validates
+// against the class's own taxonomy with routerOutputFor(mode).
+/** @deprecated martial-arts tags only; use MODES[mode].tags */
+export const SKILL_TAGS = MODES.martial_arts.tags
+export const SkillTag = z.string().min(1).max(24)
 export type SkillTag = z.infer<typeof SkillTag>
 
 export const Urgency = z.enum(['low', 'med', 'high'])
@@ -11,20 +15,30 @@ export const IntentType = z.enum(['feedback', 'attendance', 'billing', 'plan_req
 export type IntentType = z.infer<typeof IntentType>
 
 // Every field is required and nullable/array so it works with LLM structured output.
-export const Intent = z.object({
+const intentShape = <T extends z.ZodType<string>>(tag: T) => z.object({
   type: IntentType,
   studentNames: z.array(z.string()),
   content: z.string(),
-  skillTags: z.array(SkillTag).max(2),
+  skillTags: z.array(tag).max(2),
   urgency: Urgency.nullable(),
   amount: z.number().nullable(),
   minutes: z.number().int().nullable(),
   attendanceStatus: z.enum(['present', 'absent']).nullable(),
 })
+export const Intent = intentShape(SkillTag)
 export type Intent = z.infer<typeof Intent>
 
 export const RouterOutput = z.object({ intents: z.array(Intent) })
 export type RouterOutput = z.infer<typeof RouterOutput>
+
+/** RouterOutput whose skillTags must come from the given mode's taxonomy. */
+export function routerOutputFor(mode: ModeId) {
+  const tag = z.enum(MODES[mode].tags as [string, ...string[]])
+  return z.object({ intents: z.array(intentShape(tag)) })
+}
+
+export const ClassSummary = z.object({ id: z.string(), name: z.string(), mode: ModeId, modeLabel: z.string() })
+export type ClassSummary = z.infer<typeof ClassSummary>
 
 export const DrillKind = z.enum(['warmup', 'technique', 'drill', 'forms', 'game', 'sparring'])
 export type DrillKind = z.infer<typeof DrillKind>
@@ -120,6 +134,12 @@ export const Today = z.object({
   startTime: z.string(),
   forDate: z.string(),
   sessionId: z.string().nullable(),
+  mode: ModeId,
+  modeLabel: z.string(),
+  weeklyLabel: z.string(),
+  itemsDueLabel: z.string(),
+  planUnit: z.string(),
+  people: z.string(),
   theme: z.string(),
   formsDue: z.array(z.string()),
   focus: z.array(FocusItem),

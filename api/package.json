@@ -12,6 +12,7 @@
     "dev": "tsx watch src/dev-server.ts"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.82",
     "@matside/shared": "*",
     "@neondatabase/serverless": "^1.2.0",
     "@vercel/functions": "^3.0.0",

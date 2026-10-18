@@ -1,5 +1,5 @@
 import { pgTable, text, integer, real, timestamp, jsonb, primaryKey, uniqueIndex } from 'drizzle-orm/pg-core'
-import type { SkillTag, Urgency, DeckDiff, ReportCardContent } from '@matside/shared'
+import type { ModeId, SkillTag, Urgency, DeckDiff, ReportCardContent } from '@matside/shared'
 
 const id = () => text('id').primaryKey().$defaultFn(() => crypto.randomUUID())
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' })
@@ -13,6 +13,7 @@ export const classes = pgTable('classes', {
   id: id(), instructorId: text('instructor_id').notNull(), name: text('name').notNull(),
   weekday: integer('weekday').notNull(), // 0 = Sunday
   startTime: text('start_time').notNull(), // "17:00"
+  mode: text('mode').$type<ModeId>().notNull().default('martial_arts'),
   remindIds: jsonb('remind_ids').$type<string[]>().notNull().default([]),
 })
 export const students = pgTable('students', {
@@ -25,10 +26,11 @@ export const enrollments = pgTable('enrollments', {
   classId: text('class_id').notNull(), studentId: text('student_id').notNull(),
 }, t => [primaryKey({ columns: [t.classId, t.studentId] })])
 export const curriculum = pgTable('curriculum', {
-  weekStart: text('week_start').primaryKey(), // Monday, YYYY-MM-DD
-  theme: text('theme').notNull(),
-  formsDue: jsonb('forms_due').$type<string[]>().notNull(),
-})
+  weekStart: text('week_start').notNull(), // Monday, YYYY-MM-DD
+  mode: text('mode').$type<ModeId>().notNull().default('martial_arts'),
+  theme: text('theme').notNull(), // the mode's weekly label: theme / program block / unit
+  formsDue: jsonb('forms_due').$type<string[]>().notNull(), // the mode's items-due: forms / goals / upcoming
+}, t => [primaryKey({ columns: [t.weekStart, t.mode] })])
 export const sessions = pgTable('sessions', {
   id: id(), classId: text('class_id').notNull(), deckId: text('deck_id').notNull(),
   forDate: text('for_date').notNull(),
@@ -95,4 +97,8 @@ export const agentRuns = pgTable('agent_runs', {
 })
 export const preferences = pgTable('preferences', {
   id: id(), classId: text('class_id').notNull(), text: text('text').notNull(), createdAt: createdAt(),
+})
+// One row per local day (America/Los_Angeles by default): AI calls made that day, for the daily cap.
+export const llmUsage = pgTable('llm_usage', {
+  day: text('day').primaryKey(), calls: integer('calls').notNull().default(0),
 })

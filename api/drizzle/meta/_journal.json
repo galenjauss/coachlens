@@ -29,6 +29,13 @@
       "when": 1792281813743,
       "tag": "0003_lumpy_victor_mancha",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792282215024,
+      "tag": "0004_skinny_human_robot",
+      "breakpoints": true
     }
   ]
 }

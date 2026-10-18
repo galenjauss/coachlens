@@ -1,7 +1,7 @@
-import { and, eq, inArray, max } from 'drizzle-orm'
-import type { Coverage, NextStudent, RosterStudent, SkillTag } from '@matside/shared'
+import { and, asc, eq, inArray, max } from 'drizzle-orm'
+import { modeConfig, type Coverage, type ModeConfig, type NextStudent, type RosterStudent } from '@matside/shared'
 import type { Db } from '../db/client'
-import { attendance, curriculum, drills, enrollments, issues, notes, sessions, students } from '../db/schema'
+import { attendance, classes, curriculum, drills, enrollments, issues, notes, sessions, students } from '../db/schema'
 import { weekStart } from '../logic/dates'
 import { rankNextStudent } from '../logic/ranking'
 
@@ -9,16 +9,43 @@ export interface SessionContext {
   sessionId: string; classId: string; deckId: string; forDate: string; theme: string
   roster: RosterStudent[]; presentIds: Set<string>; attendanceTaken: boolean; remindIds: Set<string>
   drill: { id: string; name: string; position: number } | null
+  mode: ModeConfig
+}
+
+/** The teaching mode of a class (martial arts when the class is unknown). */
+export async function modeForClass(db: Db, classId: string): Promise<ModeConfig> {
+  const [c] = await db.select({ mode: classes.mode }).from(classes).where(eq(classes.id, classId))
+  return modeConfig(c?.mode)
+}
+
+/**
+ * The mode a student is taught in: the given session's class if any, else their first enrolled class.
+ * A person enrolled in classes of different modes gets the session's mode when there is one.
+ */
+export async function modeForStudent(db: Db, studentId: string, sessionId: string | null = null): Promise<ModeConfig> {
+  if (sessionId) {
+    const [s] = await db.select({ classId: sessions.classId }).from(sessions).where(eq(sessions.id, sessionId))
+    if (s) return modeForClass(db, s.classId)
+  }
+  const [c] = await db.select({ mode: classes.mode }).from(enrollments).innerJoin(classes, eq(classes.id, enrollments.classId))
+    .where(eq(enrollments.studentId, studentId)).orderBy(asc(classes.weekday), asc(classes.id)).limit(1)
+  return modeConfig(c?.mode)
+}
+
+export async function curriculumFor(db: Db, mode: ModeConfig, forDate: string) {
+  const [cur] = await db.select().from(curriculum).where(and(eq(curriculum.weekStart, weekStart(forDate)), eq(curriculum.mode, mode.id)))
+  return cur ?? null
 }
 
 export async function loadSessionContext(db: Db, sessionId: string, drillId: string | null): Promise<SessionContext> {
   const [s] = await db.select().from(sessions).where(eq(sessions.id, sessionId))
   if (!s) throw new Error(`session ${sessionId} not found`)
-  const [roster, att, [cur], [d]] = await Promise.all([
+  const mode = await modeForClass(db, s.classId)
+  const [roster, att, cur, [d]] = await Promise.all([
     db.select({ id: students.id, name: students.name, nickname: students.nickname, belt: students.belt })
       .from(enrollments).innerJoin(students, eq(students.id, enrollments.studentId)).where(eq(enrollments.classId, s.classId)),
     db.select().from(attendance).where(eq(attendance.sessionId, sessionId)),
-    db.select().from(curriculum).where(eq(curriculum.weekStart, weekStart(s.forDate))),
+    curriculumFor(db, mode, s.forDate),
     drillId ? db.select().from(drills).where(eq(drills.id, drillId)) : Promise.resolve([] as (typeof drills.$inferSelect)[]),
   ])
   return {
@@ -26,6 +53,7 @@ export async function loadSessionContext(db: Db, sessionId: string, drillId: str
     presentIds: new Set(att.filter(a => a.status === 'present').map(a => a.studentId)),
     attendanceTaken: att.some(a => a.source !== 'backstop'), remindIds: new Set(s.remindIds),
     drill: d ? { id: d.id, name: d.name, position: d.position } : null,
+    mode,
   }
 }
 
@@ -55,7 +83,7 @@ export async function coverageAndNext(db: Db, ctx: SessionContext, now: Date): P
     present: present.map(p => ({ id: p.id, name: p.name.split(' ')[0]! })),
     notedIds: noted,
     remindIds: fresh.remindIds,
-    openIssue: new Map(open.map(o => [o.studentId, o.tag as SkillTag])),
+    openIssue: new Map(open.map(o => [o.studentId, o.tag])),
     lastNoteAt: new Map(last.flatMap(l => (l.studentId && l.at ? [[l.studentId, new Date(l.at)] as const] : []))),
     now,
   })

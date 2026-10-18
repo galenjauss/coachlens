@@ -1,27 +1,45 @@
 import { and, asc, desc, eq, inArray, lt } from 'drizzle-orm'
 import { z } from 'zod'
-import { Alternatives, DeckDiff, DrillDraft, type Deck } from '@matside/shared'
+import { Alternatives, DeckDiff, DrillDraft, type Deck, type ModeConfig } from '@matside/shared'
 import type { Db } from '../db/client'
 import type { Deps } from '../deps'
-import { classes, curriculum, deckDiffs, decks, drills, enrollments, issues, preferences, students } from '../db/schema'
+import { classes, deckDiffs, decks, drills, enrollments, issues, preferences, students } from '../db/schema'
 import { applyDiff, totalMinutes } from '../logic/deckDiff'
-import { nextDateForWeekday, weekStart } from '../logic/dates'
+import { nextDateForWeekday } from '../logic/dates'
 import { findDeck, getDeck } from '../services/decks'
+import { curriculumFor, modeForClass } from '../services/context'
 import { withRun } from './runs'
 
-export const PLANNER_INSTRUCTIONS = `You plan kids' martial arts classes (ages 6-12) as a DECK of drill cards the instructor picks from live.
-- 8-12 drills totalling 40-50 minutes. Start with a warmup, include technique and drills on the weekly theme, the forms due, at least one game, and end calm.
-- Target open issues: include drills that fix the most common ones and list those students in focusStudentIds (use the provided ids only).
-- cues: at most 2 short coaching cues (≤40 chars) the instructor will read on smart glasses.
-- rationale: one short sentence on why this drill is in the deck.
-- Respect the instructor's remembered preferences.
-- Keep names ≤40 chars. No medical advice.`
+const AUDIENCE: Record<ModeConfig['id'], string> = {
+  martial_arts: "kids' martial arts classes (ages 6-12)",
+  personal_training: 'personal training sessions for adult clients',
+  tutoring: 'tutoring lessons',
+}
 
-const DraftOut = z.object({ drills: z.array(DrillDraft).min(8).max(12) })
+const VARY: Record<ModeConfig['id'], string> = {
+  martial_arts: 'Vary format: one game, one partner drill, one solo/line drill.',
+  personal_training: 'Vary format: one free-weight, one machine or cable, one bodyweight option.',
+  tutoring: 'Vary format: one game, one worked example, one independent practice.',
+}
+
+/** Planner system prompt for a mode. The plan is a deck of cards (the mode's planUnit) the coach picks from live. */
+export function plannerInstructions(mode: ModeConfig): string {
+  return `You plan ${AUDIENCE[mode.id]} as a ${mode.planUnit.toUpperCase()}: a deck of ${mode.planItem} cards the coach picks from live.
+- Shape: ${mode.planShape}. Use the ${mode.weeklyLabel.toLowerCase()} and the ${mode.itemsDueLabel.toLowerCase()} given.
+- kind: pick the closest of warmup, technique, drill, forms, game, sparring for each ${mode.planItem}.
+- Target open issues: include ${mode.planItem}s that fix the most common ones and list those ${mode.people} in focusStudentIds (use the provided ids only).
+- cues: at most 2 short coaching cues (≤40 chars) the coach will read on smart glasses, e.g. "${mode.cueExamples}".
+- rationale: one short sentence on why this ${mode.planItem} is in the plan.
+- Respect the coach's remembered preferences.
+- Keep names ≤40 chars. ${mode.guardrails}`
+}
+
+const DraftOut = z.object({ drills: z.array(DrillDraft).min(5).max(12) }) // tutoring plans are 5-8 items
 
 async function planningContext(deps: Deps, classId: string, forDate: string) {
   const { db } = deps
-  const [cur] = await db.select().from(curriculum).where(eq(curriculum.weekStart, weekStart(forDate)))
+  const mode = await modeForClass(db, classId)
+  const cur = await curriculumFor(db, mode, forDate)
   const roster = await db.select({ id: students.id, name: students.name, belt: students.belt })
     .from(enrollments).innerJoin(students, eq(students.id, enrollments.studentId)).where(eq(enrollments.classId, classId))
   const ids = roster.map(r => r.id)
@@ -33,14 +51,15 @@ async function planningContext(deps: Deps, classId: string, forDate: string) {
   const lastDrills = last ? await db.select().from(drills).where(eq(drills.deckId, last.id)).orderBy(asc(drills.position)) : []
   const nameOf = (id: string) => roster.find(r => r.id === id)?.name ?? id
   const text = [
-    `Weekly theme: ${cur?.theme ?? 'General skills'}`,
-    `Forms due: ${(cur?.formsDue ?? []).join(', ') || 'none'}`,
-    `Roster (id: name, belt): ${roster.map(r => `${r.id}: ${r.name}, ${r.belt}`).join('; ')}`,
+    `Mode: ${mode.label} (${mode.planUnit}; each card is a ${mode.planItem})`,
+    `${mode.weeklyLabel}: ${cur?.theme ?? 'General skills'}`,
+    `${mode.itemsDueLabel}: ${(cur?.formsDue ?? []).join(', ') || 'none'}`,
+    `Roster (id: name, ${mode.id === 'martial_arts' ? 'belt' : 'level'}): ${roster.map(r => `${r.id}: ${r.name}, ${r.belt}`).join('; ')}`,
     `Open issues: ${[...byTag].map(([tag, s]) => `${tag} → ${s.map(id => `${nameOf(id)} [${id}]`).join(', ')}`).join(' | ') || 'none'}`,
     `Last class: ${lastDrills.map(d => `${d.name} (${d.startedAt ? 'ran' : 'skipped'})`).join(', ') || 'none'}`,
     `Remembered preferences: ${prefs.map(p => p.text).join(' | ') || 'none'}`,
   ].join('\n')
-  return { text, theme: cur?.theme ?? 'General skills' }
+  return { text, theme: cur?.theme ?? 'General skills', mode, instructions: plannerInstructions(mode) }
 }
 
 export async function draftDeck(deps: Deps, classId: string, forDate: string): Promise<string | null> {
@@ -52,7 +71,7 @@ export async function draftDeck(deps: Deps, classId: string, forDate: string): P
   }
   return withRun(deps, { agent: 'planner', trigger: 'draft', sessionId: null }, async () => {
     const ctx = await planningContext(deps, classId, forDate)
-    const out = await deps.llm.object({ name: 'planner.draft', instructions: PLANNER_INSTRUCTIONS, prompt: `Plan the class on ${forDate}.\n${ctx.text}`, schema: DraftOut })
+    const out = await deps.llm.object({ name: 'planner.draft', instructions: ctx.instructions, prompt: `Plan the class on ${forDate}.\n${ctx.text}`, schema: DraftOut })
     const [deck] = await deps.db.insert(decks).values({ classId, forDate }).onConflictDoNothing().returning()
     if (!deck) {
       const raced = await findDeck(deps.db, classId, forDate)
@@ -65,7 +84,7 @@ export async function draftDeck(deps: Deps, classId: string, forDate: string): P
       await deps.db.delete(decks).where(eq(decks.id, deck.id)).catch(() => {})
       throw e
     }
-    return { result: deck.id, summary: `Drafted ${forDate} deck: ${out.drills.length} drills, ${totalMinutes(out.drills)} min (${ctx.theme})`, reason: 'theme + forms cycle + open issues', output: out }
+    return { result: deck.id, summary: `Drafted ${forDate} ${ctx.mode.planUnit.toLowerCase()}: ${out.drills.length} ${ctx.mode.planItem}s, ${totalMinutes(out.drills)} min (${ctx.theme})`, reason: 'theme + forms cycle + open issues', output: out }
   })
 }
 
@@ -81,7 +100,7 @@ export async function suggestDiff(deps: Deps, deckId: string, requestText: strin
       `If the request states a lasting preference about this class, put a one-sentence version in rememberSuggestion, else null.`,
       ctx.text,
     ].join('\n')
-    const diff = await deps.llm.object({ name: 'planner.diff', instructions: PLANNER_INSTRUCTIONS, prompt, schema: DeckDiff })
+    const diff = await deps.llm.object({ name: 'planner.diff', instructions: ctx.instructions, prompt, schema: DeckDiff })
     const [row] = await deps.db.insert(deckDiffs).values({ deckId, requestText, diff }).returning()
     return {
       result: { diffId: row!.id, diff },
@@ -137,8 +156,8 @@ export async function alternativesFor(deps: Deps, drillId: string): Promise<Dril
   const ctx = await planningContext(deps, deck.classId, deck.forDate)
   const r = await withRun(deps, { agent: 'planner', trigger: 'alternatives', sessionId: null }, async () => {
     const out = await deps.llm.object({
-      name: 'planner.alternatives', instructions: PLANNER_INSTRUCTIONS, schema: Alternatives,
-      prompt: `Give exactly 3 alternative drills that serve the same purpose as "${d.name}" (${d.minutes}m, ${d.kind}; why: ${d.rationale}). Vary format: one game, one partner drill, one solo/line drill. Keep the same focusStudentIds: ${JSON.stringify(d.focusStudentIds)}.\n${ctx.text}`,
+      name: 'planner.alternatives', instructions: ctx.instructions, schema: Alternatives,
+      prompt: `Give exactly 3 alternative ${ctx.mode.planItem}s that serve the same purpose as "${d.name}" (${d.minutes}m, ${d.kind}; why: ${d.rationale}). ${VARY[ctx.mode.id]} Keep the same focusStudentIds: ${JSON.stringify(d.focusStudentIds)}.\n${ctx.text}`,
     })
     return { result: out.alternatives, summary: `3 alternatives for "${d.name}"`, reason: 'instructor asked to swap' }
   })

@@ -1,6 +1,7 @@
 import type { Db } from './client'
 import * as t from './schema'
 import { addDays, nextDateForWeekday, weekStart } from '../logic/dates'
+import { seedPersonalTraining, seedTutoring } from './seedModes'
 
 const KIDS = [
   ['Priya Rao', 'orange', 2018], ['Leonardo Diaz', 'yellow', 2017], ['Jake Ross', 'white', 2019], ['Mia Lopez', 'white', 2019],
@@ -59,8 +60,8 @@ export async function seed(db: Db, opts: { today: string; guardianEmail: (i: num
   const [tueDeck, thuDeck] = await db.insert(t.decks).values([{ classId: tue!.id, forDate: tueDate }, { classId: thu!.id, forDate: thuDate }]).returning()
   const guardKids = [by('Priya').id, by('Sam').id, by('Ava').id, by('Ben').id]
   const deck = [
-    drill('Warm-up: stance tag', 5, 'warmup', ['low stances only'], 'Warm-up on this week\'s theme'),
-    drill('Horse stance holds', 4, 'technique', ['knees out', 'back tall'], 'Stances theme'),
+    drill('Warm-up: stance tag', 5, 'warmup', ['low stances only'], 'Warm-up: stances focus'),
+    drill('Horse stance holds', 4, 'technique', ['knees out', 'back tall'], 'Stances focus'),
     drill('Front stance transitions', 5, 'technique', ['back leg straight', 'hips square'], 'Maya: short front stance', [by('Maya').id]),
     drill('Guard-up jab drill', 6, 'drill', ['hands back to cheeks', 'chin down'], '4 kids have guard notes', guardKids),
     drill('Kata 2 · yellow belts', 8, 'forms', ['slow and sharp'], 'Forms cycle: Kata 2 due'),
@@ -70,5 +71,13 @@ export async function seed(db: Db, opts: { today: string; guardianEmail: (i: num
     drill('Bow-out & reflection', 2, 'warmup', ['one thing you improved'], 'Calm finish'),
   ]
   for (const d of [tueDeck!, thuDeck!]) await db.insert(t.drills).values(deck.map((x, i) => ({ ...x, deckId: d.id, position: i + 1 })))
-  return { instructorId: ins!.id, classIds: { tue: tue!.id, thu: thu!.id }, priyaId: by('Priya').id }
+
+  const ctx = { instructorId: ins!.id, today: opts.today, guardianEmail: opts.guardianEmail }
+  const pt = await seedPersonalTraining(db, { ...ctx, emailOffset: kids.length })
+  const tut = await seedTutoring(db, { ...ctx, emailOffset: kids.length + pt.count })
+  return {
+    instructorId: ins!.id,
+    classIds: { tue: tue!.id, thu: thu!.id, pt: pt.classId, algebra: tut.classId },
+    priyaId: by('Priya').id, mariaId: pt.mariaId, samPatelId: tut.samPatelId,
+  }
 }

@@ -8,7 +8,7 @@ import type { Db } from './client'
 const url = process.env.DATABASE_URL
 const emails = (process.env.SEED_GUARDIAN_EMAILS ?? '').split(',').map(s => s.trim()).filter(Boolean)
 if (!url || !emails.length) {
-  console.error('Set DATABASE_URL and SEED_GUARDIAN_EMAILS (comma-separated inboxes you own; round-robin across 14 guardians).')
+  console.error('Set DATABASE_URL and SEED_GUARDIAN_EMAILS (comma-separated inboxes you own; round-robin across all 23 guardian rows).')
   process.exit(1)
 }
 const db = drizzle({ client: neon(url), schema }) as unknown as Db
