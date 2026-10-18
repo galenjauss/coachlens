@@ -32,7 +32,7 @@ export function Onboarding({ api, kv, onExit, onDone }: { api: Api; kv: KV; onEx
   useEffect(() => {
     if (firstRender.current) { firstRender.current = false; return }
     heading.current?.focus()
-    window.scrollTo({ top: 0 })
+    document.getElementById('root')?.scrollTo({ top: 0 }) // #root is the scroll container (theme.css)
   }, [index, done])
 
   const update = useCallback((f: (d: Draft) => Draft) => setDraft(d => (d ? f(d) : d)), [])
