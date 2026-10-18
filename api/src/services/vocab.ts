@@ -2,7 +2,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm'
 import { MAX_VOCAB, VOCAB_TERM_MAX } from '@matside/shared'
 import type { Db } from '../db/client'
 import { drills, instructorVocab, schoolVocab } from '../db/schema'
-import { currentInstructorId } from '../http/context'
+import { scopedInstructor } from '../http/context'
 
 /** Total characters of hints handed to the transcriber (its prompt is short; names come first). */
 export const MAX_HINT_CHARS = 900
@@ -28,7 +28,7 @@ export function normalizeTerms(terms: readonly string[], max = MAX_VOCAB): strin
  * tests) the legacy deployment-wide table is used.
  */
 const store = (db: Db) => {
-  const ins = currentInstructorId()
+  const ins = scopedInstructor('vocabulary')
   if (!ins) {
     return {
       list: () => db.select({ term: schoolVocab.term }).from(schoolVocab).orderBy(asc(schoolVocab.createdAt), asc(schoolVocab.term)),

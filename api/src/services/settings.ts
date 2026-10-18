@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm'
 import { AUTONOMY_RULES, AutonomyTask, DEFAULT_RANK_REVIEW, RankReviewSettings, type Autonomy, type SettingsPatch, type SettingsResponse } from '@matside/shared'
 import type { Db } from '../db/client'
 import { agentSettings, instructorSettings, kv } from '../db/schema'
-import { currentInstructorId } from '../http/context'
+import { scopedInstructor } from '../http/context'
 import { setVocab, vocabHints } from './vocab'
 
 export class SettingsError extends Error {}
@@ -14,7 +14,7 @@ const isAllowed = (task: AutonomyTask, v: Autonomy) => AUTONOMY_RULES[task].allo
  * Outside a request scope (scripts, direct service tests) the legacy deployment-wide table is read.
  */
 async function storedRows(db: Db, task?: AutonomyTask): Promise<{ task: string; autonomy: string }[]> {
-  const ins = currentInstructorId()
+  const ins = scopedInstructor('settings')
   if (!ins) return db.select({ task: agentSettings.task, autonomy: agentSettings.autonomy }).from(agentSettings).where(task ? eq(agentSettings.task, task) : undefined)
   return db.select({ task: instructorSettings.task, autonomy: instructorSettings.autonomy }).from(instructorSettings)
     .where(and(eq(instructorSettings.instructorId, ins), task ? eq(instructorSettings.task, task) : undefined))
@@ -29,7 +29,7 @@ export async function getAutonomy(db: Db, task: AutonomyTask): Promise<Autonomy>
 
 /** Per instructor inside a request scope (C4); the legacy deployment-wide key outside one. */
 const rankReviewKey = () => {
-  const ins = currentInstructorId()
+  const ins = scopedInstructor('rank review settings')
   return ins ? `settings:rank_review:${ins}` : 'settings:rank_review'
 }
 
@@ -61,7 +61,7 @@ export async function patchSettings(db: Db, patch: SettingsPatch): Promise<Setti
   for (const [task, v] of entries) {
     if (!isAllowed(task, v)) throw new SettingsError(`${task} cannot be set to ${v}`)
   }
-  const ins = currentInstructorId()
+  const ins = scopedInstructor('settings')
   for (const [task, autonomy] of entries) {
     if (ins) await db.insert(instructorSettings).values({ instructorId: ins, task, autonomy }).onConflictDoUpdate({ target: [instructorSettings.instructorId, instructorSettings.task], set: { autonomy } })
     else await db.insert(agentSettings).values({ task, autonomy }).onConflictDoUpdate({ target: agentSettings.task, set: { autonomy } })

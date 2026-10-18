@@ -70,12 +70,27 @@ describe('http', () => {
     expect((await app.request('/v1/today', { headers: h })).status).toBe(200)
   })
 
-  it('caps failed pairing attempts globally', async () => {
+  it('S1: pairing failures are limited per trusted client IP, never instance-wide; spoofed x-forwarded-for is ignored', async () => {
     const { app } = await setup()
-    const post = (code: string, ip: string) => app.request('/pair', { method: 'POST', body: JSON.stringify({ code }), headers: { 'Content-Type': 'application/json', 'x-forwarded-for': ip } })
-    for (let i = 0; i < 20; i++) expect((await post('bad', `1.1.1.${i}`)).status).toBe(401)
-    expect((await post('4242', '9.9.9.9')).status).toBe(429)
+    const post = (code: string, h: Record<string, string>) => app.request('/pair', { method: 'POST', body: JSON.stringify({ code }), headers: { 'Content-Type': 'application/json', ...h } })
+    // Many attackers on different (trusted) IPs do not lock the real coach out.
+    for (let i = 0; i < 20; i++) expect((await post(`bad${i}`, { 'x-real-ip': `1.1.1.${i}` })).status).toBe(401)
+    expect((await post('4242', { 'x-real-ip': '9.9.9.9' })).status).toBe(200)
+    // One client rotating a spoofed x-forwarded-for is still one bucket: refused after 10, even with the right code.
+    for (let i = 0; i < 10; i++) expect((await post(`nope${i}`, { 'x-forwarded-for': `2.2.2.${i}`, 'x-real-ip': '5.5.5.5' })).status).toBe(401)
+    expect((await post('nope-x', { 'x-forwarded-for': '3.3.3.3', 'x-real-ip': '5.5.5.5' })).status).toBe(429)
+    expect((await post('4242', { 'x-real-ip': '5.5.5.5' })).status).toBe(429)
+    expect((await post('4242', { 'x-real-ip': '6.6.6.6' })).status).toBe(200)
   })
+
+  it('S1: parallel guesses are all counted (the attempt is recorded before the lookup)', async () => {
+    const { app } = await setup()
+    const post = () => app.request('/pair', { method: 'POST', body: JSON.stringify({ code: `g${Math.random()}` }), headers: { 'Content-Type': 'application/json', 'x-real-ip': '7.7.7.7' } })
+    const codes = (await Promise.all(Array.from({ length: 15 }, post))).map(r => r.status)
+    expect(codes.filter(c => c === 401).length).toBeLessThanOrEqual(10)
+    expect(codes.filter(c => c === 429).length).toBeGreaterThanOrEqual(5)
+  })
+
   it('maps deck route failures to 404/409/400/401', async () => {
     const { app, h } = await setup()
     const get = (p: string, init: RequestInit = {}) => app.request(p, { headers: h, ...init })

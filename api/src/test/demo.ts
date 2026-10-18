@@ -6,7 +6,7 @@ import { createApp } from '../app'
 import { pairWith } from './tenants'
 import type { Deps } from '../deps'
 
-export const DEMO_CODE = 'demo-pair-77'
+export const DEMO_CODE = '4242' // the test env's PAIRING_CODE (the demo instructor's code follows it)
 export const intent = (o: Record<string, unknown>) => ({
   type: 'feedback', studentNames: [], content: '', skillTags: [], urgency: null, amount: null, minutes: null, attendanceStatus: null, urgent: false,
   metricKey: null, metricValue: null, metricNum: null, metricUnit: null, metricSince: null, question: null, ...o,

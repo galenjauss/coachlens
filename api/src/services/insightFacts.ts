@@ -3,7 +3,7 @@ import type { Db } from '../db/client'
 import { attendance, billingFlags, classes, enrollments, issues, notes, sessions, studentMetrics, students } from '../db/schema'
 import type { StudentFacts } from '../agents/insights'
 import { addDays } from '../logic/dates'
-import { currentInstructorId } from '../http/context'
+import { scopedInstructor } from '../http/context'
 import { studentOwnedBy } from './ownership'
 
 /** How far back the detectors look: attendance covers both 4-week decline windows; notes cover the 21-day quiet check with room. */
@@ -16,7 +16,7 @@ export interface FactBounds { today: string; now: Date }
  * every student of the request's instructor (C4); outside a request scope (scripts, tests), every student.
  */
 export async function loadFacts(db: Db, givenIds: readonly string[] | undefined, b: FactBounds): Promise<StudentFacts[]> {
-  const owner = currentInstructorId()
+  const owner = givenIds ? null : scopedInstructor('insight facts')
   const studentIds = givenIds ?? (owner ? (await db.select({ id: students.id }).from(students).where(studentOwnedBy(owner))).map(r => r.id) : undefined)
   if (studentIds && !studentIds.length) return []
   const ids = studentIds ? [...studentIds] : null

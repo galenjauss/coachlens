@@ -1,3 +1,4 @@
+import { pairingPepperFrom } from './services/pairing'
 import { neon } from '@neondatabase/serverless'
 import { drizzle } from 'drizzle-orm/neon-http'
 import { waitUntil } from '@vercel/functions'
@@ -28,13 +29,18 @@ export function prodDeps(): Deps {
   if (allowedOrigins.includes('*')) console.warn('[prod] ALLOWED_ORIGINS=* (any origin); narrow it to the WebView origin')
   const cap = Number(process.env.AI_DAILY_CAP || 400)
   if (!Number.isFinite(cap) || cap <= 0) throw new Error('AI_DAILY_CAP must be a positive number')
+  // S2: one instructor can use at most this many of the day's calls (default: half the global cap, which stays the ceiling).
+  const instructorCap = Number(process.env.AI_INSTRUCTOR_DAILY_CAP || Math.max(1, Math.floor(cap / 2)))
+  if (!Number.isFinite(instructorCap) || instructorCap <= 0) throw new Error('AI_INSTRUCTOR_DAILY_CAP must be a positive number')
+  // Pairing-code hashes are keyed by a server secret: PAIRING_PEPPER, else one derived from CRON_SECRET.
+  const pairingPepper = pairingPepperFrom({ PAIRING_PEPPER: process.env.PAIRING_PEPPER, CRON_SECRET: need('CRON_SECRET') })
   const timeZone = process.env.TZ_NAME ?? 'America/Los_Angeles'
   return {
     db,
     llm: anthropicLlm({
       fast: process.env.MODEL_FAST || MODEL_FAST,
       smart: process.env.MODEL_SMART || MODEL_SMART,
-      budget: dbBudget(db, cap, timeZone, () => new Date()),
+      budget: dbBudget(db, cap, timeZone, () => new Date(), instructorCap),
     }),
     stt: {
       async transcribe(wav, hints) {
@@ -68,6 +74,8 @@ export function prodDeps(): Deps {
       instructorName: process.env.INSTRUCTOR_NAME ?? 'Coach',
       timeZone,
       aiDailyCap: cap,
+      aiInstructorDailyCap: instructorCap,
+      pairingPepper,
       sttConfigured: Boolean(openaiKey),
     },
   }

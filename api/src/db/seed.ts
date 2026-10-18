@@ -4,7 +4,7 @@ import * as t from './schema'
 import { addDays, nextDateForWeekday, weekStart } from '../logic/dates'
 import { seedPersonalTraining, seedTutoring } from './seedModes'
 import { pastSessions, recordAttendance, sessionNotes } from './seedHistory'
-import { hashPairingCode } from '../services/pairing'
+import { DEMO_INSTRUCTOR_EMAIL, hashPairingCode } from '../services/pairing'
 
 const KIDS = [
   ['Priya Rao', 'orange', 2018], ['Leonardo Diaz', 'yellow', 2017], ['Jake Ross', 'white', 2019], ['Mia Lopez', 'white', 2019],
@@ -17,14 +17,14 @@ const drill = (name: string, minutes: number, kind: 'warmup' | 'technique' | 'dr
   ({ name, minutes, kind, cues, rationale, focusStudentIds: focus })
 
 /** Synthetic demo data only. `pairingCode` (the env PAIRING_CODE) becomes the demo instructor's hashed code (C4). */
-export async function seed(db: Db, opts: { today: string; guardianEmail: (i: number) => string; pairingCode?: string }) {
+export async function seed(db: Db, opts: { today: string; guardianEmail: (i: number) => string; pairingCode?: string; pairingPepper?: string }) {
   for (const table of [t.apiTokens, t.agentRuns, t.reportCards, t.outbox, t.billingFlags, t.issues, t.notes, t.utterances, t.deckDiffs, t.drills, t.decks, t.attendance, t.sessions, t.curriculum, t.enrollments, t.guardians, t.students, t.classes, t.instructors, t.preferences, t.studentMetrics, t.insights]) {
     await db.delete(table)
   }
   // A reseed replays the demo: insight run/live-check bookkeeping goes too (settings and vocabulary are kept).
   await db.delete(t.kv).where(like(t.kv.key, 'insights:%'))
   const [ins] = await db.insert(t.instructors).values({
-    name: 'Coach Galen', email: 'coach@matside.dev', pairingCodeHash: opts.pairingCode ? await hashPairingCode(opts.pairingCode) : null,
+    name: 'Coach Galen', email: DEMO_INSTRUCTOR_EMAIL, pairingCodeHash: opts.pairingCode ? await hashPairingCode(opts.pairingCode, opts.pairingPepper) : null,
   }).returning()
   const [tue, thu] = await db.insert(t.classes).values([
     { instructorId: ins!.id, name: 'Kids · Tue', weekday: 2, startTime: '17:00' },

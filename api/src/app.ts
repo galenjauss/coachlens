@@ -8,13 +8,14 @@ import { SttUnavailableError, type Deps } from './deps'
 import { getStatus } from './services/status'
 import { attendance, billingFlags, drills, enrollments, instructors, insights as insightsTable, notes, sessions, students, classes, utterances } from './db/schema'
 import { runAs } from './http/context'
-import { authenticate, instructorForCode, issueToken, revokeToken, rotatePairingCode } from './services/pairing'
+import { authenticate, DEV_PAIRING_PEPPER, instructorForCode, issueToken, revokeOtherTokens, revokeToken, rotatePairingCode, syncEnvPairingCode } from './services/pairing'
+import { bump, clientIp, IP_LIMIT, PREFIX_LIMIT, prefixBucket, unbump } from './services/pairLimits'
 import {
   insightOwnedBy, ownedStudentIds, ownsAgentRun, ownsBilling, ownsClass, ownsDeck, ownsDiff, ownsDrill, ownsInsight,
   ownsMetric, ownsNote, ownsOutbox, ownsSession, ownsStudent, ownsUtterance,
 } from './services/ownership'
 import { timingSafeEqual } from 'node:crypto'
-import { allow, isBlocked, recordFailure } from './http/rateLimit'
+import { allow } from './http/rateLimit'
 import { getToday, listClasses } from './services/today'
 import { endSession, logDrill, requireSession, startSession } from './services/sessions'
 import { handleUtterance } from './services/utterance'
@@ -49,8 +50,6 @@ import { acceptInsight, dismissInsight, insightsOnAttendance, InsightsError, lis
 
 type Vars = { Variables: { instructorId: string; tokenId: string } }
 const MAX_AUDIO_BYTES = 2_000_000
-const PAIR_FAIL_LIMIT = 20
-const PAIR_FAIL_WINDOW_MS = 10 * 60_000
 const MAX_EXTRACT_BYTES = MAX_IMAGE_BASE64 + MAX_ONBOARDING_TEXT * 4 + 4096
 
 function codesMatch(a: string, b: string): boolean {
@@ -84,18 +83,25 @@ export function createApp(deps: Deps) {
 
   app.get('/health', c => c.json({ ok: true }))
 
+  const pepper = deps.env.pairingPepper ?? DEV_PAIRING_PEPPER
+  // Once per process: the demo instructor's code follows a changed PAIRING_CODE (see syncEnvPairingCode).
+  let envSynced: Promise<void> | null = null
   app.post('/pair', async c => {
-    const ip = c.req.header('x-forwarded-for') ?? 'local'
-    if (!allow(`pair:${ip}`, 10)) throw new HTTPException(429, { message: 'slow down' })
     const { code } = await json(c.req.raw, z.object({ code: z.string().min(1).max(32) }))
-    if (isBlocked('pair-fail:global', PAIR_FAIL_LIMIT)) throw new HTTPException(429, { message: 'slow down' })
-    // C4: a code pairs to exactly one instructor (hashed lookup); no "first instructor" fallback.
-    const instructorId = await instructorForCode(db, code, deps.env.pairingCode)
-    if (!instructorId) {
-      recordFailure('pair-fail:global', PAIR_FAIL_WINDOW_MS)
-      throw new HTTPException(401, { message: 'bad code' })
+    envSynced ??= syncEnvPairingCode(db, deps.env.pairingCode, pepper).catch(e => { envSynced = null; console.error('[pair:sync]', e) })
+    await envSynced
+    // S1: the attempt is counted (in the database) before the lookup; a blocked IP is refused without a lookup.
+    const ipBucket = `ip:${clientIp(k => c.req.header(k))}`
+    if (await bump(db, ipBucket, deps.now()) > IP_LIMIT) throw new HTTPException(429, { message: 'slow down' })
+    // C4: a code pairs to exactly one instructor (keyed hash lookup); no "first instructor" fallback.
+    const instructorId = await instructorForCode(db, code, deps.env.pairingCode, pepper)
+    if (instructorId) {
+      await unbump(db, ipBucket)
+      return c.json({ token: await issueToken(db, instructorId, deps.now()) })
     }
-    return c.json({ token: await issueToken(db, instructorId, deps.now()) })
+    // The shared prefix bucket only ever refuses codes that do not match.
+    const many = await bump(db, prefixBucket(code), deps.now()) > PREFIX_LIMIT
+    throw new HTTPException(many ? 429 : 401, { message: many ? 'slow down' : 'bad code' })
   })
 
   app.use('/v1/*', async (c, next) => {
@@ -119,7 +125,15 @@ export function createApp(deps: Deps) {
     return c.json({ ok: true })
   })
   /** Owner action: a fresh reusable code, returned once (only its hash is stored). Paired phones stay paired. */
-  app.post('/v1/pairing/rotate', async c => c.json({ code: await rotatePairingCode(db, me(c)) }))
+  // { revokeOthers: true } also signs out every other phone (S3: a lost or stolen phone).
+  app.post('/v1/pairing/rotate', async c => {
+    const body = await json(c.req.raw, z.object({ revokeOthers: z.boolean().optional() }).catch({}))
+    const code = await rotatePairingCode(db, me(c), pepper)
+    const revoked = body.revokeOthers ? await revokeOtherTokens(db, me(c), c.get('tokenId'), deps.now()) : 0
+    return c.json({ code, ...(body.revokeOthers ? { revoked } : {}) })
+  })
+  /** S3: signs out every phone of this instructor except the calling one. */
+  app.post('/v1/tokens/revoke-others', async c => c.json({ ok: true, revoked: await revokeOtherTokens(db, me(c), c.get('tokenId'), deps.now()) }))
 
 
   /** Degraded-mode status: AI calls left today (Anthropic calls only) and whether speech-to-text is configured. */
@@ -155,7 +169,9 @@ export function createApp(deps: Deps) {
     const { studentIds } = await json(c.req.raw, z.object({ studentIds: z.array(z.string()).max(30) }))
     await need(ownsSession(db, me(c), c.req.param('id')), 'session')
     const s = await requireSession(db, c.req.param('id'))
-    await db.update(classes).set({ remindIds: studentIds }).where(eq(classes.id, s.classId))
+    // Only students on this class's roster (never another class's or instructor's ids).
+    const roster = new Set((await db.select({ id: enrollments.studentId }).from(enrollments).where(eq(enrollments.classId, s.classId))).map(r => r.id))
+    await db.update(classes).set({ remindIds: [...new Set(studentIds)].filter(id => roster.has(id)) }).where(eq(classes.id, s.classId))
     return c.json({ ok: true })
   })
 

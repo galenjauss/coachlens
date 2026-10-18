@@ -7,7 +7,7 @@ import { makeTestDb, makeDeps, fakeLlm } from '../test/helpers'
 import { handleUtterance } from './utterance'
 import { createApp } from '../app'
 import { resetRateLimits } from '../http/rateLimit'
-import { agentRuns, agentSettings, attendance, classes, curriculum, decks, drills, enrollments, instructors, llmUsage, notes, sessions, students } from '../db/schema'
+import { agentRuns, agentSettings, attendance, classes, curriculum, decks, drills, enrollments, instructors, llmUsage, llmUsageInstructor, notes, sessions, students } from '../db/schema'
 import { detectCommand } from '../logic/commands'
 
 const intent = (o: Record<string, unknown>) => ({ type: 'feedback', studentNames: [], content: '', skillTags: [], urgency: null, amount: null, minutes: null, attendanceStatus: null, urgent: false, ...o })
@@ -143,8 +143,11 @@ describe('F20: /v1/status exposes degraded mode honestly', () => {
     const db = await makeTestDb()
     await db.insert(instructors).values({ name: 'Coach', email: 'c@example.com' })
     const base = makeDeps(db)
-    const deps = makeDeps(db, { env: { ...base.env, aiDailyCap: 10, sttConfigured: false } })
-    await db.insert(llmUsage).values({ day: '2026-10-19', calls: 3 })
+    const deps = makeDeps(db, { env: { ...base.env, aiDailyCap: 10, aiInstructorDailyCap: 6, sttConfigured: false } })
+    const [ins] = await db.select().from(instructors)
+    // S2: another instructor's calls count toward the global ceiling but never show in this caller's numbers.
+    await db.insert(llmUsage).values({ day: '2026-10-19', calls: 5 })
+    await db.insert(llmUsageInstructor).values({ instructorId: ins!.id, day: '2026-10-19', calls: 3 })
     const app = createApp(deps)
     const { token } = await (await app.request('/pair', { method: 'POST', body: JSON.stringify({ code: '4242' }), headers: { 'Content-Type': 'application/json' } })).json() as { token: string }
     expect((await app.request('/v1/status')).status).toBe(401)
@@ -152,14 +155,15 @@ describe('F20: /v1/status exposes degraded mode honestly', () => {
     expect(r.status).toBe(200)
     const body = StatusResponse.parse(await r.json())
     expect(body).toEqual({
-      aiCallsToday: 3, aiDailyCap: 10, sttConfigured: false, mailMode: 'review', degraded: true,
-      degradedReasons: ['speech_to_text_unconfigured'], aiCallsRemaining: 7, aiCallsCounted: 'anthropic', day: '2026-10-19',
+      aiCallsToday: 3, aiDailyCap: 6, sttConfigured: false, mailMode: 'review', degraded: true,
+      degradedReasons: ['speech_to_text_unconfigured'], aiCallsRemaining: 3, aiCallsCounted: 'anthropic', day: '2026-10-19',
     })
+    // The global ceiling is reached by others: this caller is out too, still seeing only their own count.
     await db.update(llmUsage).set({ calls: 12 })
     // The caller's own setting (C4: settings are per instructor).
     await app.request('/v1/settings', { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ autonomy: { parent_email: 'auto' } }) })
     const after = StatusResponse.parse(await (await app.request('/v1/status', { headers: { Authorization: `Bearer ${token}` } })).json())
-    expect(after).toMatchObject({ aiCallsToday: 12, aiCallsRemaining: 0, mailMode: 'auto', degraded: true, degradedReasons: ['ai_budget_reached', 'speech_to_text_unconfigured'] })
+    expect(after).toMatchObject({ aiCallsToday: 3, aiCallsRemaining: 0, mailMode: 'auto', degraded: true, degradedReasons: ['ai_budget_reached', 'speech_to_text_unconfigured'] })
   })
 
   it('no cap configured reads as uncapped, not as unlimited budget', async () => {

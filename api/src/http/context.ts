@@ -22,3 +22,17 @@ export function bindUtterance(utteranceId: string): void {
   const s = als.getStore()
   if (s) s.utteranceId = utteranceId
 }
+
+/**
+ * S4 · per-instructor data must never be read or written without an instructor. Outside a request scope this
+ * throws, unless unscoped access was enabled explicitly: `COACHLENS_ALLOW_UNSCOPED=1` (set for the test suite and
+ * one-off scripts) or allowUnscoped(true). Unscoped callers then use the legacy deployment-wide rows.
+ */
+let unscoped = process.env.COACHLENS_ALLOW_UNSCOPED === '1'
+export function allowUnscoped(on: boolean): void { unscoped = on }
+export class NoInstructorError extends Error {}
+export function scopedInstructor(where: string): string | null {
+  const id = currentInstructorId()
+  if (id || unscoped) return id
+  throw new NoInstructorError(`${where}: no instructor in scope`)
+}
