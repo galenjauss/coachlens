@@ -14,6 +14,8 @@ import { endSession, logDrill, requireSession, startSession } from './services/s
 import { handleUtterance } from './services/utterance'
 import { listReview, approveOutbox, skipOutbox, approveAllOutbox, handleBilling, noteBilling, dismissNote, type ActionResult } from './services/review'
 import { getDeck, patchDeck } from './services/decks'
+import { runReportCards } from './agents/reportCard'
+import { agentFeed, getStudentDetail, listStudents } from './services/students'
 import { acceptDiff, alternativesFor, nextDeckFor, suggestDiff, undoDiff } from './agents/planner'
 import { applyDiff, totalMinutes } from './logic/deckDiff'
 import { localDate } from './logic/dates'
@@ -234,6 +236,24 @@ export function createApp(deps: Deps) {
   })
   app.post('/v1/diffs/:id/undo', async c => { await undoDiff(db, c.req.param('id')); return c.json({ ok: true }) })
   app.post('/v1/drills/:id/alternatives', async c => c.json({ alternatives: await guard(alternativesFor(deps, c.req.param('id'))) }))
+
+  app.get('/jobs/report-cards', async c => {
+    if (!deps.env.cronSecret || !codesMatch(c.req.header('authorization') ?? '', `Bearer ${deps.env.cronSecret}`)) throw new HTTPException(401, { message: 'cron only' })
+    return c.json(await runReportCards(deps))
+  })
+  app.get('/v1/students', async c => c.json(await listStudents(db)))
+  app.get('/v1/students/:id', async c => c.json(await guard(getStudentDetail(deps, c.req.param('id')))))
+  app.get('/v1/agents/feed', async c => {
+    const since = c.req.query('since')
+    const d = since ? new Date(since) : null
+    if (d && Number.isNaN(d.getTime())) throw new HTTPException(400, { message: 'bad since' })
+    return c.json(await agentFeed(db, d))
+  })
+  app.post('/v1/report-cards/run', async c => {
+    const { studentIds } = await json(c.req.raw, z.object({ studentIds: z.array(z.string()).max(50).optional() }))
+    deps.defer(runReportCards(deps, studentIds))
+    return c.json({ started: studentIds?.length ?? (await listStudents(db)).length })
+  })
 
   return app
 }
