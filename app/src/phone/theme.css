@@ -172,3 +172,36 @@ button.startfrom-opt:hover:not(:disabled) { border-color: var(--accent); filter:
 button.startfrom-opt:active:not(:disabled) { background: var(--line); }
 button.add-item { border: 1px dashed var(--accent); background: none; color: var(--accent); font-weight: 600; }
 button.add-item:hover:not(:disabled) { background: var(--accent); color: var(--ink-on-accent); filter: none; }
+
+/* Student profile + metrics (Task 30). Scrolls with the page inside #root; nothing is fixed. */
+.profile { border-left: 3px solid var(--accent); }
+.profile-head { font-size: 19px; font-weight: 650; color: #fff; letter-spacing: -.01em; margin-bottom: 8px; }
+.profile-lines { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 4px; }
+.profile-lines li { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.dots { letter-spacing: .18em; font-size: 15px; margin: 0 4px; }
+.dots .on { color: var(--accent); }
+.dots .off { color: var(--muted); }
+.rank-row { display: flex; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
+.rank-row b { text-transform: capitalize; }
+.rank-edit { padding-top: 10px; border-top: 1px solid var(--line); }
+.rank-edit .label { margin-top: 8px; }
+.rank-edit input { margin-top: 0; }
+button.quiet { flex: none; background: none; color: var(--muted); min-height: 36px; padding: 4px 10px; font-size: 13px; border: 1px solid var(--line); }
+button.quiet.danger:hover:not(:disabled) { background: var(--danger-bg); color: var(--danger); filter: none; }
+.metrics { list-style: none; margin: 0 0 12px; padding: 0; }
+.metric { border-top: 1px solid var(--line); }
+.metric:first-child { border-top: 0; }
+.metrics .metric-head { display: flex; align-items: baseline; gap: 10px; width: 100%; background: none; text-align: left; padding: 10px 0; border-radius: 0; flex-wrap: wrap; }
+.metric-name { flex: 1 1 auto; min-width: 40%; text-transform: capitalize; color: var(--muted); }
+.metric-now { font-size: 22px; font-weight: 650; color: #fff; font-variant-numeric: tabular-nums; }
+.metric-now.best { color: var(--accent); }
+.metric-delta { font-size: 12px; color: var(--muted); }
+.metric-delta.up { color: var(--accent); }
+.metric-delta.down { color: var(--danger); }
+.spark { flex-basis: 100%; letter-spacing: .12em; font-size: 14px; color: var(--accent); opacity: .85; line-height: 1; }
+.metric-history { list-style: none; margin: 0 0 8px; padding: 0 0 0 10px; border-left: 2px solid var(--line); }
+.metric-history li { display: flex; align-items: center; gap: 10px; padding: 2px 0; font-variant-numeric: tabular-nums; }
+.metric-add { border-top: 1px solid var(--line); padding-top: 10px; }
+.metric-add-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.metric-add-grid input { margin-top: 0; }
+#mf-key, #mf-value { grid-column: 1 / -1; }

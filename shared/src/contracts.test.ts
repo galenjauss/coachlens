@@ -31,3 +31,18 @@ describe('contracts', () => {
     expect(item.kind).toBe('billing')
   })
 })
+
+describe('student intelligence contracts', () => {
+  const base = { studentNames: ['Maria'], content: 'x', skillTags: [], urgency: null, amount: null, minutes: null, attendanceStatus: null, urgent: false }
+  it('metric and student_query intents parse with or without the metric fields', async () => {
+    const { Intent, routerOutputFor, Brief, StudentPatch } = await import('./contracts')
+    expect(Intent.parse({ ...base, type: 'student_query' }).type).toBe('student_query')
+    const m = Intent.parse({ ...base, type: 'metric', metricKey: 'deadlift', metricValue: '225 lb', metricNum: 225, metricUnit: 'lb', metricSince: null })
+    expect(m.metricNum).toBe(225)
+    expect(routerOutputFor('personal_training').parse({ intents: [{ ...base, type: 'metric', metricKey: 'deadlift' }] }).intents).toHaveLength(1)
+    expect(Brief.safeParse({ name: 'A', lines: ['x'.repeat(39)] }).success).toBe(false)
+    expect(Brief.safeParse({ name: 'A', lines: ['a', 'b', 'c', 'd', 'e', 'f'] }).success).toBe(false)
+    expect(StudentPatch.safeParse({}).success).toBe(false)
+    expect(StudentPatch.safeParse({ belt: 'green', rankSince: '2026-03-01' }).success).toBe(true)
+  })
+})

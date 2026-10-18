@@ -1,8 +1,8 @@
 import { clampMinutes, clip, NAME_MAX } from '../logic/planNormalize'
 import { and, eq, gte, sql } from 'drizzle-orm'
-import type { Disambiguation, Intent, UtteranceResponse } from '@matside/shared'
+import type { Brief, Disambiguation, Intent, UtteranceResponse } from '@matside/shared'
 import type { Deps } from '../deps'
-import { attendance, billingFlags, drills, issues, notes, utterances } from '../db/schema'
+import { attendance, billingFlags, drills, issues, notes, students, utterances } from '../db/schema'
 import { routeUtterance } from '../agents/router'
 import { withRun } from '../agents/runs'
 import { draftParentEmail } from '../agents/parentEmail'
@@ -12,6 +12,10 @@ import { parseAttendance, type RollCall } from '../logic/attendance'
 import { isRecurring, RECURRING_WINDOW_DAYS } from '../logic/recurring'
 import { buildCardLines, type CardAction } from '../logic/cardLines'
 import { getAutonomy } from './settings'
+import { buildBrief } from './brief'
+import { recordMetric } from './metrics'
+import { isGradeMetric, metricPhrase, normalizeKey, shortDate } from '../logic/metrics'
+import { localDate } from '../logic/dates'
 import { coverageAndNext, loadSessionContext, markPresent, type SessionContext } from './context'
 
 const DAY = 86_400_000
@@ -30,6 +34,7 @@ export async function handleUtterance(
   const utteranceId = utt!.id
   const actions: CardAction[] = []
   let disambiguation: Disambiguation | null = null
+  let brief: Brief | null = null
 
   const parsed = input.mode === 'attendance' ? parseAttendance(input.transcript) : null
   if (parsed) {
@@ -45,6 +50,7 @@ export async function handleUtterance(
       const r = await applyIntent(deps, ctx, utteranceId, intent)
       actions.push(...r.actions)
       disambiguation ??= r.disambiguation
+      brief ??= r.brief ?? null
     }
   }
   const { coverage, next } = await coverageAndNext(db, ctx, deps.now())
@@ -55,6 +61,7 @@ export async function handleUtterance(
     coverage,
     nextStudent: next,
     disambiguation,
+    ...(brief ? { brief } : {}),
   }
 }
 
@@ -94,12 +101,14 @@ async function applyRollCall(deps: Deps, ctx: SessionContext, utteranceId: strin
   return { kind: 'attendance', present: ctx.roster.length - absent.size, absentNames: [...absent.values()] }
 }
 
-type Applied = { actions: CardAction[]; disambiguation: Disambiguation | null }
+type Applied = { actions: CardAction[]; disambiguation: Disambiguation | null; brief?: Brief }
 
 async function applyIntent(deps: Deps, ctx: SessionContext, utteranceId: string, intent: Intent): Promise<Applied> {
   switch (intent.type) {
     case 'feedback': return applyFeedback(deps, ctx, utteranceId, intent)
     case 'billing': return applyBilling(deps, ctx, utteranceId, intent)
+    case 'metric': return applyMetric(deps, ctx, utteranceId, intent)
+    case 'student_query': return applyStudentQuery(deps, ctx, intent)
     case 'attendance': return applyAttendanceIntent(deps, ctx, utteranceId, intent)
     case 'plan_request': {
       safeDefer(deps, 'plan_request', (async () => {
@@ -239,4 +248,56 @@ async function applyAttendanceIntent(deps: Deps, ctx: SessionContext, utteranceI
     actions.push({ kind: 'marked', name: first(m.student.name), status })
   }
   return { actions, disambiguation: null }
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+/** A progress reading ("Maria hit 225 on deadlift"): saved as a metric row; a rank change also moves the belt and rank-since. */
+async function applyMetric(deps: Deps, ctx: SessionContext, utteranceId: string, intent: Intent): Promise<Applied> {
+  const { db } = deps
+  const run = { agent: 'progress', trigger: 'metric', sessionId: ctx.sessionId, utteranceId }
+  if (await getAutonomy(db, 'progress') === 'off') {
+    await withRun(deps, run, async () => ({ result: false, summary: 'Progress reading skipped (off)', reason: 'autonomy: off — progress logging is turned off in Settings' }))
+    return { actions: [{ kind: 'metric_off' }], disambiguation: null }
+  }
+  const key = normalizeKey(intent.metricKey ?? '')
+  const num = intent.metricNum ?? null
+  const unit = intent.metricUnit?.trim() || null
+  const value = intent.metricValue?.trim() || (num === null ? '' : `${num}${unit ? ` ${unit}` : ''}`)
+  if (!key || !value) {
+    await db.insert(notes).values({ sessionId: ctx.sessionId, utteranceId, drillId: ctx.drill?.id ?? null, text: intent.content || value || 'progress reading' })
+    return { actions: [{ kind: 'saved_unsorted' }], disambiguation: null }
+  }
+  const actions: CardAction[] = []
+  for (const heard of intent.studentNames) {
+    const m = resolveName(heard, ctx.roster)
+    if (m.kind !== 'match') { actions.push({ kind: 'name_unclear', name: heard }); continue }
+    const s = m.student
+    const text = await withRun(deps, { ...run, links: { studentId: s.id } }, async () => {
+      const { change } = await recordMetric(db, { studentId: s.id, key, value, num, unit, source: 'voice', utteranceId }, isGradeMetric(ctx.mode.id, unit))
+      let phrase = metricPhrase(key, value, num, unit, change)
+      let reason = change ? (change.kind === 'pr' ? 'new personal best' : 'grade change vs the last one') : 'recorded'
+      if (key === 'rank') {
+        const since = intent.metricSince && DATE_RE.test(intent.metricSince) ? intent.metricSince : null
+        const [cur] = await db.select({ belt: students.belt }).from(students).where(eq(students.id, s.id))
+        const changed = cur?.belt.toLowerCase() !== value.toLowerCase()
+        const rankSince = since ?? (changed ? localDate(deps.now(), deps.env.timeZone) : null)
+        await db.update(students).set({ belt: value, ...(rankSince ? { rankSince } : {}) }).where(eq(students.id, s.id))
+        phrase = since ? `rank ${value} (since ${shortDate(since)})` : `rank ${value}`
+        reason = since ? `rank set, since ${since}` : changed ? 'rank changed today' : 'rank confirmed'
+      }
+      return { result: phrase, summary: `${first(s.name)}: ${phrase}`, reason }
+    })
+    if (text) actions.push({ kind: 'metric', name: first(s.name), text })
+  }
+  return { actions, disambiguation: null }
+}
+
+/** "How's Priya doing?": no writes; the response carries the brief for the lens. */
+async function applyStudentQuery(deps: Deps, ctx: SessionContext, intent: Intent): Promise<Applied> {
+  const heard = intent.studentNames[0]
+  const m = heard ? resolveName(heard, ctx.roster) : { kind: 'none' as const }
+  if (m.kind !== 'match') return { actions: [{ kind: 'name_unclear', name: heard ?? 'who' }], disambiguation: null }
+  const brief = await buildBrief(deps.db, m.student.id, ctx.mode, deps.now(), deps.env.timeZone)
+  return { actions: [{ kind: 'student_query', name: first(m.student.name) }], disambiguation: null, brief }
 }

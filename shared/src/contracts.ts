@@ -11,7 +11,7 @@ export type SkillTag = z.infer<typeof SkillTag>
 export const Urgency = z.enum(['low', 'med', 'high'])
 export type Urgency = z.infer<typeof Urgency>
 
-export const IntentType = z.enum(['feedback', 'attendance', 'billing', 'plan_request', 'parent_message', 'add_drill'])
+export const IntentType = z.enum(['feedback', 'attendance', 'billing', 'plan_request', 'parent_message', 'add_drill', 'metric', 'student_query'])
 export type IntentType = z.infer<typeof IntentType>
 
 // Every field is required and nullable/array so it works with LLM structured output.
@@ -26,6 +26,13 @@ const intentShape = <T extends z.ZodType<string>>(tag: T) => z.object({
   attendanceStatus: z.enum(['present', 'absent']).nullable(),
   // Injury, safety or serious behavior: drafts a parent/client note right away (bypasses the email cooldown).
   urgent: z.boolean(),
+  // metric intents (nullish so older transports and stubs that omit them still parse).
+  metricKey: z.string().max(40).nullish(),
+  metricValue: z.string().max(80).nullish(),
+  metricNum: z.number().nullish(),
+  metricUnit: z.string().max(12).nullish(),
+  /** A rank change with a date ("yellow belt since March"): YYYY-MM-DD resolved against today's date. */
+  metricSince: z.string().nullish(),
 })
 export const Intent = intentShape(SkillTag)
 export type Intent = z.infer<typeof Intent>
@@ -110,6 +117,12 @@ export type NextStudent = z.infer<typeof NextStudent>
 export const Disambiguation = z.object({ noteId: z.string(), heard: z.string(), options: z.array(StudentRef).length(2) })
 export type Disambiguation = z.infer<typeof Disambiguation>
 
+export const BRIEF_LINE_MAX = 38
+export const BRIEF_LINES_MAX = 5
+/** A glanceable student summary for the lens: ≤5 lines of ≤38 chars. */
+export const Brief = z.object({ name: z.string(), lines: z.array(z.string().max(BRIEF_LINE_MAX)).max(BRIEF_LINES_MAX) })
+export type Brief = z.infer<typeof Brief>
+
 export const UtteranceResponse = z.object({
   utteranceId: z.string(),
   transcript: z.string(),
@@ -117,6 +130,8 @@ export const UtteranceResponse = z.object({
   coverage: Coverage,
   nextStudent: NextStudent.nullable(),
   disambiguation: Disambiguation.nullable(),
+  /** Present for a student_query: the lens shows it in place of the agent-progress column. */
+  brief: Brief.nullish(),
 })
 export type UtteranceResponse = z.infer<typeof UtteranceResponse>
 
@@ -194,6 +209,18 @@ export const ReportCardContent = z.object({
 })
 export type ReportCardContent = z.infer<typeof ReportCardContent>
 
+export const MetricSource = z.enum(['voice', 'phone', 'seed'])
+export const StudentMetric = z.object({
+  id: z.string(), key: z.string(), value: z.string(), num: z.number().nullable(), unit: z.string().nullable(),
+  recordedAt: z.string(), source: MetricSource,
+})
+export type StudentMetric = z.infer<typeof StudentMetric>
+export const MetricCreate = z.object({
+  key: z.string().trim().min(1).max(40), value: z.string().trim().min(1).max(80),
+  num: z.number().finite().nullish(), unit: z.string().trim().max(12).nullish(),
+})
+export type MetricCreate = z.infer<typeof MetricCreate>
+
 export const StudentDetail = z.object({
   id: z.string(),
   name: z.string(),
@@ -203,6 +230,9 @@ export const StudentDetail = z.object({
   issues: z.array(z.object({ tag: SkillTag, status: z.enum(['open', 'resolved']) })),
   notes: z.array(z.object({ date: z.string(), drillName: z.string().nullable(), text: z.string() })),
   reportCard: z.object({ id: z.string(), month: z.string(), content: ReportCardContent, outboxId: z.string(), status: z.string() }).nullable(),
+  rankSince: z.string().nullable(), // YYYY-MM-DD
+  metrics: z.array(StudentMetric),
+  brief: Brief,
 })
 export type StudentDetail = z.infer<typeof StudentDetail>
 
@@ -234,7 +264,11 @@ export type VoicePlanResponse = z.infer<typeof VoicePlanResponse>
 export const Alternatives = z.object({ alternatives: z.array(DrillDraft).length(3) })
 export type Alternatives = z.infer<typeof Alternatives>
 
-export const StudentPatch = z.object({ aliases: z.array(Alias).max(MAX_ALIASES) })
+export const StudentPatch = z.object({
+  aliases: z.array(Alias).max(MAX_ALIASES).optional(),
+  belt: z.string().trim().min(1).max(40).optional(),
+  rankSince: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+}).refine(p => p.aliases !== undefined || p.belt !== undefined || p.rankSince !== undefined, 'nothing to change')
 export type StudentPatch = z.infer<typeof StudentPatch>
 
 // ---- Agents UI: topic tiles -> color-coded runs -> run detail ----

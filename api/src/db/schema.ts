@@ -1,9 +1,9 @@
-import { pgTable, text, integer, real, timestamp, jsonb, primaryKey, uniqueIndex, index, boolean } from 'drizzle-orm/pg-core'
+import { pgTable, text, integer, real, timestamp, jsonb, primaryKey, uniqueIndex, index, boolean, date, doublePrecision } from 'drizzle-orm/pg-core'
 import type { ModeId, SkillTag, Urgency, DeckDiff, DrillDraft, ReportCardContent, AgentRunLinks } from '@matside/shared'
 
 const id = () => text('id').primaryKey().$defaultFn(() => crypto.randomUUID())
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' })
-const createdAt = () => ts('created_at').notNull().defaultNow()
+const createdAt = (name = 'created_at') => ts(name).notNull().defaultNow()
 
 export const instructors = pgTable('instructors', {
   id: id(), name: text('name').notNull(), email: text('email').notNull(), tokenHash: text('token_hash'),
@@ -21,6 +21,7 @@ export const classes = pgTable('classes', {
 export const students = pgTable('students', {
   id: id(), name: text('name').notNull(), nickname: text('nickname'), belt: text('belt').notNull(), birthYear: integer('birth_year').notNull(),
   aliases: jsonb('aliases').$type<string[]>().notNull().default([]), // learned STT spellings, max 10
+  rankSince: date('rank_since', { mode: 'string' }), // YYYY-MM-DD; time in rank is derived from it
 })
 export const guardians = pgTable('guardians', {
   id: id(), studentId: text('student_id').notNull(), name: text('name').notNull(), email: text('email').notNull(),
@@ -123,3 +124,9 @@ export const agentSettings = pgTable('agent_settings', {
 export const schoolVocab = pgTable('school_vocab', {
   term: text('term').primaryKey(), createdAt: createdAt(),
 })
+// Per-student measurements: rank, lift PRs, test grades, or any custom field. Higher-is-better logic lives in logic/metrics.ts.
+export const studentMetrics = pgTable('student_metrics', {
+  id: id(), studentId: text('student_id').notNull(), key: text('key').notNull(), value: text('value').notNull(),
+  num: doublePrecision('num'), unit: text('unit'), recordedAt: createdAt('recorded_at'),
+  source: text('source').$type<'voice' | 'phone' | 'seed'>().notNull(), utteranceId: text('utterance_id'),
+}, t => [index('student_metrics_student_key').on(t.studentId, t.key, t.recordedAt)])

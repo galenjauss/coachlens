@@ -1,5 +1,5 @@
 import {
-  Alternatives, AgentRunDetail, AgentRunView, AgentsSummary, AgentTaskRun, RedraftResponse, type AgentTask, Coverage, Deck, ModeId, NextStudent, ReviewItem, RosterStudent, StartSessionResponse, StudentDetail,
+  Alternatives, AgentRunDetail, AgentRunView, AgentsSummary, AgentTaskRun, RedraftResponse, type AgentTask, Coverage, Deck, ModeId, NextStudent, ReviewItem, RosterStudent, StartSessionResponse, StudentDetail, StudentMetric,
   SuggestResponse, Today, VoicePlanResponse, type ReplaceSource, UtteranceResponse, WrapUp, type DeckPatch,
   SettingsResponse, type SettingsPatch,
   ExtractResponse, OnboardingCommitResponse, OnboardingStatus, type ExtractRequest, type OnboardingCommit,
@@ -126,6 +126,9 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
     agentRun: (id: string) => req(`/v1/agents/runs/${encodeURIComponent(id)}`, {}, AgentRunDetail),
     redraft: (outboxId: string, instruction: string) => post(`/v1/review/outbox/${outboxId}/redraft`, { instruction }, RedraftResponse),
     patchStudentAliases: (id: string, aliases: string[]) => req(`/v1/students/${id}`, { method: 'PATCH', json: { aliases } }, z.object({ id: z.string(), aliases: z.array(z.string()) })),
+    patchStudentRank: (id: string, p: { belt?: string; rankSince?: string | null }) => req(`/v1/students/${id}`, { method: 'PATCH', json: p }, z.object({ id: z.string(), aliases: z.array(z.string()), belt: z.string().optional(), rankSince: z.string().nullable().optional() })),
+    addMetric: (id: string, body: { key: string; value: string; num?: number | null; unit?: string | null }) => post(`/v1/students/${id}/metrics`, body, StudentMetric),
+    deleteMetric: (id: string) => req(`/v1/metrics/${id}`, { method: 'DELETE' }, ok),
     settings: () => req('/v1/settings', {}, SettingsResponse),
     patchSettings: (patch: SettingsPatch) => req('/v1/settings', { method: 'PATCH', json: patch }, SettingsResponse),
     runReportCards: (studentIds?: string[]) => post('/v1/report-cards/run', { studentIds }, z.object({ started: z.number() })),

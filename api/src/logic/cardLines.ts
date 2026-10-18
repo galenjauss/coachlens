@@ -8,6 +8,9 @@ export type CardAction =
   | { kind: 'parent_note'; name: string }
   | { kind: 'plan_request' }
   | { kind: 'add_drill'; name: string; minutes: number }
+  | { kind: 'metric'; name: string; text: string }
+  | { kind: 'metric_off' }
+  | { kind: 'student_query'; name: string }
   | { kind: 'unassigned' }
   | { kind: 'urgent_unassigned' }
   | { kind: 'saved_unsorted' }
@@ -35,6 +38,9 @@ function linesFor(a: CardAction): string[] {
     case 'parent_note': return [`→ parent note for ${a.name} drafting`]
     case 'plan_request': return ['✓ Planner: next deck suggestion queued']
     case 'add_drill': return [`✓ Added: ${a.name} · ${a.minutes}m`]
+    case 'metric': return [`✓ ${a.name} · ${a.text}`]
+    case 'metric_off': return ['● Progress logging off · not saved']
+    case 'student_query': return [`${a.name} · see profile`]
     case 'unassigned': return ['● Saved · pick student in Review']
     case 'urgent_unassigned': return ['⚠ urgent · pick student']
     case 'saved_unsorted': return ['● Saved · sorting failed, see Review']
