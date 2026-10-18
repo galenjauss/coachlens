@@ -11,11 +11,13 @@ import { DiffList } from './Review'
 
 type Editing = number | 'new' | null
 
+const itemCount = (L: { item: string; itemPlural: string }, n: number) => (n === 1 ? L.item : L.itemPlural)
+
 const loadErrorText = (e: unknown) => (e instanceof ApiError && e.status === 404 ? 'This plan no longer exists. Go back to Today.' : 'Couldn’t load this plan. Check your connection and retry.')
 
 export function DeckEditor({ api, deckId, onClose }: { api: Api; deckId: string; onClose(): void }) {
   const [deck, setDeck] = useState<Deck | null>(null)
-  const [mode, setMode] = useState<ModeId | null>(null) // null until known: no chips, no mode wording flash
+  const [mode, setMode] = useState<ModeId | null>(null) // null until known: chips and mode wording show a skeleton rather than guessing a mode
   const [modeFailed, setModeFailed] = useState(false)
   const [announce, setAnnounce] = useState('')
   const listRef = useRef<HTMLOListElement>(null)
@@ -70,7 +72,7 @@ export function DeckEditor({ api, deckId, onClose }: { api: Api; deckId: string;
     ;(target && !target.disabled ? target : q(dir === 'up' ? 'down' : 'up'))?.focus()
   }, [deck, busy])
 
-  const L = labelsFor(mode ?? 'martial_arts')
+  const L = mode ? labelsFor(mode) : null
   if (!deck) {
     return (
       <main className="screen">
@@ -111,7 +113,7 @@ export function DeckEditor({ api, deckId, onClose }: { api: Api; deckId: string;
     const current = isNew ? blankItem() : list[editing]
     if (!current) { setEditing(null); return null }
     return (
-      <DrillDetail key={isNew ? 'new' : current.id ?? editing} api={api} drill={current} isNew={isNew} item={L.item} people={L.people} roster={roster} deleteAllowed={canDelete(list.length)}
+      <DrillDetail key={isNew ? 'new' : current.id ?? editing} api={api} drill={current} isNew={isNew} item={L?.item ?? 'item'} people={L?.people ?? 'people'} roster={roster} deleteAllowed={canDelete(list.length)}
         saving={busy} error={err}
         onBack={() => { setErr(null); setEditing(null) }}
         onDelete={async () => { if (!isNew && await save(removeItem(list, editing))) setEditing(null) }}
@@ -151,11 +153,11 @@ export function DeckEditor({ api, deckId, onClose }: { api: Api; deckId: string;
   return (
     <main className="screen">
       <button type="button" className="back" onClick={onClose}>‹ Today</button>
-      <h1>{L.planUnit}</h1>
-      <div className="sub">{deck.forDate} · {list.length} {L.item}s · {mins} min</div>
+      {L ? <h1>{L.planUnit}</h1> : <h1 aria-busy="true"><span className="chip-skel title-skel" aria-hidden="true" /><span className="sr-only">Loading…</span></h1>}
+      <div className="sub">{deck.forDate} · {L ? `${list.length} ${itemCount(L, list.length)}` : `${list.length}`} · {mins} min</div>
       <div aria-live="polite">{notice && <p className="notice">{notice} <button type="button" className="inline" onClick={() => setNotice(null)}>Dismiss</button></p>}</div>
       <div className="sr-only" role="status" aria-live="polite">{announce}</div>
-      <ol ref={listRef} className="rowlist plan" aria-label={L.planUnit}>
+      <ol ref={listRef} className="rowlist plan" aria-label={L?.planUnit ?? 'Plan'}>
         {list.map((d, i) => (
           <li key={d.id ?? i} className="card row plan-item">
             <div className="reorder">
@@ -169,7 +171,7 @@ export function DeckEditor({ api, deckId, onClose }: { api: Api; deckId: string;
           </li>
         ))}
       </ol>
-      <div className="btns"><button type="button" disabled={busy || !canAdd(list.length)} onClick={() => { setErr(null); setEditing('new') }}>＋ Add {L.item}</button></div>
+      <div className="btns"><button type="button" disabled={busy || !L || !canAdd(list.length)} onClick={() => { setErr(null); setEditing('new') }}>＋ Add{L ? ` ${L.item}` : ''}</button></div>
       {!canAdd(list.length) && <p className="muted">A plan holds at most 20 items.</p>}
       <section className="card planner" aria-busy={busy}>
         <div className="label">Tell the planner</div>

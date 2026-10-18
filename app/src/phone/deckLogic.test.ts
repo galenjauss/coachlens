@@ -16,6 +16,13 @@ describe('chipsFor / labelsFor', () => {
     expect(chipsFor('personal_training')).toEqual(['More conditioning', 'Shorter', 'Lighter load', 'Recovery day'])
     expect(chipsFor('tutoring')).toEqual(['More practice', 'Shorter', 'Review basics', 'Test prep'])
   })
+  it('pluralizes per mode', () => {
+    const words = { martial_arts: ['drill', 'drills'], personal_training: ['exercise', 'exercises'], tutoring: ['activity', 'activities'] } as const
+    for (const m of ['martial_arts', 'personal_training', 'tutoring'] as const) {
+      const l = labelsFor(m)
+      expect([1, 2].map(n => (n === 1 ? l.item : l.itemPlural))).toEqual(words[m])
+    }
+  })
   it('uses mode wording', () => {
     expect(labelsFor('martial_arts')).toMatchObject({ planUnit: 'Drill deck', item: 'drill' })
     expect(labelsFor('personal_training').item).toBe('exercise')

@@ -99,3 +99,4 @@ button.alt:hover:not(:disabled) { border-color: var(--accent); filter: none; }
 label.remember input { width: auto; margin: 0; flex: none; }
 
 .chip-skel { display: inline-block; width: 92px; height: 36px; border-radius: 99px; background: var(--line); opacity: .6; }
+.title-skel { width: 160px; height: 28px; border-radius: 8px; vertical-align: middle; }

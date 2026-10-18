@@ -19,10 +19,12 @@ export const QUICK_CHIPS: Record<ModeId, readonly string[]> = {
 
 export const chipsFor = (mode: ModeId): readonly string[] => QUICK_CHIPS[mode] ?? QUICK_CHIPS.martial_arts
 
+const PLURALS: Record<string, string> = { drill: 'drills', exercise: 'exercises', activity: 'activities' }
+
 /** Mode-aware wording: plan title ("Drill deck"), item noun ("drill"), and the people noun for focus pickers. */
 export function labelsFor(mode: ModeId) {
   const m = MODES[mode] ?? MODES.martial_arts
-  return { planUnit: m.planUnit, item: m.planItem, people: m.people }
+  return { planUnit: m.planUnit, item: m.planItem, itemPlural: PLURALS[m.planItem] ?? `${m.planItem}s`, people: m.people }
 }
 
 export const toEditable = (x: Drill): Editable => ({
