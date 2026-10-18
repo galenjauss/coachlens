@@ -1,10 +1,13 @@
 {
-  "package_id": "com.example.evenhubminimal",
+  "package_id": "com.coachlens.app",
   "edition": "202601",
-  "name": "Even Hub Minimal",
+  "name": "CoachLens",
   "version": "0.1.0",
   "min_sdk_version": "0.0.16",
   "entrypoint": "index.html",
-  "permissions": [],
+  "permissions": [
+    { "name": "g2-microphone", "desc": "Record short voice notes about students while you teach." },
+    { "name": "network", "desc": "Send notes to the CoachLens service that runs your agents.", "whitelist": ["https://REPLACE-WITH-API-ORIGIN"] }
+  ],
   "supported_languages": ["en"]
 }
