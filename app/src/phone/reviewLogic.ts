@@ -26,6 +26,11 @@ export function visibleEmailIds(items: readonly Kinded[] | null | undefined): st
   return (items ?? []).filter(i => i.kind === 'parent_email' || i.kind === 'report_card').map(i => i.id)
 }
 
+/** Bulk-send candidates: visible emails minus any the instructor edited or is editing (those go individually). */
+export function bulkEmailIds(items: readonly Kinded[] | null | undefined, dirty: ReadonlySet<string>): string[] {
+  return visibleEmailIds(items).filter(id => !dirty.has(id))
+}
+
 export function approveAllNotice(r: { sent: number; failed: number }): string {
   if (r.failed > 0) return `Sent ${r.sent}, ${r.failed} failed. Failed drafts stay in the list.`
   return `Sent ${r.sent}.`

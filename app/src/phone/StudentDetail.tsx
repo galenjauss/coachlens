@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Api } from '../core/api'
-import { studentOutcome } from './reviewLogic'
+import { outcomeFor, studentOutcome } from './reviewLogic'
 import { useAction } from './useAction'
 import { usePoll } from './usePoll'
 
@@ -28,7 +28,7 @@ export function StudentDetailView({ api, id, onBack }: { api: Api; id: string; o
       await api.runReportCards([s.id])
       setNote('Drafting… this takes about 10 seconds.')
       timer.current = setTimeout(() => { setDrafting(false); setNote(null); reload() }, DRAFT_WAIT_MS)
-    } catch (e) { setDrafting(false); setNote(studentOutcome(e)) }
+    } catch (e) { setDrafting(false); setNote(outcomeFor(e, 'Drafting').text) }
   }
   return (
     <main className="screen">
@@ -53,7 +53,7 @@ export function StudentDetailView({ api, id, onBack }: { api: Api; id: string; o
             <div className="rc"><span className="muted">Attendance</span> {rc.content.attendance}</div>
             {rc.content.coachNotes.map((c, i) => <div key={i} className="rc"><span className="muted">{c.date} · {c.drill}</span> “{c.quote}”</div>)}
             {rc.status === 'pending_review' && (
-              <div className="btns"><button type="button" className="primary" disabled={busy} onClick={() => run(() => api.approve(rc.outboxId))}>{busy ? 'Sending…' : 'Send report card'}</button></div>
+              <div className="btns"><button type="button" className="primary" disabled={busy} onClick={() => run(() => api.approve(rc.outboxId), 'Report card sent.')}>{busy ? 'Sending…' : 'Send report card'}</button></div>
             )}
           </>
         ) : (

@@ -76,3 +76,4 @@ button.back { flex: none; background: none; color: var(--accent); padding: 0 8px
 .rc .muted { display: inline-block; margin-right: 6px; }
 .tabs button { position: relative; }
 .badge { position: absolute; top: 8px; margin-left: 4px; min-width: 18px; padding: 0 5px; border-radius: 99px; background: var(--accent); color: var(--ink-on-accent); font-size: 11px; font-weight: 700; line-height: 18px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

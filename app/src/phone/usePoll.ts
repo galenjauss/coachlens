@@ -10,7 +10,10 @@ export function usePoll<T>(fn: () => Promise<T>, ms: number | null, deps: unknow
   const fnRef = useRef(fn)
   fnRef.current = fn
   const guard = useRef(createSeqGuard())
-  const reload = useCallback(() => setTick(t => t + 1), [])
+  const waiters = useRef<Array<() => void>>([])
+  const flush = () => { const w = waiters.current; waiters.current = []; w.forEach(f => f()) }
+  /** Triggers a reload; the promise resolves once that reload has settled. */
+  const reload = useCallback(() => new Promise<void>(res => { waiters.current.push(res); setTick(t => t + 1) }), [])
   useEffect(() => {
     if (!enabled) return
     let alive = true
@@ -19,7 +22,7 @@ export function usePoll<T>(fn: () => Promise<T>, ms: number | null, deps: unknow
       return fnRef.current().then(
         d => { if (alive && guard.current.accept(mine)) { setData(d); setError(null); setLoading(false) } },
         e => { if (alive && guard.current.accept(mine)) { setError(e instanceof Error ? e.message : 'Failed'); setLoading(false) } },
-      )
+      ).finally(flush)
     }
     setLoading(true)
     void load()
@@ -29,7 +32,7 @@ export function usePoll<T>(fn: () => Promise<T>, ms: number | null, deps: unknow
     const onVis = () => { if (document.hidden) stop(); else { void load(); start() } }
     if (!document.hidden) start()
     document.addEventListener('visibilitychange', onVis)
-    return () => { alive = false; stop(); document.removeEventListener('visibilitychange', onVis) }
+    return () => { alive = false; flush(); stop(); document.removeEventListener('visibilitychange', onVis) }
   }, [ms, tick, enabled, ...deps]) // eslint-disable-line react-hooks/exhaustive-deps
   return { data, error, loading, reload }
 }

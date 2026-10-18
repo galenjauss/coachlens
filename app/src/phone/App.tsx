@@ -31,7 +31,7 @@ export function App({ api, kv }: PhoneDeps) {
       {tab === 'students' && <Students api={api} />}
       <nav className="tabs" aria-label="CoachLens">
         {TABS.map(t => (
-          <button key={t} type="button" aria-current={tab === t ? 'page' : undefined} onClick={() => setTab(t)}>{t[0]!.toUpperCase() + t.slice(1)}{t === 'review' && pending > 0 && <span className="badge" aria-label={`${pending} pending`}>{pending}</span>}</button>
+          <button key={t} type="button" aria-current={tab === t ? 'page' : undefined} onClick={() => setTab(t)}>{t[0]!.toUpperCase() + t.slice(1)}{t === 'review' && pending > 0 && <><span className="badge" aria-hidden="true">{pending}</span><span className="sr-only"> ({pending} pending)</span></>}</button>
         ))}
       </nav>
       {deckId && <div hidden>{deckId}</div>}

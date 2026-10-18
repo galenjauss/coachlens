@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ApiError, NetworkError } from '../core/api'
-import { approveAllNotice, cap, outcomeFor, studentOutcome, visibleEmailIds } from './reviewLogic'
+import { approveAllNotice, bulkEmailIds, cap, outcomeFor, studentOutcome, visibleEmailIds } from './reviewLogic'
 
 describe('outcomeFor', () => {
   it('treats 404 and 409 as already handled', () => {
@@ -31,4 +31,17 @@ describe('approveAllNotice / cap', () => {
     expect(approveAllNotice({ sent: 2, failed: 1 })).toMatch(/Sent 2, 1 failed/)
   })
   it('capitalizes', () => { expect(cap('clients')).toBe('Clients'); expect(cap('')).toBe('') })
+})
+
+describe('bulkEmailIds', () => {
+  const items = [{ id: 'a', kind: 'parent_email' }, { id: 'b', kind: 'report_card' }, { id: 'c', kind: 'billing' }, { id: 'd', kind: 'parent_email' }]
+  it('excludes edited or in-edit emails', () => {
+    expect(bulkEmailIds(items, new Set(['b']))).toEqual(['a', 'd'])
+  })
+  it('returns all visible emails when none are edited', () => {
+    expect(bulkEmailIds(items, new Set())).toEqual(['a', 'b', 'd'])
+  })
+  it('ignores dirty ids that are no longer visible', () => {
+    expect(bulkEmailIds(items, new Set(['zzz']))).toEqual(['a', 'b', 'd'])
+  })
 })
