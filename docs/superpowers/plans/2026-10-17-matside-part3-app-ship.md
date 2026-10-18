@@ -1170,7 +1170,7 @@ export function App(_: PhoneDeps) {
 
 `app/.env.example`:
 ```
-VITE_API_URL=https://matside-api.vercel.app
+VITE_API_URL=https://coachlens-api.vercel.app
 ```
 
 - [ ] **Step 6: Tests, typecheck, simulator**
@@ -1849,7 +1849,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Point the app at production**
 
-1. Replace `https://REPLACE-WITH-API-ORIGIN` in `app/app.json` with the API origin, e.g. `https://matside-api.vercel.app` (no trailing slash, no path).
+1. Replace `https://REPLACE-WITH-API-ORIGIN` in `app/app.json` with the API origin, e.g. `https://coachlens-api.vercel.app` (no trailing slash, no path).
 2. Create `app/.env.production` with `VITE_API_URL=<same origin>`.
 3. Run `grep -n REPLACE app/app.json`. Expected: no output.
 

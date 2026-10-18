@@ -20,7 +20,7 @@ Even Hub app name: **CoachLens**. Lens text below is the exact string where the 
 - [ ] **`DEMO_EMAIL_OVERRIDE` is set** in the Vercel env so every email goes to the owned demo inbox.
 - [ ] Insights autonomy on **Review** (so `Gus ready to test` is waiting) and parent email on **Review**.
 - [ ] **Footage:** through-the-lens capture if bright enough, otherwise the Even Hub simulator (`cd app && npx evenhub-simulator <url>`) for the lens shots. Record the phone with the iOS screen recorder as a safety take.
-- [ ] Warm the API: open `https://matside-api.vercel.app/health` once (keep-warm takes over once class starts).
+- [ ] Warm the API: open `https://coachlens-api.vercel.app/health` once (keep-warm takes over once class starts).
 - [ ] iPhone charged, Do Not Disturb on, the martial-arts class selected.
 - [ ] Check the 💡 glyph renders on the G2; if not, `INSIGHT_GLYPH` falls back to `✦` (update this script's lens text to match).
 - [ ] If the nod misfires on camera, skip it; a tap in the dark wakes the lens.

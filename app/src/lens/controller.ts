@@ -13,7 +13,7 @@ import { Glasses, type GlassesBridge } from './glasses'
 import { NodDetector, type NodConfig } from './nod'
 import { createPlanListen } from './planListen'
 import { initialState, reduce } from './reducer'
-import { MIC_TICK_MS, render } from './render'
+import { MIC_TICK_MS, PAIR_ERROR, render } from './render'
 import type { Effect, LensEvent, LensState } from './state'
 import type { Insight, UtteranceResponse } from '@matside/shared'
 
@@ -54,6 +54,8 @@ export interface LensDeps {
   micDualStart?: boolean
   /** Network state (default navigator.onLine): offline skips transcribe and queues the audio. */
   isOnline?: () => boolean
+  /** Start from this state instead of first run / home (dev screenshot fixtures). */
+  initialState?: LensState
 }
 export interface LensHandle { dispatch(e: LensEvent): void; stop(): void }
 
@@ -64,7 +66,7 @@ function slot() {
   return { clear, get active() { return h !== null }, set(ms: number, fn: () => void) { clear(); h = setTimeout(() => { h = null; fn() }, ms) } }
 }
 
-const errText = (e: unknown) => (e instanceof ApiError && e.status === 401 ? 'Pair on phone' : e instanceof ApiError ? `Server error ${e.status}`
+const errText = (e: unknown) => (e instanceof ApiError && e.status === 401 ? PAIR_ERROR : e instanceof ApiError ? `Server error ${e.status}`
   : e instanceof NetworkError && e.message === 'timeout' ? 'Server not responding' : 'Offline')
 
 /** A KV read that hangs (bridge storage) must not block loading: fall back after `ms`. */
@@ -75,8 +77,9 @@ function kvGet(kv: KV, key: string, ms = 3000): Promise<string | null> {
   ])
 }
 
+/** Bounded: a bridge-storage read that never answers must not keep the first page off the glasses. */
 async function readFirstRunSeen(kv: KV): Promise<boolean> {
-  try { return Boolean(await kv.get(KEYS.firstRunSeen)) } catch (e) { console.error('[lens] kv read failed', e); return false }
+  return Boolean(await kvGet(kv, KEYS.firstRunSeen))
 }
 
 /** The reply changed attendance: the api's flag, or (older api) a roll-call / "marked present" card line. */
@@ -95,7 +98,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
   /** The host backgrounded the app: no keep-warm pings until it resumes. */
   let suspended = false
   let recStartedAt = 0
-  let state: LensState = initialState(await readFirstRunSeen(d.kv))
+  let state: LensState = d.initialState ?? initialState(await readFirstRunSeen(d.kv))
   let imuOn = false
   let exited = false
   let todaySeq = 0 // only the latest today request may land (swiping classes fires several)

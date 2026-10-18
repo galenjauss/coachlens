@@ -1,6 +1,7 @@
-// Browser-only image helpers for onboarding uploads (canvas + Even bridge camera).
+// Browser-only image helpers for onboarding uploads (canvas + Even bridge camera / album).
 import { waitForEvenAppBridge } from '@evenrealities/even_hub_sdk'
 import { fitWithin } from './onboardingLogic'
+import { assetToDataUrl, checkUploadSize, type ImageAssetLike } from './imageAsset'
 
 export const MAX_EDGE = 1600
 const JPEG_QUALITY = 0.82
@@ -31,6 +32,7 @@ export async function downscale(src: string): Promise<PreparedImage> {
   ctx.drawImage(img, 0, 0, w, h)
   const dataUrl = canvas.toDataURL('image/jpeg', JPEG_QUALITY)
   const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
+  checkUploadSize(base64) // the same cap the API enforces (MAX_IMAGE_BASE64)
   return { base64, mimeType: 'image/jpeg', previewUrl: dataUrl, bytes: Math.round(base64.length * 0.75) }
 }
 
@@ -39,22 +41,35 @@ export async function prepareFile(file: File): Promise<PreparedImage> {
   try { return await downscale(url) } finally { URL.revokeObjectURL(url) }
 }
 
-type CameraBridge = { captureImageFromCamera(): Promise<{ base64: string; mimeType: string } | null> }
+/** The Even bridge's image APIs (SDK 0.0.16: both resolve an AppImageAsset, or null on cancel). */
+export interface ImageBridge {
+  captureImageFromCamera(): Promise<ImageAssetLike | null>
+  pickImageFromAlbum(): Promise<ImageAssetLike | null>
+}
 
-/** The Even bridge if it is up within a moment (null in a plain browser). */
-export async function cameraBridge(): Promise<CameraBridge | null> {
+/** The Even bridge if it is up within a moment and has the image APIs (null in a plain browser). */
+export async function imageBridge(): Promise<ImageBridge | null> {
   try {
     const bridge = await Promise.race([waitForEvenAppBridge(), new Promise<null>(r => setTimeout(() => r(null), BRIDGE_WAIT_MS))])
-    return bridge && typeof (bridge as Partial<CameraBridge>).captureImageFromCamera === 'function' ? (bridge as unknown as CameraBridge) : null
+    const b = bridge as Partial<ImageBridge> | null
+    return b && typeof b.captureImageFromCamera === 'function' && typeof b.pickImageFromAlbum === 'function' ? (bridge as unknown as ImageBridge) : null
   } catch { return null }
 }
 
+/** A bridge asset → the same JPEG `PreparedImage` the file input produces (raw base64, ≤1600 px, ≤ MAX_IMAGE_BASE64). */
+async function prepareAsset(asset: ImageAssetLike | null): Promise<PreparedImage | null> {
+  const url = assetToDataUrl(asset)
+  return url ? downscale(url) : null
+}
+
 /** Opens the phone camera through the Even app; null when the coach cancels. */
-export async function captureWithBridge(bridge: CameraBridge): Promise<PreparedImage | null> {
-  const shot = await bridge.captureImageFromCamera()
-  if (!shot?.base64) return null
-  const raw = shot.base64.replace(/^data:[^,]*,/, '')
-  return downscale(`data:${shot.mimeType || 'image/jpeg'};base64,${raw}`)
+export async function captureWithBridge(bridge: ImageBridge): Promise<PreparedImage | null> {
+  return prepareAsset(await bridge.captureImageFromCamera())
+}
+
+/** Opens the phone's photo library through the Even app; null when the coach cancels. */
+export async function pickWithBridge(bridge: ImageBridge): Promise<PreparedImage | null> {
+  return prepareAsset(await bridge.pickImageFromAlbum())
 }
 
 /** Text from a CSV/TXT file (capped so a huge export can't freeze the page). */

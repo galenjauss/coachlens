@@ -1,7 +1,7 @@
 import { useEffect, useState, type ChangeEvent } from 'react'
 import { MODES, type ModeId } from '@matside/shared'
 import type { Api } from '../../core/api'
-import { cameraBridge, captureWithBridge, prepareFile, readTextFile, type PreparedImage } from './image'
+import { captureWithBridge, imageBridge, pickWithBridge, prepareFile, readTextFile, type ImageBridge, type PreparedImage } from './image'
 import {
   autoAssign, blankClass, blankStudent, blankWeek, emailSummary, foundHeadline, mergeClasses, mergeStudents, mergeWeeks,
   onboardingErrorText, removeClass, removeRow, renameClass, updateRow, type Draft, type UploadStep,
@@ -14,8 +14,6 @@ const COPY: Record<UploadStep, { lead: string; placeholder: string; add: string 
   curriculum: { lead: 'Paste your curriculum notes or snap a page. Week 1 is this week.', placeholder: 'Week 1: Stances — Kata 1\nWeek 2: Blocks — Kata 1, Kata 2', add: 'Add a week' },
 }
 
-type Bridge = Awaited<ReturnType<typeof cameraBridge>>
-
 export type DraftUpdate = (f: (d: Draft) => Draft) => void
 
 export function StepUpload({ api, step, mode, draft, update }: { api: Api; step: UploadStep; mode: ModeId; draft: Draft; update: DraftUpdate }) {
@@ -24,9 +22,9 @@ export function StepUpload({ api, step, mode, draft, update }: { api: Api; step:
   const [busy, setBusy] = useState<'read' | 'image' | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [found, setFound] = useState<string | null>(null)
-  const [bridge, setBridge] = useState<Bridge>(null)
+  const [bridge, setBridge] = useState<ImageBridge | null>(null)
   const copy = COPY[step]
-  useEffect(() => { let alive = true; void cameraBridge().then(b => { if (alive) setBridge(b) }); return () => { alive = false } }, [])
+  useEffect(() => { let alive = true; void imageBridge().then(b => { if (alive) setBridge(b) }); return () => { alive = false } }, [])
   // A new step starts with a clean source panel.
   useEffect(() => { setText(''); setImage(null); setErr(null); setFound(null) }, [step])
 
@@ -78,8 +76,17 @@ export function StepUpload({ api, step, mode, draft, update }: { api: Api; step:
         )}
         <div className="ob-sources">
           <label className="ob-file"><input type="file" accept=".csv,.txt,.tsv,text/plain,text/csv,image/*" onChange={onFile} disabled={busy !== null} /><span aria-hidden="true">⇪</span> Upload file</label>
-          <label className="ob-file"><input type="file" accept="image/*" capture="environment" onChange={onFile} disabled={busy !== null} /><span aria-hidden="true">◉</span> Take photo</label>
-          {bridge && <button type="button" className="ob-file-btn" disabled={busy !== null} onClick={() => takeImage(captureWithBridge(bridge))}><span aria-hidden="true">◎</span> Use phone camera</button>}
+          {bridge ? (
+            <>
+              <button type="button" className="ob-file-btn" disabled={busy !== null} onClick={() => takeImage(captureWithBridge(bridge))}><span aria-hidden="true">◉</span> Take photo</button>
+              <button type="button" className="ob-file-btn" disabled={busy !== null} onClick={() => takeImage(pickWithBridge(bridge))}><span aria-hidden="true">▣</span> Choose photo</button>
+            </>
+          ) : (
+            <>
+              <label className="ob-file"><input type="file" accept="image/*" capture="environment" onChange={onFile} disabled={busy !== null} /><span aria-hidden="true">◉</span> Take photo</label>
+              <label className="ob-file"><input type="file" accept="image/*" onChange={onFile} disabled={busy !== null} /><span aria-hidden="true">▣</span> Choose photo</label>
+            </>
+          )}
         </div>
         <button type="button" className="primary ob-read" disabled={busy !== null || (!text.trim() && !image)} onClick={read}>
           {busy === 'read' ? 'Reading…' : busy === 'image' ? 'Preparing photo…' : 'Read with AI'}

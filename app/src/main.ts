@@ -15,11 +15,20 @@ type Bridge = Awaited<ReturnType<typeof waitForEvenAppBridge>>
 async function runWithBridge(bridge: Bridge): Promise<void> {
   const kv = bridgeKV(bridge)
   const api = createApi(API_URL, () => kv.get(KEYS.token))
-  mountPhone({ api, kv, hasGlasses: true })
+  // A phone UI failure must never keep the lens from painting its first page.
+  try { mountPhone({ api, kv, hasGlasses: true }) } catch (e) { console.error('[phone] mount failed', e) }
   await startLens({ bridge, api, kv, outbox: new Outbox(kv), nod: NOD, imuPace: IMU_PACE, logImu: IMU_LOG })
 }
 
 async function boot(): Promise<void> {
+  if (import.meta.env.DEV) {
+    const fixture = new URLSearchParams(location.search).get('fixture')
+    // DEV ONLY: store-screenshot fixtures (no-op API). `import.meta.env.DEV` is false in a build, so this drops out.
+    if (fixture) {
+      const [{ bootFixture }, bridge] = await Promise.all([import('./lens/fixtureBoot'), waitForEvenAppBridge()])
+      return bootFixture(bridge, fixture)
+    }
+  }
   const bridgePromise = waitForEvenAppBridge()
   const bridge = await Promise.race([bridgePromise, new Promise<null>(r => setTimeout(() => r(null), BRIDGE_TIMEOUT_MS))])
   if (bridge) return runWithBridge(bridge)

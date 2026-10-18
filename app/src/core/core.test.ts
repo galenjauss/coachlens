@@ -480,3 +480,32 @@ describe('api plan sources and voice plan', () => {
     expect(calls[1]).toEqual({ url: 'http://x/v1/plan/voice', body: '{"classId":"c","transcript":"cut kata"}' })
   })
 })
+
+describe('api token read', () => {
+  it('a token read that never answers goes out without auth after TOKEN_READ_TIMEOUT_MS (401 → pair), never hangs', async () => {
+    vi.useFakeTimers()
+    try {
+      const { TOKEN_READ_TIMEOUT_MS } = await import('./api')
+      const seen: (string | null)[] = []
+      const api = createApi('http://x', () => new Promise<string | null>(() => {}), ((_u: string, init: RequestInit) => {
+        seen.push(new Headers(init.headers).get('Authorization'))
+        return Promise.resolve(new Response('{"error":"missing token"}', { status: 401 }))
+      }) as unknown as typeof fetch)
+      const p = api.today().catch(e => e)
+      await vi.advanceTimersByTimeAsync(TOKEN_READ_TIMEOUT_MS)
+      const err = await p
+      expect(err).toBeInstanceOf(ApiError)
+      expect((err as ApiError).status).toBe(401)
+      expect(seen).toEqual([null])
+    } finally { vi.useRealTimers() }
+  })
+  it('a token read that fails counts as no token', async () => {
+    const seen: (string | null)[] = []
+    const api = createApi('http://x', async () => { throw new Error('storage down') }, ((_u: string, init: RequestInit) => {
+      seen.push(new Headers(init.headers).get('Authorization'))
+      return Promise.resolve(new Response('{"ok":true}', { status: 200, headers: { 'content-type': 'application/json' } }))
+    }) as unknown as typeof fetch)
+    await expect(api.health()).resolves.toEqual({ ok: true })
+    expect(seen).toEqual([null])
+  })
+})

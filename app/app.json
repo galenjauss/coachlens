@@ -8,8 +8,9 @@
   "permissions": [
     { "name": "g2-microphone", "desc": "Record short voice notes about students while you teach." },
     { "name": "phone-microphone", "desc": "Backup: if the glasses send no audio, record your voice note with the phone's microphone instead." },
-    { "name": "network", "desc": "Send notes to the CoachLens service that runs your agents.", "whitelist": ["https://matside-api.vercel.app"] },
-    { "name": "camera", "desc": "Snap a photo of your class schedule, sign-in sheet or curriculum notes during setup so CoachLens can read it. Photos are only sent when you tap Read with AI." }
+    { "name": "network", "desc": "Connects to the CoachLens service (coachlens-api.vercel.app), which runs your agents, transcribes voice notes and stores your class data.", "whitelist": ["https://coachlens-api.vercel.app"] },
+    { "name": "camera", "desc": "Snap a photo of your class schedule, sign-in sheet or curriculum notes during setup so CoachLens can read it. Photos are only sent when you tap Read with AI." },
+    { "name": "album", "desc": "Pick a photo of your class schedule, sign-in sheet or curriculum from your library during setup so CoachLens can read it. Photos are only sent when you tap Read with AI." }
   ],
   "supported_languages": ["en"]
 }

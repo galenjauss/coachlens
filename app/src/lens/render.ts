@@ -115,6 +115,10 @@ function context(s: LensState, now: number) {
   return { drills, active, time, cov, nextLine, drillHeader }
 }
 
+/** Load error after a 401 (no token, or it was revoked): home tells the coach to pair on the phone. */
+export const PAIR_ERROR = 'Pair on phone'
+const NET_ERRORS = new Set(['Offline', 'Server not responding'])
+
 function home(s: LensState): PageSpec {
   const td = s.today
   const n = s.classes.length
@@ -129,8 +133,11 @@ function home(s: LensState): PageSpec {
   if (td) {
     const action = s.starting ? 'Starting class…' : s.loadError ? `${s.loadError} · tap to retry` : '> Tap to start class'
     body = `${td.className} · ${td.startTime}\n${td.modeLabel} · ${td.theme}\n${td.planUnit}: ${td.deck.drills.length}\n\n${action}`
+  } else if (s.loadError === PAIR_ERROR) {
+    body = `Not paired yet.\n${PAIR_ERROR}: open CoachLens in the Even app and enter the code.\n\n> Tap to retry`
   } else if (s.loadError) {
-    body = `Can't load class.\n${s.loadError}\n\n> Tap to retry`
+    const net = NET_ERRORS.has(s.loadError) ? ' · check the phone\'s internet' : ''
+    body = `Can't load class.\n${s.loadError}${net}\n\n> Tap to retry`
   } else {
     body = 'Loading class…\nPair on your phone if this stays.'
   }

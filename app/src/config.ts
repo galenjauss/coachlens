@@ -1,7 +1,10 @@
 import { ImuReportPace } from '@evenrealities/even_hub_sdk'
 import type { NodConfig } from './lens/nod'
 
-export const API_URL: string = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:8787'
+/** Production API (also the only `network` whitelist entry in app.json). */
+export const PROD_API_URL = 'https://coachlens-api.vercel.app'
+/** VITE_API_URL wins; else the local API in dev and the production API in a build. */
+export const API_URL: string = (import.meta.env.VITE_API_URL as string | undefined) || (import.meta.env.DEV ? 'http://localhost:8787' : PROD_API_URL)
 
 /**
  * Nod to toggle the lens (experimental). The IMU axis and sign are undocumented: calibrate on

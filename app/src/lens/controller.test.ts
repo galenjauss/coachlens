@@ -93,6 +93,40 @@ describe('lens controller', () => {
     expect(b.sent.at(-1)).toContain('Kids · Tue')
   })
 
+  describe('first page when unpaired or offline (never black, never an endless spinner)', () => {
+    const lastBody = (sent: string[]) => sent.at(-1) ?? ''
+    it('no token (401): home says to pair on the phone, with a retry', async () => {
+      const b = await boot(fakeApi({ today: vi.fn(async () => { throw new ApiError(401, 'missing token') }) }))
+      expect(b.sent[0]).toMatch(/^create:/) // the first page went up at once
+      expect(lastBody(b.sent)).toContain('Not paired yet')
+      expect(lastBody(b.sent)).toContain('Pair on phone: open CoachLens in the')
+      expect(lastBody(b.sent)).toContain('> Tap to retry')
+    })
+    it('API unreachable: home says it cannot load, names the problem and offers a retry that re-requests', async () => {
+      const today = vi.fn(async () => { throw new NetworkError('Failed to fetch') })
+      const b = await boot(fakeApi({ today }))
+      expect(lastBody(b.sent)).toContain("Can't load class.")
+      expect(lastBody(b.sent)).toContain("Offline · check the phone's internet")
+      b.emit(tap); await flush()
+      expect(today).toHaveBeenCalledTimes(2)
+    })
+    it('API hanging: "Loading class… Pair on your phone if this stays." until the request times out', async () => {
+      const b = await boot(fakeApi({ today: vi.fn(() => new Promise(() => {})) }))
+      expect(lastBody(b.sent)).toContain('Loading class…')
+      expect(lastBody(b.sent)).toContain('Pair on your phone if this stays.')
+    })
+    it('bridge storage that never answers still gets the first-run page on the glasses', async () => {
+      const kv = { get: vi.fn(() => new Promise<string | null>(() => {})), set: vi.fn(async () => {}) }
+      const b = fakeBridge()
+      const started = startLens({ bridge: b.bridge, api: fakeApi(), kv, outbox: new Outbox(memoryKV()), nod: NOD })
+      await vi.advanceTimersByTimeAsync(3000)
+      lens = await started
+      await flush()
+      expect(b.sent[0]).toContain('WELCOME TO COACHLENS')
+      expect(b.sent[0]).toContain('Pair on your phone, then tap here.')
+    })
+  })
+
   it('a note the server saved but whose reply was unreadable shows a neutral card and is never resent', async () => {
     const { BadResponseError } = await import('../core/api')
     const utterance = vi.fn(async () => { throw new BadResponseError() })

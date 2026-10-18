@@ -45,10 +45,18 @@ export const TRANSCRIBE_TIMEOUT_MS = 5_000
 export type TranscribeScope = { sessionId?: string | null; classId?: string | null }
 export type UtterancePayload = { sessionId: string; drillId: string | null; mode: 'note' | 'attendance'; text: string | null; audio: Blob | null }
 
+/** A token read (bridge storage) that hangs longer than this counts as no token: the request still goes (401 → pair). */
+export const TOKEN_READ_TIMEOUT_MS = 3000
+async function readToken(getToken: () => Promise<string | null>): Promise<string | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const late = new Promise<null>(r => { timer = setTimeout(() => r(null), TOKEN_READ_TIMEOUT_MS) })
+  try { return await Promise.race([getToken().catch(() => null), late]) } finally { clearTimeout(timer) }
+}
+
 export function createApi(baseUrl: string, getToken: () => Promise<string | null>, fetchImpl: typeof fetch = (...a) => fetch(...a)) {
   async function req<T>(path: string, init: RequestInit & { json?: unknown; timeoutMs?: number } = {}, schema?: z.ZodType<T>): Promise<T> {
     const headers = new Headers(init.headers)
-    const token = await getToken()
+    const token = await readToken(getToken)
     if (token) headers.set('Authorization', `Bearer ${token}`)
     let body = init.body
     if (init.json !== undefined) { headers.set('Content-Type', 'application/json'); body = JSON.stringify(init.json) }
