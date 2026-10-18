@@ -4,13 +4,25 @@ import {
   SettingsResponse, type SettingsPatch,
   InsightsResponse, InsightAcceptResponse, type InsightsQuery,
   ExtractResponse, OnboardingCommitResponse, OnboardingStatus, type ExtractRequest, type OnboardingCommit,
+  UndoResponse, NoteCandidates, type StudentCreate, type StudentUpdate, type ClassCreate, type ClassUpdate,
 } from '@matside/shared'
 import { z } from 'zod'
 import { bus } from './bus'
 
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) { super(message); this.status = status }
+  /** From a `Retry-After` header (seconds or an HTTP date), when the server sent one. */
+  retryAfterMs?: number
+  constructor(status: number, message: string, retryAfterMs?: number) { super(message); this.status = status; this.retryAfterMs = retryAfterMs }
+}
+
+/** `Retry-After: 7` or `Retry-After: <HTTP date>` → milliseconds from now; undefined when absent or unreadable. */
+export function parseRetryAfter(v: string | null, now = Date.now()): number | undefined {
+  if (!v) return undefined
+  const t = v.trim()
+  if (/^\d+$/.test(t)) return Number(t) * 1000
+  const at = Date.parse(t)
+  return Number.isNaN(at) ? undefined : Math.max(0, at - now)
 }
 export class NetworkError extends Error {}
 /**
@@ -42,7 +54,26 @@ export const UtteranceRun = z.object({ agent: z.string(), summary: z.string(), s
 export type UtteranceRun = z.infer<typeof UtteranceRun>
 /** Transcript-first: how long the lens waits for /v1/transcribe before falling back to sending the audio. */
 export const TRANSCRIBE_TIMEOUT_MS = 5_000
-export type TranscribeScope = { sessionId?: string | null; classId?: string | null }
+/** `opId`: the outbox item id, sent as the C1 idempotency key (optional for transcribe: it saves nothing). */
+export type TranscribeScope = { sessionId?: string | null; classId?: string | null; opId?: string }
+/** C1: a stable operation id per queued item; the server replays the first outcome on a retry. */
+export type UtteranceOpts = { opId?: string }
+/** GET /v1/classes row; startTime and weekday when the server sends them (needed to edit a class). */
+export const ClassRow = z.object({ id: z.string(), name: z.string(), mode: ModeId, modeLabel: z.string(), startTime: z.string().optional(), weekday: z.number().int().optional() })
+export type ClassRow = z.infer<typeof ClassRow>
+/** A student's editable details when the server includes them (classIds, guardians); absent on older servers. */
+export const StudentEditable = StudentDetail.extend({
+  nickname: z.string().nullable().optional(),
+  classIds: z.array(z.string()).optional(),
+  guardians: z.array(z.object({ name: z.string(), email: z.string() })).optional(),
+})
+export type StudentEditable = z.infer<typeof StudentEditable>
+/** Review items; `urgent` is added by the server's batch 1 (optional until then). */
+export const ReviewItemClient = z.intersection(ReviewItem, z.object({ urgent: z.boolean().optional() }))
+export type ReviewItemClient = z.infer<typeof ReviewItemClient>
+/** C2 reply; `coverage` kept when an older or richer server still sends it. */
+const UndoReply = UndoResponse.extend({ coverage: Coverage.nullable().optional() })
+export type UndoReply = z.infer<typeof UndoReply>
 export type UtterancePayload = { sessionId: string; drillId: string | null; mode: 'note' | 'attendance'; text: string | null; audio: Blob | null }
 
 /** A token read (bridge storage) that hangs longer than this counts as no token: the request still goes (401 → pair). */
@@ -76,7 +107,7 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
     if (!res.ok) {
       const msg = raw && typeof raw === 'object' ? (raw as { error?: unknown }).error : undefined
       if (res.status === 401 && path !== '/pair') bus.emit('unauthorized', undefined) // token no longer valid: re-pair
-      throw new ApiError(res.status, typeof msg === 'string' ? msg : res.statusText)
+      throw new ApiError(res.status, typeof msg === 'string' ? msg : res.statusText, parseRetryAfter(res.headers.get('retry-after')))
     }
     if (!schema) return (raw ?? {}) as T
     const jsonType = /\bjson\b/i.test(res.headers.get('content-type') ?? '')
@@ -87,7 +118,7 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
   }
   const post = <T>(path: string, json: unknown = {}, schema?: z.ZodType<T>) => req(path, { method: 'POST', json }, schema)
   const ok = z.object({ ok: z.literal(true) })
-  const ClassRow = z.object({ id: z.string(), name: z.string(), mode: ModeId, modeLabel: z.string() })
+  const StudentRow = z.object({ id: z.string(), name: z.string() }).loose()
   return {
     pair: (code: string) => post('/pair', { code }, z.object({ token: z.string() })),
     classes: () => req('/v1/classes', {}, z.array(ClassRow)),
@@ -97,13 +128,15 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
     endSession: (sessionId: string) => post(`/v1/sessions/${sessionId}/end`, {}, WrapUp),
     remind: (sessionId: string, studentIds: string[]) => post(`/v1/sessions/${sessionId}/remind`, { studentIds }, ok),
     logDrill: (sessionId: string, drillId: string, event: 'start' | 'end') => post(`/v1/sessions/${sessionId}/drills/${drillId}/${event}`, {}, ok),
-    utterance: (p: UtterancePayload) => {
+    /** C1: `opId` goes as the form field AND the Idempotency-Key header; a replayed 200 is an ordinary success. */
+    utterance: (p: UtterancePayload, opts: UtteranceOpts = {}) => {
       const f = new FormData()
       f.set('sessionId', p.sessionId); f.set('mode', p.mode)
       if (p.drillId) f.set('drillId', p.drillId)
       if (p.text) f.set('text', p.text)
       if (p.audio) f.set('audio', p.audio, 'note.wav')
-      return req('/v1/utterance', { method: 'POST', body: f }, UtteranceResponse)
+      if (opts.opId) f.set('opId', opts.opId)
+      return req('/v1/utterance', { method: 'POST', body: f, headers: opts.opId ? { 'Idempotency-Key': opts.opId } : undefined }, UtteranceResponse)
     },
     /** Speech-to-text only (nothing saved); roster hints from the session or class. 422 = nothing heard. */
     transcribe: async (wav: Blob, scope: TranscribeScope = {}, timeoutMs = TRANSCRIBE_TIMEOUT_MS): Promise<string> => {
@@ -111,7 +144,9 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
       if (scope.sessionId) f.set('sessionId', scope.sessionId)
       if (scope.classId) f.set('classId', scope.classId)
       f.set('audio', wav, 'note.wav')
-      return (await req('/v1/transcribe', { method: 'POST', body: f, timeoutMs }, TranscribeResponse)).transcript
+      if (scope.opId) f.set('opId', scope.opId)
+      const headers = scope.opId ? { 'Idempotency-Key': scope.opId } : undefined
+      return (await req('/v1/transcribe', { method: 'POST', body: f, timeoutMs, headers }, TranscribeResponse)).transcript
     },
     /** Keep-warm ping (no auth needed). */
     health: () => req('/health', {}, z.object({ ok: z.boolean() })),
@@ -122,10 +157,13 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
         throw e
       }
     },
-    undo: (utteranceId: string) => post(`/v1/utterances/${utteranceId}/undo`, {}, z.object({ coverage: Coverage.nullable() })),
+    /** C2: what was reversed, cancelled, or could not be. 409 already_undone, 404 unknown id. */
+    undo: (utteranceId: string) => post(`/v1/utterances/${encodeURIComponent(utteranceId)}/undo`, {}, UndoReply),
+    /** C3: the roster of the note's own class, with its name and capture time. */
+    noteCandidates: (noteId: string) => req(`/v1/notes/${encodeURIComponent(noteId)}/candidates`, {}, NoteCandidates),
     assignNote: (noteId: string, studentId: string) => post(`/v1/notes/${noteId}/assign`, { studentId }, z.object({ coverage: Coverage.nullable(), nextStudent: NextStudent.nullable() })),
     dismissNote: (noteId: string) => post(`/v1/notes/${noteId}/dismiss`, {}, ok),
-    review: () => req('/v1/review', {}, z.array(ReviewItem)),
+    review: () => req('/v1/review', {}, z.array(ReviewItemClient)),
     approve: (id: string, edits: { subject?: string; body?: string } = {}) => post(`/v1/review/outbox/${id}/approve`, edits, ok),
     skip: (id: string) => post(`/v1/review/outbox/${id}/skip`, {}, ok),
     approveAll: (ids: string[]) => post('/v1/review/outbox/approve-all', { ids }, z.object({ sent: z.number(), failed: z.number() })),
@@ -142,7 +180,17 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
     undoDiff: (id: string) => post(`/v1/diffs/${id}/undo`, {}, ok),
     alternatives: (drillId: string) => post(`/v1/drills/${drillId}/alternatives`, {}, Alternatives),
     students: () => req('/v1/students', {}, z.array(RosterStudent)),
-    student: (id: string) => req(`/v1/students/${id}`, {}, StudentDetail),
+    student: (id: string) => req(`/v1/students/${id}`, {}, StudentEditable),
+    /** C3 roster maintenance. Delete removes the student's personal data too. */
+    createStudent: (body: StudentCreate) => post('/v1/students', body, StudentRow),
+    updateStudent: (id: string, patch: StudentUpdate) => req(`/v1/students/${encodeURIComponent(id)}`, { method: 'PATCH', json: patch }, StudentRow),
+    deleteStudent: (id: string) => req(`/v1/students/${encodeURIComponent(id)}`, { method: 'DELETE' }, ok),
+    createClass: (body: ClassCreate) => post('/v1/classes', body, ClassRow),
+    updateClass: (id: string, patch: ClassUpdate) => req(`/v1/classes/${encodeURIComponent(id)}`, { method: 'PATCH', json: patch }, ClassRow),
+    /** 409 while a session of the class is live. */
+    deleteClass: (id: string) => req(`/v1/classes/${encodeURIComponent(id)}`, { method: 'DELETE' }, ok),
+    /** C4: revoke this phone's token on the server (the caller then clears it locally). */
+    unpair: () => post('/v1/unpair', {}, ok),
     feed: (since?: string) => req(`/v1/agents/feed${since ? `?since=${encodeURIComponent(since)}` : ''}`, {}, z.array(AgentRunView)),
     agentsSummary: () => req('/v1/agents/summary', {}, AgentsSummary),
     agentTask: (task: AgentTask, limit = 50) => req(`/v1/agents/${task}?limit=${limit}`, {}, z.array(AgentTaskRun)),

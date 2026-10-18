@@ -46,3 +46,21 @@ describe('student intelligence contracts', () => {
     expect(StudentPatch.safeParse({ belt: 'green', rankSince: '2026-03-01' }).success).toBe(true)
   })
 })
+
+describe('remediation contracts (C2, C3)', () => {
+  it('UndoResponse needs every list; NoteCandidates carries class, capture time and roster', async () => {
+    const { UndoResponse, NoteCandidates } = await import('./contracts')
+    expect(UndoResponse.safeParse({ ok: true, reversed: ['Removed Priya note'], cancelled: [], notReversible: ["Email already sent to Dee's family"] }).success).toBe(true)
+    expect(UndoResponse.safeParse({ ok: true, reversed: [] }).success).toBe(false)
+    expect(NoteCandidates.safeParse({ classId: 'c', className: 'Kids · Tue', capturedAt: '2026-10-18T17:05:00Z', students: [{ id: 's', name: 'Sam Lee', nickname: null, aliases: [] }] }).success).toBe(true)
+  })
+  it('StudentCreate needs a name and classIds; guardians need a real email; ClassCreate matches the class row', async () => {
+    const { StudentCreate, ClassCreate, ClassUpdate } = await import('./contracts')
+    expect(StudentCreate.safeParse({ name: 'Ava Cruz', classIds: ['c1'], guardians: [{ name: 'Cruz family', email: 'p@example.com' }] }).success).toBe(true)
+    expect(StudentCreate.safeParse({ name: '', classIds: [] }).success).toBe(false)
+    expect(StudentCreate.safeParse({ name: 'Ava', classIds: [], guardians: [{ name: 'x', email: 'nope' }] }).success).toBe(false)
+    expect(ClassCreate.safeParse({ name: 'Kids', mode: 'martial_arts', startTime: '17:00', weekday: 2 }).success).toBe(true)
+    expect(ClassCreate.safeParse({ name: 'Kids', mode: 'martial_arts', startTime: '25:00', weekday: 2 }).success).toBe(false)
+    expect(ClassUpdate.safeParse({ startTime: '18:30' }).success).toBe(true)
+  })
+})
