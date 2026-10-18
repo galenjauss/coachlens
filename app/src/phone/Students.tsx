@@ -1,17 +1,17 @@
 import { useState } from 'react'
 import type { Api } from '../core/api'
+import { usePeopleLabel } from './kvContext'
 import { cap, outcomeFor } from './reviewLogic'
 import { StudentDetailView } from './StudentDetail'
 import { usePoll } from './usePoll'
 
 export function Students({ api }: { api: Api }) {
   const { data, error, loading, reload } = usePoll(() => api.students(), null)
-  const { data: today } = usePoll(() => api.today(), null)
   const [open, setOpen] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const people = today?.people ?? 'students'
+  const people = usePeopleLabel(api) // from the stored class's mode, never api.today()
   if (open) return <StudentDetailView api={api} id={open} onBack={() => setOpen(null)} />
 
   async function runAll() {

@@ -5,6 +5,8 @@ type Events = {
   imuSample: ImuSampleEvent
   /** The phone IMU readout opened (true) or closed (false): the lens keeps the IMU on while it is open. */
   imuDebug: boolean
+  /** The server rejected our token (401): the phone shows Pairing again; the lens says "Pair on phone". */
+  unauthorized: void
 }
 type Handler<T> = (p: T) => void
 const handlers: { [K in keyof Events]?: Handler<Events[K]>[] } = {}

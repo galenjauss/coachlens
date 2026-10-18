@@ -125,6 +125,12 @@ function dataEvent(s: LensState, e: LensEvent, now: number): R | null {
       return e.resumed ? resumeDrill(next, e.now) : record(next, 'attendance', 'peek', false, now)
     }
     case 'micFailed': return back(s, 'Mic unavailable · check permission')
+    case 'utteranceDelivered': {
+      // The server saved it but its reply was unreadable: never resent; a neutral card, no undo.
+      if (s.pending?.mode === 'attendance') return back(s, 'Roll call saved · details unavailable')
+      const card = { lines: ['Saved · details unavailable'], transcript: '', utteranceId: null, runs: null, runsFinal: true, page: 0 }
+      return done({ ...s, screen: 'card', card, pending: null, status: null })
+    }
     case 'utteranceQueued': return back(s, s.pending?.mode === 'attendance' ? ROLL_NOT_SAVED : '● Saved · will sync')
     case 'utteranceEmpty': return back(s, emptyStatus(s.pending?.mode, e.reason))
     case 'micLevel': {

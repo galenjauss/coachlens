@@ -1,10 +1,11 @@
 import type { UtteranceResponse } from '@matside/shared'
-import { ApiError, NetworkError } from './api'
+import { ApiError, BadResponseError, NetworkError } from './api'
 import { KEYS, type KV } from './storage'
 
 export type OutboxForm = { sessionId: string; drillId: string | null; mode: 'note' | 'attendance'; audioB64: string | null; text: string | null }
 export type OutboxItem = { id: string; createdAt: number; attempts: number; form: OutboxForm }
-export type FlushResult = { results: Map<string, UtteranceResponse>; dropped: Map<string, number>; remaining: number }
+/** `delivered`: the server accepted the item but its reply was unreadable (no result; never retried). */
+export type FlushResult = { results: Map<string, UtteranceResponse>; dropped: Map<string, number>; delivered: Set<string>; remaining: number }
 const MAX_ATTEMPTS = 5
 
 export class Outbox {
@@ -46,6 +47,7 @@ export class Outbox {
     const run = this.busy.then(async () => {
       const results = new Map<string, UtteranceResponse>()
       const dropped = new Map<string, number>()
+      const delivered = new Set<string>()
       const persist = async (fn: () => Promise<unknown>): Promise<boolean> => {
         try { await fn(); return true } catch (err) { console.error('[outbox] persist failed', err); return false }
       }
@@ -58,6 +60,11 @@ export class Outbox {
         try {
           sent = await send(head)
         } catch (e) {
+          if (e instanceof BadResponseError) { // saved on the server, reply unreadable: done, never resend (no duplicates)
+            delivered.add(id)
+            if (!(await persist(() => this.remove(id)))) break
+            continue
+          }
           if (e instanceof ApiError && e.status === 401) break // needs re-pairing; keep the item
           if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429) {
             dropped.set(id, e.status)
@@ -76,7 +83,7 @@ export class Outbox {
       }
       let remaining = 0
       try { remaining = (await this.list()).length } catch { /* keep 0 */ }
-      return { results, dropped, remaining }
+      return { results, dropped, delivered, remaining }
     })
     this.busy = run.catch(() => undefined)
     return run

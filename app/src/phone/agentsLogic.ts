@@ -68,3 +68,12 @@ export function addAlias(list: readonly string[], draft: string, max = 10, maxLe
   return { list: [...list, a] }
 }
 export const removeAlias = (list: readonly string[], alias: string): string[] => list.filter(a => a !== alias)
+
+/**
+ * Reassign chips for a note: the note's class roster when we know it (the stored class's roster), so a
+ * tap can't hit "student not in class"; every student only when no class is known (`classRoster` null).
+ */
+export function reassignChoices<S extends { id: string }>(classRoster: S[] | null, all: S[] | null): { students: S[] | null; scoped: boolean } {
+  if (classRoster) return { students: classRoster, scoped: true }
+  return { students: all, scoped: false }
+}

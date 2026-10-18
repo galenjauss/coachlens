@@ -156,6 +156,14 @@ describe('lens reducer', () => {
     expect(reduce(short, { type: 'swipeDown' }).state).toBe(short)
   })
 
+  it('utteranceDelivered: a neutral card for notes (no undo), a status for roll call', () => {
+    const r = run(inPeek(), { type: 'tap' }, { type: 'tap' }, { type: 'utteranceDelivered' })
+    expect(r.state.screen).toBe('card')
+    expect(r.state.card).toMatchObject({ lines: ['Saved · details unavailable'], utteranceId: null, runsFinal: true })
+    expect(r.effects.some(x => (x as { type: string }).type === 'pollRuns')).toBe(false)
+    expect(run(r.state, { type: 'doubleTap' }).effects).toEqual([]) // nothing to undo
+  })
+
   it('an empty recording says why: no audio from glasses vs too short vs not understood', () => {
     const empty = (reason: 'no_audio' | 'too_short' | 'not_understood') => run(inPeek(), { type: 'tap' }, { type: 'tap' }, { type: 'utteranceEmpty', reason }).state.status
     expect(empty('no_audio')).toBe("No audio from glasses — tap and speak after 'Listening'")

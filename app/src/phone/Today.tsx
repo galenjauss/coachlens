@@ -4,6 +4,7 @@ import { bus } from '../core/bus'
 import type { KV } from '../core/storage'
 import { ClassPicker } from './ClassPicker'
 import { MotionToggle } from './ImuDebug'
+import { rePair } from './kvContext'
 import { CLASS_ID_KEY, MODE_EMOJI } from './classPref'
 import { RosterCheckIn } from './RosterCheckIn'
 import { SetupEntry } from './onboarding/SetupEntry'
@@ -53,7 +54,9 @@ export function Today({ api, kv, onOpenDeck, onSetup }: { api: Api; kv: KV; onOp
     <main className="screen">
       {picker}{banner}
       {actionErr && <p className="error" role="alert">{actionErr}</p>}
-      {error ? <div className="btns"><button type="button" onClick={reload}>Retry</button></div> : <p className="muted" role="status">Loading…</p>}
+      {error
+        ? <div className="btns"><button type="button" onClick={reload}>Retry</button><button type="button" onClick={() => { void rePair(kv) }}>Re-pair this phone</button></div>
+        : <p className="muted" role="status">Loading…</p>}
       {error && <SetupEntry onOpen={onSetup} />}
     </main>
   )

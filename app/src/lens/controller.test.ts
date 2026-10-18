@@ -76,13 +76,30 @@ describe('lens controller', () => {
     return { ...b, kv, api }
   }
 
-  it('first run paints instructions immediately, tap → home with "Not paired" when the API rejects', async () => {
-    const api = fakeApi({ today: vi.fn(async () => { throw new ApiError(401, 'bad token') }) })
+  it('first run paints instructions immediately, tap → home with "Pair on phone" on 401; recovers when the phone pairs', async () => {
+    let paired = false
+    const api = fakeApi({ today: vi.fn(async () => { if (!paired) throw new ApiError(401, 'bad token'); return today }) })
     const b = await boot(api, false)
     expect(b.sent[0]).toContain('WELCOME TO COACHLENS')
     b.emit(tap); await flush()
-    expect(b.sent.join('\n')).toContain('Not paired')
+    expect(b.sent.join('\n')).toContain('Pair on phone')
     expect(await b.kv.get(KEYS.firstRunSeen)).toBe('1')
+    paired = true
+    bus.emit('paired', undefined); await flush()
+    expect(b.sent.at(-1)).toContain('Kids · Tue')
+  })
+
+  it('a note the server saved but whose reply was unreadable shows a neutral card and is never resent', async () => {
+    const { BadResponseError } = await import('../core/api')
+    const utterance = vi.fn(async () => { throw new BadResponseError() })
+    const b = await toPeek(fakeApi({ utterance }))
+    b.emit(tap); await flush()
+    for (let i = 0; i < 20; i++) b.emit({ audioEvent: { audioPcm: new Uint8Array(1000) } })
+    await vi.advanceTimersByTimeAsync(STOP_DEBOUNCE_MS)
+    b.emit(tap); await flush()
+    expect(b.sent.join('\n')).toContain('Saved · details unavailable')
+    lens!.dispatch({ type: 'resumed' }); await flush() // flushes the outbox again
+    expect(utterance).toHaveBeenCalledTimes(1)
   })
 
   it('offline home shows Offline and does not crash', async () => {

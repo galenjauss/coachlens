@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { API_URL } from '../config'
+import { bus } from '../core/bus'
 import { KEYS } from '../core/storage'
 import { Agents } from './Agents'
 import { DeckEditor } from './DeckEditor'
@@ -20,6 +21,11 @@ export function App({ api, kv }: PhoneDeps) {
   const [deckId, setDeckId] = useState<string | null>(null)
   const [setup, setSetup] = useState(false)
   useEffect(() => { void kv.get(KEYS.token).then(t => setPaired(Boolean(t)), () => setPaired(false)) }, [kv])
+  // A 401 anywhere (or "Re-pair this phone") means the token is no longer valid: clear it and pair again.
+  useEffect(() => bus.on('unauthorized', () => {
+    void kv.set(KEYS.token, '').catch(e => console.warn('[pair] could not clear the token', e))
+    setDeckId(null); setSetup(false); setPaired(false)
+  }), [kv])
   // Warm the serverless instance; cold starts are slow. Failure is irrelevant.
   useEffect(() => { void fetch(`${API_URL}/health`).catch(() => {}) }, [])
   // Once paired, open the setup quiz automatically while the school has no classes yet.

@@ -1,9 +1,11 @@
-import { ApiError, NetworkError } from '../core/api'
+import { ApiError, NetworkError, BadResponseError } from '../core/api'
 
 export type Outcome = { kind: 'gone'; text: string } | { kind: 'error'; text: string }
 
 /** Maps a failed review/student action to UI feedback. 404/409 mean someone already handled it. */
 export function outcomeFor(e: unknown, verb = 'Action'): Outcome {
+  // 2xx with an unreadable reply: the server did it. Never invite a retry (it would send twice).
+  if (e instanceof BadResponseError) return { kind: 'gone', text: 'Done — list refreshed.' }
   if (e instanceof ApiError) {
     if (e.status === 404 || e.status === 409) return { kind: 'gone', text: 'Already handled — list refreshed.' }
     if (e.status === 502) return { kind: 'error', text: 'Sending failed. The draft is still here, so you can try again.' }

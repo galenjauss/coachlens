@@ -4,12 +4,21 @@ import {
   ExtractResponse, OnboardingCommitResponse, OnboardingStatus, type ExtractRequest, type OnboardingCommit,
 } from '@matside/shared'
 import { z } from 'zod'
+import { bus } from './bus'
 
 export class ApiError extends Error {
   status: number
   constructor(status: number, message: string) { super(message); this.status = status }
 }
 export class NetworkError extends Error {}
+/**
+ * A 2xx whose body didn't match the schema: the server DID the work (e.g. saved the note), we just
+ * can't read the reply. Never retry it (that would duplicate the work): `delivered` is true.
+ */
+export class BadResponseError extends ApiError {
+  readonly delivered = true
+  constructor() { super(502, 'bad_response') }
+}
 
 export type Api = ReturnType<typeof createApi>
 /**
@@ -41,11 +50,12 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
     } finally { clearTimeout(timer) }
     if (!res.ok) {
       const msg = raw && typeof raw === 'object' ? (raw as { error?: unknown }).error : undefined
+      if (res.status === 401 && path !== '/pair') bus.emit('unauthorized', undefined) // token no longer valid: re-pair
       throw new ApiError(res.status, typeof msg === 'string' ? msg : res.statusText)
     }
     if (!schema) return (raw ?? {}) as T
     const parsed = schema.safeParse(raw)
-    if (!parsed.success) throw new ApiError(502, 'bad_response')
+    if (!parsed.success) throw new BadResponseError()
     return parsed.data
   }
   const post = <T>(path: string, json: unknown = {}, schema?: z.ZodType<T>) => req(path, { method: 'POST', json }, schema)

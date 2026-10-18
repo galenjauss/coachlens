@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { pcmToWav, toB64, fromB64 } from './wav'
 import { Outbox } from './outbox'
 import { memoryKV } from './storage'
@@ -39,6 +39,22 @@ describe('outbox', () => {
     expect(sent).toEqual([a.id, b.id])
     expect(r2.results.get(a.id)?.utteranceId).toBe(a.id)
     expect(r2.remaining).toBe(0)
+  })
+  it('a bad reply after a 2xx (BadResponseError) counts as DELIVERED: removed, never retried', async () => {
+    const { BadResponseError } = await import('./api')
+    const kv = memoryKV()
+    const ob = new Outbox(kv)
+    const a = await ob.enqueue(form)
+    const b = await ob.enqueue({ ...form, text: 'two' })
+    const calls: string[] = []
+    const r = await ob.flush(async i => { calls.push(i.id); if (i.id === a.id) throw new BadResponseError(); return res(i.id) })
+    expect(r.delivered.has(a.id)).toBe(true)
+    expect(r.results.has(a.id)).toBe(false)
+    expect(r.dropped.has(a.id)).toBe(false)
+    expect(r.results.has(b.id)).toBe(true) // the queue carried on
+    expect(r.remaining).toBe(0)
+    await ob.flush(async i => { calls.push(i.id); return res(i.id) })
+    expect(calls).toEqual([a.id, b.id]) // a was sent exactly once
   })
   it('drops items on 4xx and records the status', async () => {
     const ob = new Outbox(memoryKV())
@@ -271,5 +287,39 @@ describe('imu readout flag (KV)', () => {
     try { await writeImuDebug(kv, true) } finally { off() }
     expect(await kv.get(IMU_DEBUG_KEY)).toBe('1')
     expect(seen).toEqual([true])
+  })
+})
+
+describe('api errors', () => {
+  it('schema failure on a 2xx is a BadResponseError (ApiError 502, delivered)', async () => {
+    const { BadResponseError } = await import('./api')
+    const api = createApi('http://x', async () => null, (() => Promise.resolve(new Response('{"nope":1}', { status: 200 }))) as unknown as typeof fetch)
+    const e = await api.today().catch(x => x)
+    expect(e).toBeInstanceOf(BadResponseError)
+    expect(e).toMatchObject({ status: 502, delivered: true })
+  })
+  it('401 tells the app to re-pair (bus unauthorized), except on /pair itself', async () => {
+    const { bus } = await import('./bus')
+    const seen: number[] = []
+    const off = bus.on('unauthorized', () => seen.push(1))
+    try {
+      const api = createApi('http://x', async () => 't', (() => Promise.resolve(new Response('{"error":"bad token"}', { status: 401 }))) as unknown as typeof fetch)
+      await expect(api.today()).rejects.toMatchObject({ status: 401 })
+      expect(seen).toHaveLength(1)
+      await expect(api.pair('000000')).rejects.toMatchObject({ status: 401 })
+      expect(seen).toHaveLength(1)
+    } finally { off() }
+  })
+  it('a request that never answers fails with NetworkError("timeout") instead of loading forever', async () => {
+    vi.useFakeTimers()
+    try {
+      const { REQUEST_TIMEOUT_MS } = await import('./api')
+      const hang = ((_u: string, init: RequestInit) => new Promise((_r, rej) => { init.signal?.addEventListener('abort', () => rej(new Error('aborted'))) })) as unknown as typeof fetch
+      const p = createApi('http://x', async () => null, hang).today().catch(e => e)
+      await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS)
+      const e = await p
+      expect(e).toBeInstanceOf(NetworkError)
+      expect(e.message).toBe('timeout')
+    } finally { vi.useRealTimers() }
   })
 })

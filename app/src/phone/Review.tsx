@@ -4,6 +4,7 @@ import type { Api } from '../core/api'
 import { approveAllNotice, bulkEmailIds, outcomeFor, visibleEmailIds } from './reviewLogic'
 import { usePoll } from './usePoll'
 import { useAction } from './useAction'
+import { usePeopleLabel } from './kvContext'
 
 export function DiffList({ diff, names }: { diff: DeckDiff; names?: Record<string, string> }) {
   const empty = !diff.removed.length && !diff.changed.length && !diff.added.length
@@ -110,11 +111,10 @@ function DiffCard({ api, item, onGone, refresh, locked }: Props & { item: Extrac
 export function Review({ api }: { api: Api }) {
   const { data, error, loading, reload } = usePoll(() => api.review(), 5000)
   const { data: roster } = usePoll(() => api.students(), null)
-  const { data: today } = usePoll(() => api.today(), null)
   const [notice, setNotice] = useState<string | null>(null)
   const [bulkErr, setBulkErr] = useState<string | null>(null)
   const [bulkBusy, setBulkBusy] = useState(false)
-  const people = today?.people ?? 'students'
+  const people = usePeopleLabel(api) // from the stored class's mode, never api.today()
   const onGone = useCallback((t: string) => setNotice(t), [])
   const [dirty, setDirty] = useState<ReadonlySet<string>>(new Set())
   const onDirty = useCallback((id: string, d: boolean) => setDirty(prev => {

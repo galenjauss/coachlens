@@ -55,7 +55,7 @@ export type LensEvent =
   | { type: 'loadFailed'; message: string }
   | { type: 'sessionStarted'; res: StartSessionResponse; resumed: boolean; now: number }
   | { type: 'utteranceResult'; res: UtteranceResponse }
-  | { type: 'utteranceQueued' } | { type: 'utteranceEmpty'; reason: EmptyReason } | { type: 'micFailed' }
+  | { type: 'utteranceQueued' } | { type: 'utteranceDelivered' } | { type: 'utteranceEmpty'; reason: EmptyReason } | { type: 'micFailed' }
   | { type: 'micLevel'; seconds: number; wave: string; source: MicSource }
   | { type: 'coverageUpdated'; coverage: Coverage; nextStudent: NextStudent | null }
   | { type: 'runsLoaded'; utteranceId: string; runs: UtteranceRun[] | null; final: boolean }

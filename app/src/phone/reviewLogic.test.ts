@@ -45,3 +45,11 @@ describe('bulkEmailIds', () => {
     expect(bulkEmailIds(items, new Set(['zzz']))).toEqual(['a', 'b', 'd'])
   })
 })
+
+describe('outcomeFor: delivered replies', () => {
+  it('a BadResponseError (2xx, unreadable reply) is treated as done, never "try again"', async () => {
+    const { BadResponseError } = await import('../core/api')
+    const { outcomeFor: of } = await import('./reviewLogic')
+    expect(of(new BadResponseError(), 'Approve')).toEqual({ kind: 'gone', text: 'Done — list refreshed.' })
+  })
+})

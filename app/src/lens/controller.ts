@@ -44,7 +44,7 @@ function slot() {
   return { clear, set(ms: number, fn: () => void) { clear(); h = setTimeout(() => { h = null; fn() }, ms) } }
 }
 
-const errText = (e: unknown) => (e instanceof ApiError && e.status === 401 ? 'Not paired' : e instanceof ApiError ? `Server error ${e.status}`
+const errText = (e: unknown) => (e instanceof ApiError && e.status === 401 ? 'Pair on phone' : e instanceof ApiError ? `Server error ${e.status}`
   : e instanceof NetworkError && e.message === 'timeout' ? 'Server not responding' : 'Offline')
 
 /** A KV read that hangs (bridge storage) must not block loading: fall back after `ms`. */
@@ -134,6 +134,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
       if (res.cardLines.some(l => l.startsWith('✓ Added'))) void run({ type: 'loadToday' })
       return
     }
+    if (r.delivered.has(currentId)) return dispatch({ type: 'utteranceDelivered' }) // saved; reply unreadable
     // Dropped = the server rejected it (422 empty transcript, other 4xx, or retries exhausted): nothing was saved.
     if (r.dropped.has(currentId)) return dispatch({ type: 'utteranceEmpty', reason: 'not_understood' })
     dispatch({ type: 'utteranceQueued' }) // still in the outbox (offline / 5xx / not paired)

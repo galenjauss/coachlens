@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentTile } from '@matside/shared'
-import { addAlias, latestTile, relTime, removeAlias, sortTiles, steeringFor, taskLabel, tileStatus } from './agentsLogic'
+import { addAlias, latestTile, reassignChoices, relTime, removeAlias, sortTiles, steeringFor, taskLabel, tileStatus } from './agentsLogic'
 
 const run = (createdAt: string) => ({ id: createdAt, agent: 'x', summary: 's', reason: 'r', status: 'ok' as const, createdAt })
 const tile = (task: AgentTile['task'], color: AgentTile['color'], today: number, urgent = 0, pending = 0, latest: AgentTile['latest'] = null): AgentTile =>
@@ -70,5 +70,14 @@ describe('aliases', () => {
     const l = ['a', 'b']
     expect(removeAlias(l, 'a')).toEqual(['b'])
     expect(l).toEqual(['a', 'b'])
+  })
+})
+
+describe('reassignChoices', () => {
+  const a = { id: 'a' }, b = { id: 'b' }, c = { id: 'c' }
+  it('uses the class roster when known (scoped), else everyone', () => {
+    expect(reassignChoices([a, b], [a, b, c])).toEqual({ students: [a, b], scoped: true })
+    expect(reassignChoices(null, [a, b, c])).toEqual({ students: [a, b, c], scoped: false })
+    expect(reassignChoices(null, null)).toEqual({ students: null, scoped: false })
   })
 })

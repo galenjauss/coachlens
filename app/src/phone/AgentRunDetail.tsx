@@ -1,8 +1,9 @@
 import { useCallback, useState } from 'react'
 import type { AgentRunDetail } from '@matside/shared'
-import type { Api } from '../core/api'
+import { ApiError, type Api } from '../core/api'
 import { AgentBadge } from './AgentBadge'
-import { relTime, steeringFor, STEERING_PROMPT, taskLabel } from './agentsLogic'
+import { reassignChoices, relTime, steeringFor, STEERING_PROMPT, taskLabel } from './agentsLogic'
+import { useStoredClassId } from './kvContext'
 import { DiffList } from './Review'
 import { useAction } from './useAction'
 import { usePoll } from './usePoll'
@@ -50,7 +51,12 @@ function SteerBox({ api, r, reload }: { api: Api; r: AgentRunDetail; reload(): P
   const [notice, setNotice] = useState<string | null>(null)
   const onNotice = useCallback((t: string) => setNotice(t), [])
   const { busy, err, run } = useAction(onNotice, reload, 'Request')
-  const roster = usePoll(() => api.students(), null, [], kind === 'reassign')
+  // Chips = the note's class roster (stored class), so a tap can't hit "student not in class". Without a
+  // known class (or if that roster can't load) fall back to everyone, with a gentler error.
+  const classId = useStoredClassId()
+  const classRoster = usePoll(() => api.today(classId ?? undefined).then(td => td.roster), null, [classId], kind === 'reassign' && Boolean(classId))
+  const all = usePoll(() => api.students(), null, [], kind === 'reassign' && (classId === null || Boolean(classRoster.error)))
+  const choice = reassignChoices(classRoster.error ? null : classRoster.data, all.data)
   if (kind === 'none') return null
   const t = text.trim()
 
@@ -59,13 +65,18 @@ function SteerBox({ api, r, reload }: { api: Api; r: AgentRunDetail; reload(): P
     return (
       <section className="card" aria-labelledby="ar-tell">
         <div className="label" id="ar-tell">Tell this agent…</div>
-        <p className="muted">Wrong student? Reassign this note.</p>
+        <p className="muted">Wrong student? Reassign this note{choice.scoped ? ' to someone in this class' : ''}.</p>
         <div className="chips" role="group" aria-label="Assign note to">
-          {roster.data?.map(s => (
+          {choice.students?.map(s => (
             <button key={s.id} type="button" disabled={busy} aria-pressed={note.studentId === s.id} aria-label={`Assign to ${s.name}`}
-              onClick={() => run(() => api.assignNote(note.id, s.id), `Assigned to ${s.name.split(' ')[0]}.`)}>{s.name}</button>
+              onClick={() => run(async () => {
+                try { await api.assignNote(note.id, s.id) } catch (e) {
+                  if (e instanceof ApiError && e.status === 400) throw new ApiError(400, `${s.name.split(' ')[0]} isn’t in this note’s class — pick someone from that class`)
+                  throw e
+                }
+              }, `Assigned to ${s.name.split(' ')[0]}.`)}>{s.name}</button>
           ))}
-          {!roster.data && <span className="muted" role="status">Loading roster…</span>}
+          {!choice.students && <span className="muted" role="status">Loading roster…</span>}
         </div>
         <div aria-live="polite">{notice && <p className="notice">{notice}</p>}</div>
         {err && <p className="error" role="alert">{err}</p>}

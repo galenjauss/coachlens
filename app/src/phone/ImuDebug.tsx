@@ -3,6 +3,7 @@ import { NOD } from '../config'
 import { bus, type ImuSampleEvent } from '../core/bus'
 import { readImuDebug, writeImuDebug } from '../core/imuDebug'
 import type { KV } from '../core/storage'
+import { rePair } from './kvContext'
 
 const WINDOW_MS = 2000
 type Axis = 'x' | 'y' | 'z'
@@ -48,6 +49,9 @@ export function MotionToggle({ kv }: { kv: KV }) {
           style={{ width: 'auto', flex: 'none', margin: 0, padding: 0, accentColor: 'var(--accent)', inlineSize: 22, blockSize: 22 }} />
       </label>
       <ImuDebug kv={kv} />
+      <div className="btns" style={{ marginTop: 12 }}>
+        <button type="button" onClick={() => { void rePair(kv) }}>Re-pair this phone</button>
+      </div>
     </details>
   )
 }
