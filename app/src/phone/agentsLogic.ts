@@ -110,9 +110,9 @@ export const AUTONOMY_COPY: Record<AgentTask, Partial<Record<Autonomy, string>>>
     off: 'Ignores spoken attendance. Use the roster instead.',
   },
   insights: {
-    auto: 'Acts on what it notices (a draft, a plan focus) and tells you what it did.',
-    review: 'Suggests what it notices and waits for you to tap Do it.',
-    off: 'Stops looking for patterns. Nothing is suggested.',
+    auto: 'Spots patterns and acts on them (emails and plans still follow their own settings).',
+    review: 'Spots patterns and suggests an action you accept or dismiss.',
+    off: 'Doesn’t look for patterns.',
   },
 }
 

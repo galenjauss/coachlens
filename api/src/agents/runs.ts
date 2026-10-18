@@ -34,3 +34,8 @@ export async function withRun<T>(deps: Deps, meta: RunMeta, fn: () => Promise<Ru
     return null
   }
 }
+
+/** Background work that must never crash the request: errors are logged under the label. */
+export function safeDefer(deps: Deps, label: string, p: Promise<unknown>) {
+  deps.defer(p.catch(e => { console.error(`[defer:${label}]`, e) }))
+}

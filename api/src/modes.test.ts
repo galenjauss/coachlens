@@ -4,6 +4,7 @@ import { resetRateLimits } from './http/rateLimit'
 import { makeTestDb, makeDeps, fakeLlm } from './test/helpers'
 import { createApp } from './app'
 import { seed } from './db/seed'
+import { PAST_SESSIONS_PER_CLASS } from './db/seedHistory'
 import { MODES } from '@matside/shared'
 import { classes, decks, guardians, issues, outbox, sessions } from './db/schema'
 import { plannerInstructions } from './agents/planner'
@@ -72,7 +73,8 @@ describe('teaching modes over HTTP', () => {
     const { sessionId } = (await r.json()) as { sessionId: string }
     const [s] = await db.select().from(sessions).where(eq(sessions.id, sessionId))
     expect(s).toMatchObject({ deckId: t.deck.id, forDate: '2026-10-19' })
-    expect(await db.select().from(decks).where(eq(decks.classId, w.classIds.pt))).toHaveLength(1)
+    // the seeded upcoming deck plus the six finished past-session decks: nothing new was drafted
+    expect(await db.select().from(decks).where(eq(decks.classId, w.classIds.pt))).toHaveLength(1 + PAST_SESSIONS_PER_CLASS)
     expect(calls).toHaveLength(0)
     // default picker (no classId) keeps the weekday rule and applies the same date rule
     const d = (await (await app.request('/v1/today', { headers: h })).json()) as { classId: string; forDate: string }

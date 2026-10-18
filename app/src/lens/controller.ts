@@ -127,7 +127,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
    * Insights for one scope; null when there is nothing to show: the API is not deployed yet (404, silent),
    * or the request failed (logged, the lens stays quiet either way).
    */
-  async function fetchInsights(params: Parameters<Api['insights']>[0]): Promise<Insight[] | null> {
+  async function fetchInsights(params: NonNullable<Parameters<Api['insights']>[0]>): Promise<Insight[] | null> {
     if (typeof d.api.insights !== 'function') return null
     try { return (await d.api.insights(params)).insights } catch (err) {
       if (err instanceof ApiError && err.status === 404) { if (params.sessionId) insightsMissingFor = params.sessionId; return null }
