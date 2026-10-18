@@ -8,5 +8,6 @@
   {"t": "Tom squatted 185 for five today", "types": ["metric"], "names": ["Tom"]},
   {"t": "How's Lena doing?", "types": ["student_query"], "names": ["Lena"]},
   {"t": "Who's been missing sessions lately?", "types": ["question"], "names": []},
-  {"t": "Who needs the most work on depth?", "types": ["question"], "names": []}
+  {"t": "Who needs the most work on depth?", "types": ["question"], "names": []},
+  {"t": "Maria finally hit full depth on every squat today", "types": ["feedback"], "names": ["Maria"], "tags": ["depth"], "valence": "positive"}
 ]

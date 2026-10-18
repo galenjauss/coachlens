@@ -60,9 +60,9 @@ export async function seedPersonalTraining(db: Db, ctx: Ctx) {
   })
   const maria = w.by('Maria').id
   await db.insert(t.notes).values([
-    { studentId: maria, text: 'Squat depth cut short on the last reps', tags: ['depth'], createdAt: at(ctx.today, 11) },
-    { studentId: maria, text: 'Hips stayed high on goblet squats, not hitting depth', tags: ['depth'], createdAt: at(ctx.today, 5) },
-    { studentId: w.by('Tom').id, text: 'Great bracing on deadlifts', tags: ['bracing'], createdAt: at(ctx.today, 6) },
+    { studentId: maria, text: 'Squat depth cut short on the last reps', valence: 'concern', tags: ['depth'], createdAt: at(ctx.today, 11) },
+    { studentId: maria, text: 'Hips stayed high on goblet squats, not hitting depth', valence: 'concern', tags: ['depth'], createdAt: at(ctx.today, 5) },
+    { studentId: w.by('Tom').id, text: 'Great bracing on deadlifts', valence: 'positive', tags: ['bracing'], createdAt: at(ctx.today, 6) },
   ])
   const plan = [
     item('Bike + hip openers', 8, 'warmup', ['easy pace', 'open the hips'], 'Warm-up'),
@@ -100,9 +100,9 @@ export async function seedTutoring(db: Db, ctx: Ctx) {
   })
   const sam = w.by('Sam').id
   await db.insert(t.notes).values([
-    { studentId: sam, text: 'Forgot to distribute the negative in 2(x - 3)', tags: ['procedure'], createdAt: at(ctx.today, 9) },
-    { studentId: sam, text: 'Skipped the distribute step again on homework check', tags: ['procedure'], createdAt: at(ctx.today, 4) },
-    { studentId: w.by('Ava').id, text: 'Explained her reasoning clearly at the board', tags: ['reasoning'], createdAt: at(ctx.today, 4) },
+    { studentId: sam, text: 'Forgot to distribute the negative in 2(x - 3)', valence: 'concern', tags: ['procedure'], createdAt: at(ctx.today, 9) },
+    { studentId: sam, text: 'Skipped the distribute step again on homework check', valence: 'concern', tags: ['procedure'], createdAt: at(ctx.today, 4) },
+    { studentId: w.by('Ava').id, text: 'Explained her reasoning clearly at the board', valence: 'positive', tags: ['reasoning'], createdAt: at(ctx.today, 4) },
   ])
   const plan = [
     item('Warm-up: 3 quick equations', 5, 'warmup', ['show your steps'], 'Warm-up problem'),

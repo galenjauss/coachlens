@@ -113,7 +113,7 @@ describe('handleUtterance', () => {
     let routerPrompt = ''
     const deps = makeDeps(w.db, { llm: fakeLlm(({ prompt }) => { routerPrompt = prompt; return { intents: [intent({ studentNames: ['Bree ah'], content: 'sharp kicks', skillTags: ['kicks'] })] } }) })
     const r = await handleUtterance(deps, { sessionId: w.sessionId, drillId: null, mode: 'note', transcript: 'Bree ah sharp kicks' })
-    expect(r.cardLines).toEqual(['√ Priya · kicks'])
+    expect(r.cardLines).toEqual(['√ Priya · praise · kicks']) // "sharp kicks" reads as praise (no router valence: inferred)
     expect(routerPrompt).toContain('Priya Rao ("Bree ah")')
   })
 

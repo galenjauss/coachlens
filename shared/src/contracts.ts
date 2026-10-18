@@ -11,6 +11,16 @@ export type SkillTag = z.infer<typeof SkillTag>
 export const Urgency = z.enum(['low', 'med', 'high'])
 export type Urgency = z.infer<typeof Urgency>
 
+/**
+ * What an observation means: a problem to work on, praise, visible improvement, or a plain fact. Only `concern`
+ * counts toward a recurring issue; `positive`/`improving` can support closing one.
+ */
+export const Valence = z.enum(['concern', 'positive', 'improving', 'neutral'])
+export type Valence = z.infer<typeof Valence>
+/** When the observed thing happened: today, or earlier ("last week she dropped her guard"); earlier is never a new occurrence. */
+export const ObservedWhen = z.enum(['today', 'earlier'])
+export type ObservedWhen = z.infer<typeof ObservedWhen>
+
 export const IntentType = z.enum(['feedback', 'attendance', 'billing', 'plan_request', 'parent_message', 'add_drill', 'metric', 'student_query', 'question'])
 export type IntentType = z.infer<typeof IntentType>
 
@@ -42,6 +52,10 @@ const intentShape = <T extends z.ZodType<string>>(tag: T) => z.object({
   metricSince: z.string().nullish(),
   /** question intents: the coach's question about the class, restated (nullish so older transports still parse). */
   question: z.string().nullish(),
+  /** feedback intents: the observation's meaning (nullish so older transports still parse; the server infers it then). */
+  valence: Valence.nullish(),
+  /** feedback intents: 'earlier' when the coach describes a past occurrence. */
+  observedWhen: ObservedWhen.nullish(),
 })
 export const Intent = intentShape(SkillTag)
 export type Intent = z.infer<typeof Intent>

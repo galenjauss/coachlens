@@ -1,6 +1,6 @@
 import { clampMinutes, clip, NAME_MAX } from '../logic/planNormalize'
 import { and, eq, gte, sql } from 'drizzle-orm'
-import { ANSWER_BRIEF_NAME, isRealDate, type Brief, type Disambiguation, type Intent, type UtteranceResponse } from '@matside/shared'
+import { ANSWER_BRIEF_NAME, isRealDate, type Brief, type Disambiguation, type Intent, type UtteranceResponse, type Valence } from '@matside/shared'
 import type { Deps } from '../deps'
 import { attendance, billingFlags, drills, issues, notes, students, utterances } from '../db/schema'
 import { routeUtterance } from '../agents/router'
@@ -10,6 +10,7 @@ import { acceptDiff, autoAdjustNextDeck, markAutonomy, nextDeckFor, suggestDiff 
 import { resolveName } from '../logic/names'
 import { parseAttendance, type RollCall } from '../logic/attendance'
 import { isRecurring, RECURRING_WINDOW_DAYS } from '../logic/recurring'
+import { countsAsConcern, effectiveValence, inferValence, isPositive } from '../logic/valence'
 import { buildCardLines, type CardAction } from '../logic/cardLines'
 import { getAutonomy } from './settings'
 import { buildBrief } from './brief'
@@ -156,7 +157,10 @@ async function applyFeedback(deps: Deps, ctx: SessionContext, utteranceId: strin
   const { db } = deps
   const actions: CardAction[] = []
   let disambiguation: Disambiguation | null = null
-  const base = { sessionId: ctx.sessionId, utteranceId, drillId: ctx.drill?.id ?? null, text: intent.content, tags: intent.skillTags }
+  // The router labels meaning; an older/omitted label falls back to the text. A past occurrence is never a new one.
+  const valence = intent.valence ?? inferValence(intent.content)
+  const historical = intent.observedWhen === 'earlier'
+  const base = { sessionId: ctx.sessionId, utteranceId, drillId: ctx.drill?.id ?? null, text: intent.content, tags: intent.skillTags, valence, historical }
   // Urgent feedback we can't attach to a student keeps its urgency on the note and gets one loud line.
   const unresolvedBase = { ...base, urgent: intent.urgent }
   const unassigned = (): CardAction => (intent.urgent ? { kind: 'urgent_unassigned' } : { kind: 'unassigned' })
@@ -190,31 +194,51 @@ async function applyFeedback(deps: Deps, ctx: SessionContext, utteranceId: strin
     const s = m.student
     const [note] = await db.insert(notes).values({ ...base, studentId: s.id }).returning({ id: notes.id })
     await markPresent(db, ctx.sessionId, s.id, 'backstop')
-    const tag = intent.skillTags[0] ?? null
-    let count = 1
-    let recurring = false
-    if (tag) {
-      const since = new Date(deps.now().getTime() - RECURRING_WINDOW_DAYS * DAY)
-      const recent = await db.select({ tags: notes.tags }).from(notes).where(and(eq(notes.studentId, s.id), gte(notes.createdAt, since)))
-      count = recent.filter(r => r.tags.includes(tag)).length
-      const [open] = await db.select().from(issues).where(and(eq(issues.studentId, s.id), eq(issues.tag, tag), eq(issues.status, 'open')))
-      recurring = isRecurring(count, Boolean(open)) && progressOn
-      if (recurring) {
-        // v2: a recurring issue feeds the report card and the next plan; it no longer emails home.
-        await db.insert(issues).values({ studentId: s.id, tag })
-        safeDefer(deps, 'auto_adjust', autoAdjustNextDeck(deps, { classId: ctx.classId, afterDate: ctx.forDate, sessionId: ctx.sessionId, utteranceId, requestText: `Add a short${ctx.mode.recipient === 'parent' ? ', fun' : ''} ${ctx.mode.planItem} targeting ${tag} for ${s.name} [${s.id}] (recurring issue).` }))
-      }
-    }
+    const t = await trackTag(deps, ctx, utteranceId, s, intent.skillTags[0] ?? null, valence, historical, progressOn)
     if (intent.urgent) safeDefer(deps, 'parent_email', draftParentEmail(deps, { studentId: s.id, sessionId: ctx.sessionId, utteranceId, trigger: { kind: 'urgent', content: intent.content } }))
-    const reason = recurring ? `${tag} ${count}× in ${RECURRING_WINDOW_DAYS} days → marked recurring, added to report card` : tag ? `${tag} note #${count} in ${RECURRING_WINDOW_DAYS} days` : 'feedback note'
+    const praise = isPositive(valence) && !historical
     await withRun(deps, { agent: 'progress', trigger: 'feedback', sessionId: ctx.sessionId, utteranceId, links: { noteId: note!.id, studentId: s.id } }, async () => ({
       result: true,
-      summary: `Logged "${intent.content.slice(0, 60)}" → ${first(s.name)}${ctx.drill ? ` · drill: ${ctx.drill.name}` : ''}`,
-      reason: [intent.urgent ? `urgent · ${reason}` : reason, progressOn ? '' : 'autonomy: off — recurring-issue tracking skipped'].filter(Boolean).join(' · '),
+      summary: `Logged ${praise ? (valence === 'improving' ? 'improvement ' : 'praise ') : ''}"${intent.content.slice(0, 60)}" → ${first(s.name)}${ctx.drill ? ` · drill: ${ctx.drill.name}` : ''}`,
+      reason: [intent.urgent ? `urgent · ${t.reason}` : t.reason, progressOn ? '' : 'autonomy: off — recurring-issue tracking skipped'].filter(Boolean).join(' · '),
     }))
-    actions.push({ kind: 'feedback', name: first(s.name), tag, count, recurring, urgent: intent.urgent, deck, mail })
+    actions.push({ kind: 'feedback', name: first(s.name), tag: t.tag, count: t.count, recurring: t.recurring, urgent: intent.urgent, deck, mail, valence, historical, improving: t.improving })
   }
   return { actions, disambiguation }
+}
+
+interface TagOutcome { tag: string | null; count: number; recurring: boolean; improving: boolean; reason: string }
+
+/**
+ * Recurring-issue bookkeeping for one new note. Only current concerns count (the new note included); three in the
+ * window with no open issue opens one and asks the planner for a targeted item. Praise or improvement on an open
+ * issue is recorded as "improving" evidence (the issue stays open: resolving it is the instructor's call).
+ */
+async function trackTag(deps: Deps, ctx: SessionContext, utteranceId: string, s: { id: string; name: string }, tag: string | null, valence: Valence, historical: boolean, progressOn: boolean): Promise<TagOutcome> {
+  const { db } = deps
+  const kind = historical ? 'past' : valence === 'improving' ? 'improving' : valence
+  if (!tag) return { tag, count: 0, recurring: false, improving: false, reason: historical ? 'past observation · not counted as a new occurrence' : `${kind} note` }
+  const since = new Date(deps.now().getTime() - RECURRING_WINDOW_DAYS * DAY)
+  const recent = await db.select({ tags: notes.tags, valence: notes.valence, text: notes.text, historical: notes.historical, createdAt: notes.createdAt })
+    .from(notes).where(and(eq(notes.studentId, s.id), gte(notes.createdAt, since)))
+  const withTag = recent.filter(r => r.tags.includes(tag))
+  const count = withTag.filter(countsAsConcern).length
+  const [open] = await db.select().from(issues).where(and(eq(issues.studentId, s.id), eq(issues.tag, tag), eq(issues.status, 'open')))
+  if (historical) return { tag, count, recurring: false, improving: false, reason: `past ${tag} observation (before today) · not counted as a new occurrence` }
+  if (isPositive(valence)) {
+    if (!open) return { tag, count, recurring: false, improving: false, reason: `${valence === 'positive' ? 'positive' : 'improving'} ${tag} observation · praise, not counted as a problem` }
+    const positives = withTag.filter(r => !r.historical && r.createdAt >= open.openedAt && isPositive(effectiveValence(r))).length
+    return { tag, count, recurring: false, improving: true, reason: `${valence === 'positive' ? 'positive' : 'improving'} ${tag} observation on the open ${tag} issue → improving (${positives} positive since it opened)` }
+  }
+  if (valence === 'neutral') return { tag, count, recurring: false, improving: false, reason: `neutral ${tag} observation · not counted` }
+  const recurring = isRecurring(count, Boolean(open)) && progressOn
+  if (recurring) {
+    // v2: a recurring issue feeds the report card and the next plan; it no longer emails home.
+    await db.insert(issues).values({ studentId: s.id, tag })
+    safeDefer(deps, 'auto_adjust', autoAdjustNextDeck(deps, { classId: ctx.classId, afterDate: ctx.forDate, sessionId: ctx.sessionId, utteranceId, requestText: `Add a short${ctx.mode.recipient === 'parent' ? ', fun' : ''} ${ctx.mode.planItem} targeting ${tag} for ${s.name} [${s.id}] (recurring issue).` }))
+  }
+  const reason = recurring ? `${tag} concern ${count}× in ${RECURRING_WINDOW_DAYS} days → marked recurring, added to report card` : `${tag} concern #${count} in ${RECURRING_WINDOW_DAYS} days`
+  return { tag, count, recurring, improving: false, reason }
 }
 
 async function applyBilling(deps: Deps, ctx: SessionContext, utteranceId: string, intent: Intent): Promise<Applied> {
