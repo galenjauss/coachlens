@@ -224,4 +224,18 @@ describe('C3 fix round 1', () => {
     expect((await w.db.select().from(students).where(eq(students.id, id)))[0]!.instructorId).toBe(w.A.instructorId)
     expect((await (await w.req('GET', '/v1/students')).json() as { id: string }[]).map(s => s.id)).toContain(id)
   })
+
+  it('deleting a class stamps its legacy students and removes rows only reachable through it', async () => {
+    const w = await world()
+    await w.db.update(sessions).set({ endedAt: new Date('2026-10-20T01:00:00Z') }).where(eq(sessions.id, w.A.sessionId))
+    const legacy = w.A.studentIds[1]!
+    await w.db.update(students).set({ instructorId: null }).where(eq(students.id, legacy))
+    const [orphanBill] = await w.db.insert(billingFlags).values({ studentId: null, utteranceId: w.A.utteranceId, urgency: 'low', note: 'someone owes' }).returning()
+    const [classInsight] = await w.db.insert(insights).values({ kind: 'no_feedback', studentId: null, classId: w.A.classId, title: 'class', detail: 'd', urgency: 'low', action: { type: 'none', label: null } as never, dedupeKey: 'alpha:class' }).returning()
+    expect((await w.req('DELETE', `/v1/classes/${w.A.classId}`)).status).toBe(200)
+    expect((await w.db.select().from(students).where(eq(students.id, legacy)))[0]!.instructorId).toBe(w.A.instructorId)
+    expect((await (await w.req('GET', '/v1/students')).json() as { id: string }[]).map(s => s.id)).toContain(legacy)
+    expect((await w.db.select().from(billingFlags).where(eq(billingFlags.id, orphanBill!.id))).length).toBe(0)
+    expect((await w.db.select().from(insights).where(eq(insights.id, classInsight!.id))).length).toBe(0)
+  })
 })

@@ -138,7 +138,8 @@ export class ClassLiveError extends Error {}
  * Removes the class with its enrollments, decks (drills, diffs), preferences and sessions. "Live" means what it
  * means everywhere else: an open session for the class's current date (`today` = upcomingClassDate). An older
  * session left open (abandoned) does not block. Sessions go too, with their attendance, utterances (and undo
- * bookkeeping) and unassigned notes; notes assigned to a student stay with the student (session link cleared).
+ * bookkeeping), unassigned notes and billing flags, and class-level insights; notes assigned to a student stay with
+ * the student (session link cleared). Legacy owner-less students of the class get the class owner stamped first.
  * Every statement re-checks "not live" inside the one batch, so a class started meanwhile is left untouched (409).
  */
 export async function deleteClass(db: Db, id: string, today: string): Promise<void> {
@@ -150,7 +151,14 @@ export async function deleteClass(db: Db, id: string, today: string): Promise<vo
   const sessionIds = sql`select id from ${sessions} where class_id = ${id}`
   const deckIds = sql`select id from ${decks} where class_id = ${id}`
   const uttIds = sql`select id from ${utterances} where session_id in (${sessionIds})`
+  const [owner] = await db.select({ ins: classes.instructorId }).from(classes).where(eq(classes.id, id))
   await atomically(db, h => [
+    // Legacy students owned only through this class keep their owner once the enrollment is gone.
+    ...(owner ? [h.update(students).set({ instructorId: owner.ins })
+      .where(and(isNull(students.instructorId), sql`${students.id} in (select student_id from ${enrollments} where class_id = ${id})`, notLive))] : []),
+    // Rows only reachable through this class: unassigned billing flags of its utterances, class-level insights.
+    h.delete(billingFlags).where(and(isNull(billingFlags.studentId), ofClass(billingFlags.utteranceId, uttIds))),
+    h.delete(insights).where(and(isNull(insights.studentId), eq(insights.classId, id), notLive)),
     h.delete(enrollments).where(and(eq(enrollments.classId, id), notLive)),
     h.delete(drills).where(ofClass(drills.deckId, deckIds)),
     h.delete(deckDiffs).where(ofClass(deckDiffs.deckId, deckIds)),

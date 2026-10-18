@@ -5,8 +5,8 @@ import { makeTestDb } from '../test/helpers'
 import { makeTenant } from '../test/tenants'
 import { atomically } from './atomic'
 import type { Db } from './client'
-import { attendance, classes, drills, guardians, notes, students } from './schema'
-import { deleteStudent } from '../services/roster'
+import { attendance, classes, decks, drills, enrollments, guardians, notes, sessions, students } from './schema'
+import { deleteClass, deleteStudent } from '../services/roster'
 
 /**
  * C4 (fix round 1): production runs `atomically` through neon-http's `db.batch`, which PGlite lacks. This stub is
@@ -59,5 +59,20 @@ describe('atomically: the neon batch path', () => {
       h.insert(students).values({ id: s2, name: 'duplicate id', belt: 'x', birthYear: 2000 }), // violates the primary key
     ])).rejects.toThrow()
     expect((await db.select().from(attendance)).length).toBe(1)
+  })
+
+  it('deleteClass runs as one batch of valid raw SQL (subqueries and the not-live guard included)', async () => {
+    const db = await makeTestDb()
+    const A = await makeTenant(db, 'Alpha')
+    await db.update(sessions).set({ endedAt: new Date('2026-10-20T01:00:00Z') }).where(eq(sessions.id, A.sessionId))
+    await db.update(students).set({ instructorId: null }).where(eq(students.id, A.studentIds[1]!))
+    const { stub, sent } = batchingDb(db)
+    await deleteClass(stub, A.classId, '2026-10-19')
+    expect(sent.some(q => /not exists \(select 1 from "sessions" s/.test(q))).toBe(true)
+    expect((await db.select().from(classes)).length).toBe(0)
+    expect((await db.select().from(enrollments)).length).toBe(0)
+    expect((await db.select().from(decks)).length).toBe(0)
+    expect((await db.select().from(sessions)).length).toBe(0)
+    expect((await db.select().from(students).where(eq(students.id, A.studentIds[1]!)))[0]!.instructorId).toBe(A.instructorId)
   })
 })
