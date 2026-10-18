@@ -46,27 +46,37 @@ export class Outbox {
     const run = this.busy.then(async () => {
       const results = new Map<string, UtteranceResponse>()
       const dropped = new Map<string, number>()
+      const persist = async (fn: () => Promise<unknown>): Promise<boolean> => {
+        try { await fn(); return true } catch (err) { console.error('[outbox] persist failed', err); return false }
+      }
       for (;;) {
-        const head = (await this.list())[0]
+        let head: OutboxItem | undefined
+        try { head = (await this.list())[0] } catch (err) { console.error('[outbox] read failed', err); break }
         if (!head) break
+        const id = head.id
+        let sent: UtteranceResponse
         try {
-          results.set(head.id, await send(head))
-          await this.remove(head.id)
+          sent = await send(head)
         } catch (e) {
           if (e instanceof ApiError && e.status === 401) break // needs re-pairing; keep the item
           if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429) {
-            dropped.set(head.id, e.status)
-            await this.remove(head.id)
+            dropped.set(id, e.status)
+            if (!(await persist(() => this.remove(id)))) break
             continue
           }
           if (e instanceof NetworkError) break // offline: keep, uncounted
           // 5xx, 429, or any unknown error: counted retry, stop to keep order
-          const attempts = await this.bump(head.id)
-          if (attempts >= MAX_ATTEMPTS) { dropped.set(head.id, e instanceof ApiError ? e.status : 0); continue }
+          let attempts = 0
+          if (!(await persist(async () => { attempts = await this.bump(id) }))) break
+          if (attempts >= MAX_ATTEMPTS) { dropped.set(id, e instanceof ApiError ? e.status : 0); continue }
           break
         }
+        results.set(id, sent)
+        if (!(await persist(() => this.remove(id)))) break
       }
-      return { results, dropped, remaining: (await this.list()).length }
+      let remaining = 0
+      try { remaining = (await this.list()).length } catch { /* keep 0 */ }
+      return { results, dropped, remaining }
     })
     this.busy = run.catch(() => undefined)
     return run

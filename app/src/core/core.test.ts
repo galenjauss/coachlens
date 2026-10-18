@@ -110,6 +110,20 @@ describe('outbox', () => {
   })
 })
 
+describe('outbox persistence failure', () => {
+  it('still returns results when kv.set throws while removing after a successful send', async () => {
+    const inner = memoryKV()
+    let fail = false
+    const kv = { get: inner.get, set: async (k: string, v: string) => { if (fail) { fail = false; throw new Error('disk full') } return inner.set(k, v) } }
+    const ob = new Outbox(kv)
+    const a = await ob.enqueue(form)
+    fail = true
+    const r = await ob.flush(async i => res(i.id))
+    expect(r.results.get(a.id)?.utteranceId).toBe(a.id)
+    expect(r.remaining).toBe(1)
+  })
+})
+
 describe('api bad responses', () => {
   const mk = (resp: Response) => createApi('http://x', async () => null, (() => Promise.resolve(resp)) as unknown as typeof fetch)
   it('maps a schema failure on 2xx to ApiError 502', async () => {
