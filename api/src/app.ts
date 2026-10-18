@@ -61,7 +61,8 @@ export function createApp(deps: Deps) {
 
   app.use('*', cors({
     origin: o => (deps.env.allowedOrigins.includes('*') ? o || '*' : deps.env.allowedOrigins.includes(o) ? o : null),
-    allowHeaders: ['Authorization', 'Content-Type'],
+    allowHeaders: ['Authorization', 'Content-Type', 'Idempotency-Key'],
+    exposeHeaders: ['Idempotent-Replay'],
     allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     maxAge: 600,
   }))
