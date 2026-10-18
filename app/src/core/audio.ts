@@ -11,10 +11,16 @@ export class Recorder {
   recording = false
   constructor(private bridge: AudioBridge) {}
   async start() {
+    if (this.recording) return
     this.chunks = []
     this.recording = true
-    const ok = await this.bridge.audioControl(true, AudioInputSource.Glasses)
-    if (!ok) { this.recording = false; throw new Error('mic unavailable') }
+    try {
+      const ok = await this.bridge.audioControl(true, AudioInputSource.Glasses)
+      if (!ok) throw new Error('mic unavailable')
+    } catch (e) {
+      this.recording = false
+      throw e
+    }
   }
   push(pcm: Uint8Array) { if (this.recording) this.chunks.push(pcm) }
   async stop(): Promise<Uint8Array | null> {

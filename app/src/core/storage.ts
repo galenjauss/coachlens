@@ -10,13 +10,13 @@ type BridgeStorage = { getLocalStorage(k: string): Promise<string>; setLocalStor
 export function bridgeKV(bridge: BridgeStorage): KV {
   return {
     async get(k) { const v = await bridge.getLocalStorage(k); return v ? v : null },
-    async set(k, v) { if (!(await bridge.setLocalStorage(k, v))) console.error('[kv] set failed', k) },
+    async set(k, v) { if (!(await bridge.setLocalStorage(k, v))) throw new Error(`kv set failed: ${k}`) },
   }
 }
 
 export function browserKV(): KV {
   return {
     async get(k) { try { return localStorage.getItem(k) } catch { return null } },
-    async set(k, v) { try { localStorage.setItem(k, v) } catch (e) { console.error('[kv]', e) } },
+    async set(k, v) { try { localStorage.setItem(k, v) } catch (e) { throw new Error(`kv set failed: ${k}`, { cause: e }) } },
   }
 }

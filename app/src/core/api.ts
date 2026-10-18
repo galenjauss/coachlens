@@ -13,7 +13,7 @@ export class NetworkError extends Error {}
 export type Api = ReturnType<typeof createApi>
 export type UtterancePayload = { sessionId: string; drillId: string | null; mode: 'note' | 'attendance'; text: string | null; audio: Blob | null }
 
-export function createApi(baseUrl: string, getToken: () => Promise<string | null>) {
+export function createApi(baseUrl: string, getToken: () => Promise<string | null>, fetchImpl: typeof fetch = (...a) => fetch(...a)) {
   async function req<T>(path: string, init: RequestInit & { json?: unknown } = {}, schema?: z.ZodType<T>): Promise<T> {
     const headers = new Headers(init.headers)
     const token = await getToken()
@@ -21,10 +21,16 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
     let body = init.body
     if (init.json !== undefined) { headers.set('Content-Type', 'application/json'); body = JSON.stringify(init.json) }
     let res: Response
-    try { res = await fetch(`${baseUrl}${path}`, { ...init, headers, body }) } catch (e) { throw new NetworkError(e instanceof Error ? e.message : 'network') }
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? res.statusText)
-    return schema ? schema.parse(data) : (data as T)
+    try { res = await fetchImpl(`${baseUrl}${path}`, { ...init, headers, body }) } catch (e) { throw new NetworkError(e instanceof Error ? e.message : 'network') }
+    const raw: unknown = await res.json().catch(() => undefined)
+    if (!res.ok) {
+      const msg = raw && typeof raw === 'object' ? (raw as { error?: unknown }).error : undefined
+      throw new ApiError(res.status, typeof msg === 'string' ? msg : res.statusText)
+    }
+    if (!schema) return (raw ?? {}) as T
+    const parsed = schema.safeParse(raw)
+    if (!parsed.success) throw new ApiError(502, 'bad_response')
+    return parsed.data
   }
   const post = <T>(path: string, json: unknown = {}, schema?: z.ZodType<T>) => req(path, { method: 'POST', json }, schema)
   const ok = z.object({ ok: z.literal(true) })
