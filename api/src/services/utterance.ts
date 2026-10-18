@@ -2,9 +2,9 @@ import { clampMinutes, clip, NAME_MAX } from '../logic/planNormalize'
 import { and, eq, gte, sql } from 'drizzle-orm'
 import { ANSWER_BRIEF_NAME, isRealDate, type Brief, type Disambiguation, type Intent, type UtteranceResponse, type Valence } from '@matside/shared'
 import type { Deps } from '../deps'
-import { attendance, billingFlags, drills, issues, notes, students, utterances } from '../db/schema'
+import { attendance, billingFlags, issues, notes, students, utterances } from '../db/schema'
 import { routeUtterance } from '../agents/router'
-import { safeDefer, withRun } from '../agents/runs'
+import { withRun } from '../agents/runs'
 import { draftParentEmail } from '../agents/parentEmail'
 import { acceptDiff, autoAdjustNextDeck, markAutonomy, nextDeckFor, suggestDiff } from '../agents/planner'
 import { resolveName } from '../logic/names'
@@ -21,6 +21,9 @@ import { localDate } from '../logic/dates'
 import { coverageAndNext, loadSessionContext, markPresent, type SessionContext } from './context'
 import { detectOnAttendance } from './insights'
 import { answerQuestion } from '../agents/answer'
+import { bindUtterance } from '../http/context'
+import { deferOnce, isUtteranceUndone } from './deferred'
+import { addLiveDrill, openIssue, recordAttendance } from './ledger'
 
 const DAY = 86_400_000
 export const NOTHING_HINT_NOTE = 'Try a name + what you saw'
@@ -29,12 +32,14 @@ const first = (name: string) => name.split(' ')[0]!
 
 export async function handleUtterance(
   deps: Deps,
-  input: { sessionId: string; drillId: string | null; mode: 'note' | 'attendance'; transcript: string },
+  input: { sessionId: string; drillId: string | null; mode: 'note' | 'attendance'; transcript: string; utteranceId?: string },
 ): Promise<UtteranceResponse> {
   const { db } = deps
   const ctx = await loadSessionContext(db, input.sessionId, input.drillId)
-  const [utt] = await db.insert(utterances).values({ sessionId: ctx.sessionId, transcript: input.transcript, mode: input.mode }).returning()
+  // C1: a queued item's utterance id is derived from its operation id, so a retried run cannot insert a second one.
+  const [utt] = await db.insert(utterances).values({ ...(input.utteranceId ? { id: input.utteranceId } : {}), sessionId: ctx.sessionId, transcript: input.transcript, mode: input.mode }).returning()
   const utteranceId = utt!.id
+  bindUtterance(utteranceId) // C2: work deferred from this request is cancellable by this utterance's Undo
   const actions: CardAction[] = []
   let disambiguation: Disambiguation | null = null
   let brief: Brief | null = null
@@ -113,6 +118,7 @@ async function applyRollCall(deps: Deps, ctx: SessionContext, utteranceId: strin
     return { kind: 'rollcall_unclear', names: unresolved }
   }
   if (ctx.roster.length) {
+    await recordAttendance(deps.db, utteranceId, ctx.sessionId, ctx.roster.map(s => ({ studentId: s.id, status: absent.has(s.id) ? 'absent' as const : 'present' as const, source: 'voice' as const })))
     await deps.db.insert(attendance)
       .values(ctx.roster.map(s => ({ sessionId: ctx.sessionId, studentId: s.id, status: absent.has(s.id) ? 'absent' as const : 'present' as const, source: 'voice' as const })))
       .onConflictDoUpdate({ target: [attendance.sessionId, attendance.studentId], set: { status: sql`excluded.status`, source: 'voice' } })
@@ -136,15 +142,15 @@ async function applyIntent(deps: Deps, ctx: SessionContext, utteranceId: string,
     case 'question': return applyQuestion(deps, ctx, utteranceId, intent.question?.trim() || intent.content.trim() || 'question')
     case 'attendance': return applyAttendanceIntent(deps, ctx, utteranceId, intent)
     case 'plan_request': {
-      safeDefer(deps, 'plan_request', (async () => {
+      await deferOnce(deps, { utteranceId, kind: 'plan_request' }, async () => {
         const deckId = await nextDeckFor(deps, ctx.classId, ctx.forDate, utteranceId)
         const s = deckId ? await suggestDiff(deps, deckId, intent.content, ctx.sessionId, utteranceId) : null
-        if (s) {
+        if (s && !(await isUtteranceUndone(deps.db, utteranceId))) { // C2: undone mid-flight, nothing applied
           const auto = await getAutonomy(deps.db, 'planner') === 'auto'
           if (auto) await acceptDiff(deps, s.diffId, { remember: false })
           await markAutonomy(deps, ctx.sessionId, utteranceId, auto, s.diffId, 'plan_request')
         }
-      })())
+      })
       return { actions: [{ kind: 'plan_request' }], disambiguation: null }
     }
     case 'parent_message': {
@@ -153,7 +159,7 @@ async function applyIntent(deps: Deps, ctx: SessionContext, utteranceId: string,
       for (const n of intent.studentNames) {
         const m = resolveName(n, ctx.roster)
         if (m.kind !== 'match') { actions.push({ kind: 'name_unclear', name: n }); continue }
-        safeDefer(deps, 'parent_email', draftParentEmail(deps, { studentId: m.student.id, sessionId: ctx.sessionId, utteranceId, trigger: { kind: 'request', content: intent.content } }))
+        await deferOnce(deps, { utteranceId, kind: 'parent_email', subject: m.student.id }, () => draftParentEmail(deps, { studentId: m.student.id, sessionId: ctx.sessionId, utteranceId, trigger: { kind: 'request', content: intent.content } }))
         if (mailAutonomy !== 'off') actions.push({ kind: 'parent_note', name: first(m.student.name) })
       }
       return { actions, disambiguation: null }
@@ -163,9 +169,7 @@ async function applyIntent(deps: Deps, ctx: SessionContext, utteranceId: string,
       const name = clip(intent.content, NAME_MAX) || 'Drill'
       const position = (ctx.drill?.position ?? 0) + 1
       await withRun(deps, { agent: 'planner', trigger: 'add_drill', sessionId: ctx.sessionId, utteranceId }, async () => {
-        const existing = await deps.db.select().from(drills).where(eq(drills.deckId, ctx.deckId))
-        for (const d of existing.filter(x => x.position >= position)) await deps.db.update(drills).set({ position: d.position + 1 }).where(eq(drills.id, d.id))
-        await deps.db.insert(drills).values({ deckId: ctx.deckId, position, name, minutes, kind: 'drill', rationale: 'added live by instructor' })
+        await addLiveDrill(deps.db, utteranceId, ctx.deckId, position, { name, minutes, kind: 'drill', rationale: 'added live by instructor' })
         return { result: true, summary: `Added drill "${name}" (${minutes}m) at position ${position}`, reason: 'instructor request during class' }
       })
       return { actions: [{ kind: 'add_drill', name, minutes }], disambiguation: null }
@@ -213,9 +217,10 @@ async function applyFeedback(deps: Deps, ctx: SessionContext, utteranceId: strin
     }
     const s = m.student
     const [note] = await db.insert(notes).values({ ...base, studentId: s.id }).returning({ id: notes.id })
+    await recordAttendance(db, utteranceId, ctx.sessionId, [{ studentId: s.id, status: 'present', source: 'backstop' }])
     await markPresent(db, ctx.sessionId, s.id, 'backstop')
     const t = await trackTag(deps, ctx, utteranceId, s, intent.skillTags[0] ?? null, valence, historical, progressOn)
-    if (intent.urgent) safeDefer(deps, 'parent_email', draftParentEmail(deps, { studentId: s.id, sessionId: ctx.sessionId, utteranceId, trigger: { kind: 'urgent', content: intent.content } }))
+    if (intent.urgent) await deferOnce(deps, { utteranceId, kind: 'parent_email', subject: s.id }, () => draftParentEmail(deps, { studentId: s.id, sessionId: ctx.sessionId, utteranceId, trigger: { kind: 'urgent', content: intent.content } }))
     const praise = isPositive(valence) && !historical
     await withRun(deps, { agent: 'progress', trigger: 'feedback', sessionId: ctx.sessionId, utteranceId, links: { noteId: note!.id, studentId: s.id } }, async () => ({
       result: true,
@@ -254,8 +259,8 @@ async function trackTag(deps: Deps, ctx: SessionContext, utteranceId: string, s:
   const recurring = isRecurring(count, Boolean(open)) && progressOn
   if (recurring) {
     // v2: a recurring issue feeds the report card and the next plan; it no longer emails home.
-    await db.insert(issues).values({ studentId: s.id, tag })
-    safeDefer(deps, 'auto_adjust', autoAdjustNextDeck(deps, { classId: ctx.classId, afterDate: ctx.forDate, sessionId: ctx.sessionId, utteranceId, requestText: `Add a short${ctx.mode.recipient === 'parent' ? ', fun' : ''} ${ctx.mode.planItem} targeting ${tag} for ${s.name} [${s.id}] (recurring issue).` }))
+    await openIssue(db, utteranceId, { studentId: s.id, tag })
+    await deferOnce(deps, { utteranceId, kind: 'auto_adjust', subject: s.id }, () => autoAdjustNextDeck(deps, { classId: ctx.classId, afterDate: ctx.forDate, sessionId: ctx.sessionId, utteranceId, requestText: `Add a short${ctx.mode.recipient === 'parent' ? ', fun' : ''} ${ctx.mode.planItem} targeting ${tag} for ${s.name} [${s.id}] (recurring issue).` }))
   }
   const reason = recurring ? `${tag} concern ${count}× in ${RECURRING_WINDOW_DAYS} days → marked recurring, added to report card` : `${tag} concern #${count} in ${RECURRING_WINDOW_DAYS} days`
   return { tag, count, recurring, improving: false, reason }
@@ -289,6 +294,7 @@ async function applyAttendanceIntent(deps: Deps, ctx: SessionContext, utteranceI
     const m = resolveName(heard, ctx.roster)
     if (m.kind !== 'match') { actions.push({ kind: 'name_unclear', name: heard }); continue }
     await withRun(deps, { agent: 'attendance', trigger: 'voice', sessionId: ctx.sessionId, utteranceId, links: { studentId: m.student.id } }, async () => {
+      await recordAttendance(deps.db, utteranceId, ctx.sessionId, [{ studentId: m.student.id, status, source: 'voice' }])
       await deps.db.insert(attendance).values({ sessionId: ctx.sessionId, studentId: m.student.id, status, source: 'voice' })
         .onConflictDoUpdate({ target: [attendance.sessionId, attendance.studentId], set: { status, source: 'voice' } })
       return { result: true, summary: `Marked ${first(m.student.name)} ${status}`, reason: 'voice attendance update' }
@@ -328,7 +334,7 @@ async function applyMetric(deps: Deps, ctx: SessionContext, utteranceId: string,
       let reason = change ? (change.kind === 'pr' ? 'new personal best' : 'grade change vs the last one') : 'recorded'
       if (key === 'rank') {
         phrase = since ? `rank ${value} (since ${shortDate(since)})` : `rank ${value}`
-        reason = await applyRank(db, s.id, value, since, localDate(deps.now(), deps.env.timeZone))
+        reason = await applyRank(db, s.id, value, since, localDate(deps.now(), deps.env.timeZone), utteranceId)
       }
       return { result: phrase, summary: `${first(s.name)}: ${phrase}`, reason }
     })

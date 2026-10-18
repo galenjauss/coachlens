@@ -2,6 +2,7 @@ import { asc, desc, eq } from 'drizzle-orm'
 import type { StudentMetric } from '@matside/shared'
 import type { Db } from '../db/client'
 import { studentMetrics, students } from '../db/schema'
+import { recordRank } from './ledger'
 import { changeFor, normalizeKey, parseReading, type Change } from '../logic/metrics'
 
 type Row = typeof studentMetrics.$inferSelect
@@ -34,11 +35,13 @@ export async function recordMetric(db: Db, m: NewMetric, isGrade: boolean): Prom
  * A rank reading also moves the belt. A given date sets rank_since; with none, a changed belt starts today and
  * the same belt leaves rank_since alone. `since` must already be a validated real date (or null).
  */
-export async function applyRank(db: Db, studentId: string, value: string, since: string | null, today: string): Promise<string> {
-  const [cur] = await db.select({ belt: students.belt }).from(students).where(eq(students.id, studentId))
+export async function applyRank(db: Db, studentId: string, value: string, since: string | null, today: string, utteranceId: string | null = null): Promise<string> {
+  const [cur] = await db.select({ belt: students.belt, rankSince: students.rankSince }).from(students).where(eq(students.id, studentId))
   const changed = cur?.belt.toLowerCase() !== value.toLowerCase()
   const rankSince = since ?? (changed ? today : null)
   await db.update(students).set({ belt: value, ...(rankSince ? { rankSince } : {}) }).where(eq(students.id, studentId))
+  // C2: a voice rank change records the before values so Undo can restore belt and rank_since.
+  if (cur) await recordRank(db, utteranceId, studentId, { belt: cur.belt, rankSince: cur.rankSince }, { belt: value, rankSince: rankSince ?? cur.rankSince })
   return since ? `rank set, since ${since}` : changed ? 'rank changed today' : 'rank confirmed'
 }
 

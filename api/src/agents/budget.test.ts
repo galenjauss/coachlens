@@ -53,3 +53,20 @@ describe('anthropicLlm', () => {
     expect(run).toMatchObject({ status: 'error', summary: 'Daily AI budget reached' })
   })
 })
+
+describe('S2: per-instructor AI sub-cap under the global ceiling', () => {
+  it('one instructor stops at their sub-cap; another still has calls; the global cap stays the ceiling', async () => {
+    const { runAs } = await import('../http/context')
+    const db = await makeTestDb()
+    const now = new Date('2026-10-18T19:00:00Z')
+    const b = dbBudget(db, 5, TZ, () => now, 3)
+    for (let i = 0; i < 3; i++) await runAs('ins-a', () => b.take())
+    await expect(runAs('ins-a', () => b.take())).rejects.toBeInstanceOf(BudgetExceededError)
+    await runAs('ins-b', () => b.take())
+    await runAs('ins-b', () => b.take())
+    // Global ceiling: 5 counted calls (A's refused call never reached the global counter).
+    await expect(runAs('ins-c', () => b.take())).rejects.toBeInstanceOf(BudgetExceededError)
+    const [g] = await db.select().from(llmUsage)
+    expect(g!.calls).toBe(6)
+  })
+})

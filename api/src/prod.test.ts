@@ -27,6 +27,15 @@ describe('prodDeps env validation', () => {
       expect(() => prodDeps()).toThrow(new RegExp(k))
     })
   }
+  it('S2: the per-instructor AI cap defaults to the global cap; only an explicit env sets a lower one', () => {
+    process.env.AI_DAILY_CAP = '400'
+    delete process.env.AI_INSTRUCTOR_DAILY_CAP
+    expect(prodDeps().env).toMatchObject({ aiDailyCap: 400, aiInstructorDailyCap: 400 })
+    process.env.AI_INSTRUCTOR_DAILY_CAP = '150'
+    expect(prodDeps().env.aiInstructorDailyCap).toBe(150)
+    process.env.AI_INSTRUCTOR_DAILY_CAP = '900' // never above the global ceiling
+    expect(prodDeps().env.aiInstructorDailyCap).toBe(400)
+  })
   it('F20: OPENAI_API_KEY is optional: speech-to-text reports unconfigured and fails with a typed error', async () => {
     expect(prodDeps().env).toMatchObject({ sttConfigured: true, aiDailyCap: 400 })
     delete process.env.OPENAI_API_KEY

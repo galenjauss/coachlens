@@ -17,7 +17,7 @@ async function world() {
 describe('review', () => {
   it('lists email, billing and unassigned items', async () => {
     const { db } = await world()
-    const items = await listReview(db)
+    const items = await listReview(db, null)
     expect(items.map(i => i.kind).sort()).toEqual(['billing', 'parent_email', 'parent_email', 'unassigned_note'])
   })
 
@@ -49,7 +49,7 @@ describe('review', () => {
     const [bill] = await db.select().from(billingFlags).where(eq(billingFlags.id, b))
     expect(bill).toMatchObject({ status: 'handled' })
     expect(bill!.note).toContain('paid in cash')
-    expect((await listReview(db)).map(i => i.kind)).toEqual(['unassigned_note'])
+    expect((await listReview(db, null)).map(i => i.kind)).toEqual(['unassigned_note'])
     void o1
   })
 

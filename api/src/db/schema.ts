@@ -10,7 +10,14 @@ export const instructors = pgTable('instructors', {
   tokenHashes: jsonb('token_hashes').$type<string[]>().notNull().default([]),
   // Set by onboarding (Task 24); null until the coach finishes the quiz.
   schoolName: text('school_name'), timeZone: text('time_zone'),
-})
+  // SHA-256 of the instructor's reusable pairing code (C4). Null until set by the seed, rotation or the env bootstrap.
+  pairingCodeHash: text('pairing_code_hash'),
+}, t => [uniqueIndex('instructors_pairing_code_hash').on(t.pairingCodeHash)])
+// One row per paired phone (C4): tokens expire after 90 days and can be revoked by POST /v1/unpair.
+export const apiTokens = pgTable('api_tokens', {
+  id: id(), instructorId: text('instructor_id').notNull(), tokenHash: text('token_hash').notNull(),
+  createdAt: createdAt(), expiresAt: ts('expires_at').notNull(), revokedAt: ts('revoked_at'),
+}, t => [uniqueIndex('api_tokens_hash').on(t.tokenHash), index('api_tokens_instructor').on(t.instructorId, t.createdAt)])
 export const classes = pgTable('classes', {
   id: id(), instructorId: text('instructor_id').notNull(), name: text('name').notNull(),
   weekday: integer('weekday').notNull(), // 0 = Sunday
@@ -22,7 +29,9 @@ export const students = pgTable('students', {
   id: id(), name: text('name').notNull(), nickname: text('nickname'), belt: text('belt').notNull(), birthYear: integer('birth_year').notNull(),
   aliases: jsonb('aliases').$type<string[]>().notNull().default([]), // learned STT spellings, max 10
   rankSince: date('rank_since', { mode: 'string' }), // YYYY-MM-DD; time in rank is derived from it
-})
+  // Owner (C4). Legacy rows may be null: those are owned through an enrollment in the instructor's class.
+  instructorId: text('instructor_id'),
+}, t => [index('students_instructor').on(t.instructorId)])
 export const guardians = pgTable('guardians', {
   id: id(), studentId: text('student_id').notNull(), name: text('name').notNull(), email: text('email').notNull(),
 })
@@ -70,10 +79,13 @@ export const deckDiffs = pgTable('deck_diffs', {
   before: jsonb('before').$type<(DrillDraft & { id: string })[] | null>(),
   status: text('status').$type<'pending' | 'accepted' | 'undone'>().notNull().default('pending'),
   createdAt: createdAt(),
-})
+  utteranceId: text('utterance_id'), // the voice note that asked for it (C2: its Undo reverts or withdraws it)
+}, t => [index('deck_diffs_utterance').on(t.utteranceId)])
 export const utterances = pgTable('utterances', {
   id: id(), sessionId: text('session_id'), transcript: text('transcript').notNull(),
   mode: text('mode').$type<'note' | 'attendance'>().notNull(), createdAt: createdAt(),
+  // Set once by POST /v1/utterances/:id/undo (C2): deferred work checks it before writing or sending.
+  undoneAt: ts('undone_at'),
 })
 export const notes = pgTable('notes', {
   id: id(), sessionId: text('session_id'), utteranceId: text('utterance_id'), studentId: text('student_id'),
@@ -98,11 +110,12 @@ export const outbox = pgTable('outbox', {
   id: id(), kind: text('kind').$type<'parent_email' | 'report_card'>().notNull(),
   studentId: text('student_id').notNull(), sessionId: text('session_id'), toEmail: text('to_email').notNull(),
   subject: text('subject').notNull(), body: text('body').notNull(),
-  status: text('status').$type<'pending_review' | 'sending' | 'sent' | 'skipped' | 'error'>().notNull().default('pending_review'),
+  status: text('status').$type<'pending_review' | 'sending' | 'sent' | 'skipped' | 'error' | 'cancelled'>().notNull().default('pending_review'),
   error: text('error'), sentAt: ts('sent_at'), createdAt: createdAt(),
   // What drafted it: request | urgent | recurring | monthly (null on rows drafted before v2).
   trigger: text('trigger'),
-})
+  utteranceId: text('utterance_id'), // the utterance whose action drafted it (C2: Undo cancels it while unsent)
+}, t => [index('outbox_utterance').on(t.utteranceId)])
 export const reportCards = pgTable('report_cards', {
   id: id(), studentId: text('student_id').notNull(), month: text('month').notNull(),
   content: jsonb('content').$type<ReportCardContent>().notNull(), outboxId: text('outbox_id').notNull(),
@@ -112,7 +125,8 @@ export const agentRuns = pgTable('agent_runs', {
   summary: text('summary').notNull(), reason: text('reason').notNull(), output: jsonb('output'),
   status: text('status').$type<'ok' | 'error'>().notNull(), ms: integer('ms').notNull(), createdAt: createdAt(),
   utteranceId: text('utterance_id'), links: jsonb('links').$type<AgentRunLinks>(),
-}, t => [index('agent_runs_utterance').on(t.utteranceId), index('agent_runs_agent_created').on(t.agent, t.createdAt)])
+  instructorId: text('instructor_id'), // set from the request scope (C4)
+}, t => [index('agent_runs_utterance').on(t.utteranceId), index('agent_runs_agent_created').on(t.agent, t.createdAt), index('agent_runs_instructor_created').on(t.instructorId, t.createdAt)])
 export const preferences = pgTable('preferences', {
   id: id(), classId: text('class_id').notNull(), text: text('text').notNull(), createdAt: createdAt(),
 })
@@ -124,6 +138,19 @@ export const llmUsage = pgTable('llm_usage', {
 export const agentSettings = pgTable('agent_settings', {
   task: text('task').primaryKey(), autonomy: text('autonomy').notNull(),
 })
+// Per-instructor autonomy (C4). agent_settings above is the legacy deployment-wide table, read only outside a request scope.
+export const instructorSettings = pgTable('instructor_settings', {
+  instructorId: text('instructor_id').notNull(), task: text('task').notNull(), autonomy: text('autonomy').notNull(),
+}, t => [primaryKey({ columns: [t.instructorId, t.task] })])
+// Per-instructor vocabulary (C4); school_vocab below is the legacy deployment-wide table.
+export const instructorVocab = pgTable('instructor_vocab', {
+  instructorId: text('instructor_id').notNull(), term: text('term').notNull(), createdAt: createdAt(),
+}, t => [primaryKey({ columns: [t.instructorId, t.term] })])
+// Per-instructor weekly themes (C4). The shared curriculum table is the demo catalog used when an instructor has none.
+export const instructorCurriculum = pgTable('instructor_curriculum', {
+  instructorId: text('instructor_id').notNull(), weekStart: text('week_start').notNull(),
+  mode: text('mode').$type<ModeId>().notNull(), theme: text('theme').notNull(), formsDue: jsonb('forms_due').$type<string[]>().notNull(),
+}, t => [primaryKey({ columns: [t.instructorId, t.weekStart, t.mode] })])
 // Instructor's custom words (names of moves, studio jargon) fed to speech-to-text and the router.
 export const schoolVocab = pgTable('school_vocab', {
   term: text('term').primaryKey(), createdAt: createdAt(),
@@ -150,3 +177,34 @@ export const insights = pgTable('insights', {
 export const kv = pgTable('kv', {
   key: text('key').primaryKey(), value: text('value').notNull(), updatedAt: createdAt('updated_at'),
 })
+
+// C2 · action ledger: one row per state change an utterance applied that is not a plain insert tagged with
+// utterance_id (attendance, rank/rank_since, issues opened, drills added and positions shifted). before/after
+// hold the values needed to compensate. Inserts tagged with utterance_id (notes, billing flags, metrics, outbox
+// drafts, deck diffs) are found through that column.
+export const actionLedger = pgTable('action_ledger', {
+  id: id(), utteranceId: text('utterance_id').notNull(),
+  kind: text('kind').$type<'attendance' | 'rank' | 'issue' | 'drill_added' | 'deck_drafted'>().notNull(),
+  entityId: text('entity_id').notNull(), before: jsonb('before'), after: jsonb('after'), createdAt: createdAt(),
+}, t => [index('action_ledger_utterance').on(t.utteranceId, t.createdAt)])
+// C1 + C2 · deferred agent work started by an utterance, one row per (utterance, kind, subject): a re-run never
+// enqueues it twice, and Undo flips pending/running rows to cancelled.
+export const deferredTasks = pgTable('deferred_tasks', {
+  id: id(), utteranceId: text('utterance_id').notNull(), kind: text('kind').notNull(), subject: text('subject').notNull().default(''),
+  status: text('status').$type<'pending' | 'running' | 'done' | 'failed' | 'cancelled'>().notNull().default('pending'),
+  createdAt: createdAt(), updatedAt: ts('updated_at'),
+}, t => [uniqueIndex('deferred_tasks_once').on(t.utteranceId, t.kind, t.subject)])
+// C1 · idempotency: one row per (instructor, Idempotency-Key). done rows replay their stored response.
+export const operations = pgTable('operations', {
+  instructorId: text('instructor_id').notNull(), key: text('key').notNull(), route: text('route').notNull(),
+  status: text('status').$type<'pending' | 'done'>().notNull().default('pending'),
+  responseJson: text('response_json'), createdAt: createdAt(), // the exact JSON text sent, replayed byte for byte
+}, t => [primaryKey({ columns: [t.instructorId, t.key] })])
+// S1 · pairing attempt counters shared by every instance (fixed window per bucket: an IP, or a code prefix).
+export const pairAttempts = pgTable('pair_attempts', {
+  bucket: text('bucket').primaryKey(), count: integer('count').notNull().default(0), windowStart: ts('window_start').notNull(),
+})
+// S2 · per-instructor AI calls per local day (the global llm_usage cap stays the ceiling).
+export const llmUsageInstructor = pgTable('llm_usage_instructor', {
+  instructorId: text('instructor_id').notNull(), day: text('day').notNull(), calls: integer('calls').notNull().default(0),
+}, t => [primaryKey({ columns: [t.instructorId, t.day] })])

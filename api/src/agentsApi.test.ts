@@ -4,7 +4,7 @@ import { AgentRunDetail, AgentsSummary, AgentTaskRun, RedraftResponse, Utterance
 import { resetRateLimits } from './http/rateLimit'
 import { makeTestDb, makeDeps, fakeLlm } from './test/helpers'
 import { createApp } from './app'
-import { agentRuns, billingFlags, classes, curriculum, decks, drills, enrollments, guardians, instructors, notes, outbox, reportCards, students } from './db/schema'
+import { agentRuns, billingFlags, classes, curriculum, decks, drills, enrollments, guardians, instructors, notes, outbox, reportCards, sessions, students } from './db/schema'
 
 const intent = (o: Record<string, unknown>) => ({ type: 'feedback', studentNames: [], content: '', skillTags: [], urgency: null, amount: null, minutes: null, attendanceStatus: null, urgent: false, ...o })
 const card = { strengths: ['kicks'], workingOn: ['guard'], coachNotes: [], attendance: '4 classes', nextGoal: 'guard up' }
@@ -67,7 +67,10 @@ describe('agents v2 http', () => {
 
   it('learns no alias from pronouns or descriptors; spelling variants are learned once', async () => {
     const { app, h, db, ss } = await setup(() => ({ intents: [] }))
-    const ids = await db.insert(notes).values(['he', 'the new kid', 'Pree-ya', 'Preeya'].map(heard => ({ heard, text: 'good kicks' }))).returning()
+    // Unassigned notes belong to the instructor through their session (C4).
+    const [dk] = await db.select().from(decks)
+    const [se] = await db.insert(sessions).values({ classId: dk!.classId, deckId: dk!.id, forDate: '2026-10-19', startedAt: new Date('2026-10-20T00:00:00Z') }).returning()
+    const ids = await db.insert(notes).values(['he', 'the new kid', 'Pree-ya', 'Preeya'].map(heard => ({ heard, text: 'good kicks', sessionId: se!.id }))).returning()
     for (const n of ids) expect((await app.request(`/v1/notes/${n.id}/assign`, { method: 'POST', headers: h, body: JSON.stringify({ studentId: ss[0]!.id }) })).status).toBe(200)
     const [p] = await db.select().from(students).where(eq(students.id, ss[0]!.id))
     expect(p!.aliases).toEqual(['Pree-ya'])

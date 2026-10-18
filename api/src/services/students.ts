@@ -5,13 +5,15 @@ import type { Deps } from '../deps'
 import { modeForStudent } from './context'
 import { buildBrief } from './brief'
 import { listMetrics, toMetricView } from './metrics'
+import { studentOwnedBy } from './ownership'
 import { agentRuns, attendance, drills, issues, notes, outbox, reportCards, students } from '../db/schema'
 
 /** Unknown ages are stored as birthYear >= this year (onboarding without an age): report null. */
 export const ageFrom = (year: number, birthYear: number): number | null => (birthYear >= year ? null : year - birthYear)
 
-export async function listStudents(db: Db): Promise<RosterStudent[]> {
-  return db.select({ id: students.id, name: students.name, nickname: students.nickname, belt: students.belt, aliases: students.aliases }).from(students).orderBy(asc(students.name))
+export async function listStudents(db: Db, instructorId: string): Promise<RosterStudent[]> {
+  return db.select({ id: students.id, name: students.name, nickname: students.nickname, belt: students.belt, aliases: students.aliases }).from(students)
+    .where(studentOwnedBy(instructorId)).orderBy(asc(students.name))
 }
 
 export async function getStudentDetail(deps: Deps, id: string): Promise<StudentDetail> {
@@ -37,7 +39,8 @@ export async function getStudentDetail(deps: Deps, id: string): Promise<StudentD
   }
 }
 
-export async function agentFeed(db: Db, since: Date | null): Promise<AgentRunView[]> {
-  const rows = await db.select().from(agentRuns).where(since ? gt(agentRuns.createdAt, since) : undefined).orderBy(desc(agentRuns.createdAt)).limit(50)
+/** `instructorId` null = unscoped (direct service use only; every route passes the caller). */
+export async function agentFeed(db: Db, since: Date | null, instructorId: string | null = null): Promise<AgentRunView[]> {
+  const rows = await db.select().from(agentRuns).where(and(since ? gt(agentRuns.createdAt, since) : undefined, instructorId ? eq(agentRuns.instructorId, instructorId) : undefined)).orderBy(desc(agentRuns.createdAt)).limit(50)
   return rows.map(r => ({ id: r.id, agent: r.agent, summary: r.summary, reason: r.reason, status: r.status, createdAt: r.createdAt.toISOString() }))
 }

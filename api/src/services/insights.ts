@@ -9,12 +9,15 @@ import { draftParentEmail, EMAIL_COOLDOWN_DAYS, inEmailCooldown } from '../agent
 import { acceptDiff, autoAdjustNextDeck, markAutonomy, nextDeckFor, suggestDiff } from '../agents/planner'
 import { addDays, localDate } from '../logic/dates'
 import { getAutonomy, getRankReview } from './settings'
+import { currentInstructorId } from '../http/context'
+import { insightOwnedBy } from './ownership'
 import { loadSessionContext } from './context'
 import { loadFacts, rosterIds } from './insightFacts'
 
 type Row = typeof insights.$inferSelect
 export const LAZY_RUN_MS = 10 * 60_000
-const LAST_RUN_KEY = 'insights:last_run'
+/** Per instructor (C4): one coach's lazy pass never stands in for another's. */
+const lastRunKey = () => { const ins = currentInstructorId(); return ins ? `insights:last_run:${ins}` : 'insights:last_run' }
 const liveKey = (sessionId: string) => `insights:live:${sessionId}`
 const DEFAULT_CLASS_MINUTES = 60
 
@@ -105,7 +108,7 @@ export async function runInsights(deps: Deps, o: RunOptions): Promise<Row[]> {
   const autonomy = await getAutonomy(deps.db, 'insights')
   if (autonomy === 'off') return []
   const full = !o.classId && !o.only
-  if (full) await kvSet(deps, LAST_RUN_KEY, deps.now().toISOString())
+  if (full) await kvSet(deps, lastRunKey(), deps.now().toISOString())
   const sessionId = o.sessionId ?? null
   const rows = await logRun(deps, o.trigger, sessionId, autonomy, async () => {
     const today = o.today ?? localDate(deps.now(), deps.env.timeZone)
@@ -119,7 +122,7 @@ export async function runInsights(deps: Deps, o: RunOptions): Promise<Row[]> {
 
 /** GET path: a full pass at most every 10 minutes (best effort; the timestamp lives in kv so instances share it). */
 export async function maybeLazyRun(deps: Deps): Promise<boolean> {
-  const last = await kvGet(deps, LAST_RUN_KEY)
+  const last = await kvGet(deps, lastRunKey())
   if (last && deps.now().getTime() - new Date(last).getTime() < LAZY_RUN_MS) return false
   await runInsights(deps, { trigger: 'lazy', deferActions: true })
   return true
@@ -199,6 +202,9 @@ export async function listInsights(deps: Deps, q: { scope: 'all' | 'class'; clas
     conds.push(ids.length ? or(inArray(insights.studentId, ids), cls)! : cls)
   }
   if (live) conds.push(eq(insights.urgency, 'high'), gte(insights.createdAt, live.startedAt))
+  // C4: only the caller's insights, filtered in the query (before the limit, so another tenant cannot crowd them out).
+  const owner = currentInstructorId()
+  if (owner) conds.push(insightOwnedBy(owner))
   const rows = await db.select().from(insights).where(and(...conds))
     .orderBy(sql`case when ${insights.urgency} = 'high' then 0 else 1 end`, desc(insights.createdAt)).limit(50)
   const names = await namesFor(deps, rows.map(r => r.studentId))

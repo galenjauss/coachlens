@@ -8,30 +8,31 @@ import { draftDeck } from '../agents/planner'
 import { getDeck } from './decks'
 import { curriculumFor } from './context'
 
-export async function listClasses(db: Db): Promise<ClassSummary[]> {
-  const rows = await db.select().from(classes).orderBy(asc(classes.weekday), asc(classes.startTime), asc(classes.name))
+/** The caller's classes; rows also carry the schedule (weekday 0 = Sunday, startTime "HH:MM") for class maintenance (C3). */
+export async function listClasses(db: Db, instructorId: string): Promise<(ClassSummary & { weekday: number; startTime: string })[]> {
+  const rows = await db.select().from(classes).where(eq(classes.instructorId, instructorId)).orderBy(asc(classes.weekday), asc(classes.startTime), asc(classes.name))
   return rows.map(c => {
     const mode = modeConfig(c.mode) // unknown stored values fall back to martial_arts
-    return { id: c.id, name: c.name, mode: mode.id, modeLabel: mode.label }
+    return { id: c.id, name: c.name, mode: mode.id, modeLabel: mode.label, weekday: c.weekday, startTime: c.startTime }
   })
 }
 
 /** Today's class: the explicit classId (demo class picker) or the class on today's weekday, else the next one. */
-async function pickClass(db: Db, dow: number, classId: string | undefined) {
+async function pickClass(db: Db, dow: number, classId: string | undefined, instructorId: string) {
   if (classId) {
-    const [c] = await db.select().from(classes).where(eq(classes.id, classId))
+    const [c] = await db.select().from(classes).where(and(eq(classes.id, classId), eq(classes.instructorId, instructorId)))
     if (!c) throw new Error(`class ${classId} not found`)
     return c
   }
-  const all = await db.select().from(classes)
+  const all = await db.select().from(classes).where(eq(classes.instructorId, instructorId))
   if (!all.length) throw new Error('no classes')
   return all.find(c => c.weekday === dow) ?? [...all].sort((a, b) => ((a.weekday - dow + 7) % 7) - ((b.weekday - dow + 7) % 7))[0]!
 }
 
-export async function getToday(deps: Deps, classId?: string): Promise<Today> {
+export async function getToday(deps: Deps, classId: string | undefined, instructorId: string): Promise<Today> {
   const { db } = deps
   const now = deps.now()
-  const cls = await pickClass(db, localWeekday(now, deps.env.timeZone), classId)
+  const cls = await pickClass(db, localWeekday(now, deps.env.timeZone), classId, instructorId)
   const forDate = upcomingClassDate(now, deps.env.timeZone, cls.weekday)
   const mode = modeConfig(cls.mode)
   const deckId = await draftDeck(deps, cls.id, forDate)
@@ -48,7 +49,7 @@ export async function getToday(deps: Deps, classId?: string): Promise<Today> {
     label: `${mode.tagLabels[tag] ?? tag} · ${sids.length === 1 ? nameOf(sids[0]!) : `${sids.length} ${group}`}`, studentIds: sids, studentNames: sids.map(nameOf),
   }))
   if (cls.remindIds.length) focus.push({ label: `First on feedback list: ${cls.remindIds.map(nameOf).join(', ')}`, studentIds: cls.remindIds, studentNames: cls.remindIds.map(nameOf) })
-  const cur = await curriculumFor(db, mode, forDate)
+  const cur = await curriculumFor(db, mode, forDate, cls.instructorId)
   const [open1] = await db.select().from(sessions).where(and(eq(sessions.classId, cls.id), eq(sessions.forDate, forDate), isNull(sessions.endedAt)))
   return {
     classId: cls.id, className: cls.name, startTime: cls.startTime, forDate, sessionId: open1?.id ?? null,

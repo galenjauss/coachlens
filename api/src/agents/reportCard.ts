@@ -6,6 +6,8 @@ import { attendance, drills, guardians, issues, notes, outbox, reportCards, sess
 import { withRun } from './runs'
 import { modeForStudent } from '../services/context'
 import { getAutonomy } from '../services/settings'
+import { scopedInstructor } from '../http/context'
+import { ownedStudentIds } from '../services/ownership'
 
 const SUBJECT: Record<ModeConfig['id'], string> = {
   martial_arts: 'a child in a martial arts class, for their parent',
@@ -70,7 +72,10 @@ export async function draftReportCard(deps: Deps, studentId: string, month: stri
 
 export async function runReportCards(deps: Deps, studentIds?: string[]): Promise<{ drafted: number }> {
   const month = new Intl.DateTimeFormat('en-CA', { timeZone: deps.env.timeZone, year: 'numeric', month: '2-digit' }).format(deps.now())
-  const ids = [...new Set(studentIds ?? (await deps.db.select({ id: students.id }).from(students)).map(r => r.id))]
+  // Without explicit ids: the request instructor's students (C4/S4); unscoped (scripts, tests) only when allowed.
+  const owner = studentIds ? null : scopedInstructor('report cards')
+  const all = studentIds ?? (owner ? await ownedStudentIds(deps.db, owner) : (await deps.db.select({ id: students.id }).from(students)).map(r => r.id))
+  const ids = [...new Set(all)]
   let drafted = 0
   for (let i = 0; i < ids.length; i += 4) {
     const batch = await Promise.all(ids.slice(i, i + 4).map(id => draftReportCard(deps, id, month)))

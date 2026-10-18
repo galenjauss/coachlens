@@ -52,7 +52,7 @@ describe('F17: urgent parent note', () => {
       { studentId: w.dee.id, sessionId: null, trigger: { kind: 'request', content: 'belt test is Friday' } })
     expect(seen[1]!.instructions).toBe(parentEmailInstructions(MODES.martial_arts))
 
-    const items = (await listReview(w.db)).map(i => ReviewItem.parse(i))
+    const items = (await listReview(w.db, null)).map(i => ReviewItem.parse(i))
     const mail = items.filter((i): i is Extract<ReviewItem, { kind: 'parent_email' }> => i.kind === 'parent_email')
     expect(mail.map(m => [m.subject, m.urgent])).toEqual([['Dee rolled her ankle in class today', true], ['Belt test Friday', false]])
     expect(items[0]!.kind === 'parent_email' && items[0]!.urgent).toBe(true) // urgent sorts first
