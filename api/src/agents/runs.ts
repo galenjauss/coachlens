@@ -1,6 +1,8 @@
 import type { AgentRunLinks } from '@matside/shared'
-import { agentRuns } from '../db/schema'
+import { eq } from 'drizzle-orm'
+import { agentRuns, classes, sessions } from '../db/schema'
 import type { Deps } from '../deps'
+import { currentInstructorId } from '../http/context'
 
 export interface RunMeta {
   agent: string
@@ -20,9 +22,17 @@ const merged = (a?: AgentRunLinks, b?: AgentRunLinks): AgentRunLinks | null => {
   return Object.keys(l).length ? l : null
 }
 
+/** The run's owner (C4): the request scope, else the session's class owner (work outside a request, e.g. tests or cron). */
+async function runOwner(deps: Deps, sessionId: string | null): Promise<string | null> {
+  const scoped = currentInstructorId()
+  if (scoped || !sessionId) return scoped
+  const [row] = await deps.db.select({ ins: classes.instructorId }).from(sessions).innerJoin(classes, eq(classes.id, sessions.classId)).where(eq(sessions.id, sessionId))
+  return row?.ins ?? null
+}
+
 export async function withRun<T>(deps: Deps, meta: RunMeta, fn: () => Promise<RunResult<T>>): Promise<T | null> {
   const t0 = Date.now()
-  const base = { agent: meta.agent, trigger: meta.trigger, sessionId: meta.sessionId, utteranceId: meta.utteranceId ?? null }
+  const base = { agent: meta.agent, trigger: meta.trigger, sessionId: meta.sessionId, utteranceId: meta.utteranceId ?? null, instructorId: await runOwner(deps, meta.sessionId) }
   try {
     const r = await fn()
     await deps.db.insert(agentRuns).values({ ...base, links: merged(meta.links, r.links), summary: r.summary, reason: r.reason, output: r.output ?? null, status: r.status ?? 'ok', ms: Date.now() - t0 })

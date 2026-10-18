@@ -4,7 +4,7 @@ import type { OnboardingCommit } from '@matside/shared'
 import { resetRateLimits } from './http/rateLimit'
 import { makeTestDb, makeDeps, fakeLlm, type TestDeps } from './test/helpers'
 import { createApp } from './app'
-import { classes, curriculum, decks, enrollments, guardians, instructors, schoolVocab, students } from './db/schema'
+import { classes, decks, enrollments, guardians, instructorCurriculum, instructorVocab, instructors, students } from './db/schema'
 import { BudgetExceededError } from './agents/budget'
 import type { Llm } from './deps'
 import { cleanClasses, cleanCurriculum, cleanRoster, groundEmails, normalizeTime, normalizeWeekday } from './logic/onboarding'
@@ -218,7 +218,7 @@ describe('POST /v1/onboarding/commit', () => {
       students: (await db.select().from(students)).length,
       guardians: (await db.select().from(guardians)).length,
       enrollments: (await db.select().from(enrollments)).length,
-      weeks: (await db.select().from(curriculum)).length,
+      weeks: (await db.select().from(instructorCurriculum)).length,
     }
   }
 
@@ -236,7 +236,7 @@ describe('POST /v1/onboarding/commit', () => {
     expect(priya).toMatchObject({ belt: 'yellow', birthYear: 2018 })
     const [leo] = await db.select().from(students).where(eq(students.name, 'Leo Diaz'))
     expect(leo).toMatchObject({ nickname: 'Leo', belt: 'new' })
-    expect((await db.select().from(curriculum)).every(w => w.mode === 'martial_arts')).toBe(true)
+    expect((await db.select().from(instructorCurriculum)).every(w => w.mode === 'martial_arts')).toBe(true)
 
     await deps.flush()
     expect(calls.filter(c => c.name === 'planner.draft')).toHaveLength(2)
@@ -250,7 +250,7 @@ describe('POST /v1/onboarding/commit', () => {
     await deps.flush()
     await post('/v1/onboarding/commit', COMMIT)
     await deps.flush()
-    const terms = (await db.select().from(schoolVocab)).map(r => r.term).sort()
+    const terms = (await db.select().from(instructorVocab)).map(r => r.term).sort()
     expect(terms).toEqual(['Front kick', 'Hip rotation', 'Jab cross', 'Kata 1', 'Knee strike', 'Palm strike'])
   })
 
@@ -271,7 +271,7 @@ describe('POST /v1/onboarding/commit', () => {
     const tue = (await db.select().from(classes)).find(c => c.weekday === 2)
     expect(tue).toMatchObject({ name: 'kids · tue', startTime: '16:00' })
     expect((await db.select().from(students)).find(s => s.name === 'PRIYA RAO')?.belt).toBe('orange')
-    expect((await db.select().from(curriculum).where(eq(curriculum.weekStart, '2026-10-19')))[0]).toMatchObject({ theme: 'Kicks', formsDue: ['Kata 2'] })
+    expect((await db.select().from(instructorCurriculum).where(eq(instructorCurriculum.weekStart, '2026-10-19')))[0]).toMatchObject({ theme: 'Kicks', formsDue: ['Kata 2'] })
     await deps.flush()
     expect(calls.filter(c => c.name === 'planner.draft')).toHaveLength(2) // existing decks are not redrafted
   })
@@ -280,7 +280,7 @@ describe('POST /v1/onboarding/commit', () => {
     const { post, db } = await setup()
     const pt: OnboardingCommit = { ...COMMIT, mode: 'personal_training', classes: COMMIT.classes.map(c => ({ ...c, mode: 'personal_training' as const })) }
     expect((await post('/v1/onboarding/commit', pt)).status).toBe(200)
-    expect((await db.select().from(curriculum)).map(w => w.mode)).toEqual(['personal_training', 'personal_training'])
+    expect((await db.select().from(instructorCurriculum)).map(w => w.mode)).toEqual(['personal_training', 'personal_training'])
     expect((await db.select().from(classes)).every(c => c.mode === 'personal_training')).toBe(true)
   })
 

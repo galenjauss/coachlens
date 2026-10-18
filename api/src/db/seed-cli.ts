@@ -2,6 +2,7 @@ import { neon } from '@neondatabase/serverless'
 import { drizzle } from 'drizzle-orm/neon-http'
 import * as schema from './schema'
 import { seed } from './seed'
+import { pairingPepperFrom } from '../services/pairing'
 import { localDate } from '../logic/dates'
 import type { Db } from './client'
 
@@ -12,5 +13,5 @@ if (!url || !emails.length) {
   process.exit(1)
 }
 const db = drizzle({ client: neon(url), schema }) as unknown as Db
-const r = await seed(db, { today: localDate(new Date(), process.env.TZ_NAME ?? 'America/Los_Angeles'), guardianEmail: i => emails[i % emails.length]! })
+const r = await seed(db, { today: localDate(new Date(), process.env.TZ_NAME ?? 'America/Los_Angeles'), guardianEmail: i => emails[i % emails.length]!, pairingCode: process.env.PAIRING_CODE, pairingPepper: pairingPepperFrom(process.env) })
 console.log('seeded', r)

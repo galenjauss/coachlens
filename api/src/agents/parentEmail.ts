@@ -7,6 +7,8 @@ import { withRun } from './runs'
 import { modeForStudent } from '../services/context'
 import { getAutonomy } from '../services/settings'
 import { approveOutbox } from '../services/review'
+import { cancelIfUndone, isUtteranceUndone } from '../services/deferred'
+import { currentUtteranceId } from '../http/context'
 import { clip } from '../logic/text'
 
 const COACH: Record<ModeConfig['id'], string> = {
@@ -108,7 +110,11 @@ export async function draftParentEmail(
   a: { studentId: string; sessionId: string | null; utteranceId?: string | null; trigger: EmailTrigger },
 ): Promise<string | null> {
   const { db } = deps
-  const meta = { agent: 'parent_email', trigger: a.trigger.kind, sessionId: a.sessionId, utteranceId: a.utteranceId ?? null, links: { studentId: a.studentId } }
+  // C2: a draft started by a request (incl. an insight auto action after a roll call) belongs to that request's utterance.
+  const utteranceId = a.utteranceId ?? currentUtteranceId()
+  const meta = { agent: 'parent_email', trigger: a.trigger.kind, sessionId: a.sessionId, utteranceId, links: { studentId: a.studentId } }
+  const undone = { result: null, summary: 'Parent email cancelled (note undone)', reason: 'the utterance was undone before the draft was written' }
+  if (await isUtteranceUndone(db, utteranceId)) return withRun(deps, meta, async () => undone)
   const autonomy = await getAutonomy(deps.db, 'parent_email')
   if (autonomy === 'off') {
     await withRun(deps, meta, async () => ({ result: null, summary: 'Parent email skipped (off)', reason: 'autonomy: off — parent emails are turned off in Settings' }))
@@ -157,7 +163,10 @@ export async function draftParentEmail(
     const email = factLost && urgentFact !== null
       ? urgentFallback({ firstName: firstName!, readerName: g.name, toClient, content: urgentFact, coach: deps.env.instructorName })
       : drafted
-    const [row] = await db.insert(outbox).values({ kind: 'parent_email', studentId: s.id, sessionId: a.sessionId, toEmail: g.email, subject: email.subject, body: email.body, trigger: a.trigger.kind }).returning()
+    // C2 race guard: check before writing, write, then re-check (Undo sets the flag before cancelling drafts).
+    if (await isUtteranceUndone(db, utteranceId)) return undone
+    const [row] = await db.insert(outbox).values({ kind: 'parent_email', studentId: s.id, sessionId: a.sessionId, toEmail: g.email, subject: email.subject, body: email.body, trigger: a.trigger.kind, utteranceId }).returning()
+    if (await cancelIfUndone(db, utteranceId, row!.id)) return undone
     // Urgent notes ALWAYS wait for the instructor's review, whatever the setting: the fact check catches dropped facts,
     // not invented or inverted ones, so a person reads every urgent note before it leaves.
     const sent = autonomy === 'auto' && !urgent ? await approveOutbox(deps, row!.id) : null
