@@ -38,7 +38,7 @@ export class Glasses {
       try {
         await this.apply(spec)
       } catch (e) {
-        console.error('[glasses]', e)
+        console.error('[glasses]', e instanceof Error ? e.message : String(e))
         this.key = null // force a full rebuild on the next show
       }
     }
@@ -60,7 +60,10 @@ export class Glasses {
     const containerTotalNum = textObject.length + listObject.length
     if (!this.created) {
       const r = await this.bridge.createStartUpPageContainer(new CreateStartUpPageContainer({ containerTotalNum, textObject, listObject }))
-      if (r !== 0) throw new Error(`createStartUpPageContainer failed: ${r}`)
+      // Non-zero usually means a page already exists (webview reloaded mid-session): rebuild it instead.
+      if (r !== 0 && !(await this.bridge.rebuildPageContainer(new RebuildPageContainer({ containerTotalNum, textObject, listObject })))) {
+        throw new Error(`createStartUpPageContainer failed: ${r}`)
+      }
       this.created = true
     } else {
       const ok = await this.bridge.rebuildPageContainer(new RebuildPageContainer({ containerTotalNum, textObject, listObject }))

@@ -64,9 +64,20 @@ describe('Glasses', () => {
     expect(b.calls.at(-1)).toBe('rebuild:hdr,body')
   })
 
-  it('retries create if the first create fails', async () => {
+  it('falls back to rebuild when create fails (page already exists, e.g. after a webview reload)', async () => {
     const b = fakeBridge()
     ;(b.createStartUpPageContainer as ReturnType<typeof vi.fn>).mockResolvedValueOnce(1)
+    const g = new Glasses(b)
+    await g.show(pageA('1'))
+    await g.show(pageA('2'))
+    expect(b.createStartUpPageContainer).toHaveBeenCalledTimes(1) // mocked failure: not logged in calls
+    expect(b.calls).toEqual(['rebuild:hdr,body', 'upgrade:body=2'])
+  })
+
+  it('retries create next time if both create and the rebuild fallback fail', async () => {
+    const b = fakeBridge()
+    ;(b.createStartUpPageContainer as ReturnType<typeof vi.fn>).mockResolvedValueOnce(1)
+    ;(b.rebuildPageContainer as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false)
     const g = new Glasses(b)
     await g.show(dark)
     await g.show(dark)

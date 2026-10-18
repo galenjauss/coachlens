@@ -16,10 +16,7 @@ const t = (id: number, name: string, x: number, y: number, w: number, h: number,
 /** Whole-minute time text, so the lens changes at most once a minute: '3m left' | '<1m left' | '+2m over'. */
 export function minutesLeft(minutes: number, startedAt: number, now: number): string {
   const leftMs = minutes * 60_000 - (now - startedAt)
-  if (leftMs >= 0) {
-    const m = Math.floor(leftMs / 60_000)
-    return m < 1 ? '<1m left' : `${m}m left`
-  }
+  if (leftMs >= 0) return leftMs < 60_000 ? '<1m left' : `${Math.ceil(leftMs / 60_000)}m left`
   return `+${Math.ceil(-leftMs / 60_000)}m over`
 }
 
@@ -81,9 +78,9 @@ function peek(s: LensState, now: number): PageSpec {
     ? [`${c.active.name.toUpperCase()}  ${c.time}`, bar(frac), c.active.cues.length ? `cue: ${c.active.cues.join(' · ')}` : ''].join('\n')
     : 'No drill running\n\n> Swipe to pick one'
   return { key: 'peek', list: null, texts: [
-    t(1, 'hdrL', 0, 0, 380, 36, `${(s.today?.theme ?? '').toUpperCase()} · ${s.today?.className ?? ''}`),
-    t(2, 'hdrR', 384, 0, 192, 36, c.cov),
-    t(3, 'box', 0, 40, W, 132, box, { border: true, capture: true }),
+    t(1, 'hdrL', 0, 0, 380, 40, `${(s.today?.theme ?? '').toUpperCase()} · ${s.today?.className ?? ''}`),
+    t(2, 'hdrR', 384, 0, 192, 40, c.cov),
+    t(3, 'box', 0, 44, W, 128, box, { border: true, capture: true }),
     t(4, 'next', 0, 180, W, 40, s.status ?? c.nextLine),
   ] }
 }

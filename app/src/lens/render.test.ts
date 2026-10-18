@@ -19,7 +19,10 @@ const ALL: Screen[] = ['firstRun', 'home', 'attendance', 'attendanceDone', 'dark
 
 describe('minutesLeft', () => {
   it('whole minutes left, <1m, and minutes over', () => {
-    expect(minutesLeft(4, 0, 79_000)).toBe('2m left')
+    expect(minutesLeft(4, 0, 79_000)).toBe('3m left')
+    expect(minutesLeft(4, 0, 1_000)).toBe('4m left')
+    expect(minutesLeft(2, 0, 60_000)).toBe('1m left')
+    expect(minutesLeft(2, 0, 61_000)).toBe('<1m left')
     expect(minutesLeft(4, 0, 0)).toBe('4m left')
     expect(minutesLeft(1, 0, 15_000)).toBe('<1m left')
     expect(minutesLeft(1, 0, 60_000)).toBe('<1m left')
@@ -48,7 +51,7 @@ describe('render', () => {
     expect(p.texts.find(t => t.name === 'hdrR')?.content).toBe('Feedback 3/12')
     const box = p.texts.find(t => t.name === 'box')!
     expect(box).toMatchObject({ border: true, capture: true })
-    expect(box.content).toContain('HORSE STANCE HOLDS  2m left')
+    expect(box.content).toContain('HORSE STANCE HOLDS  3m left')
     expect(box.content).toContain('cue: knees out · back tall')
     expect(p.texts.find(t => t.name === 'next')?.content).toBe('> Next feedback: Priya (guard)')
     expect(p.texts.find(t => t.name === 'hint')).toBeUndefined()
@@ -62,7 +65,7 @@ describe('render', () => {
   })
   it('recording panel: drill + time header, listening body, next-feedback footer', () => {
     const p = render({ ...s, screen: 'recording', pending: { mode: 'note', returnTo: 'dark', viaLongPress: false } }, 79_000)
-    expect(p.texts.find(t => t.name === 'hdr')?.content).toBe('HORSE STANCE HOLDS · 2m left')
+    expect(p.texts.find(t => t.name === 'hdr')?.content).toBe('HORSE STANCE HOLDS · 3m left')
     expect(p.texts.find(t => t.name === 'body')?.content).toBe('● Listening… tap to send')
     expect(p.texts.find(t => t.name === 'foot')?.content).toBe('> Next feedback: Priya (guard)')
   })
