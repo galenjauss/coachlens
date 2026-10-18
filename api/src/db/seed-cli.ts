@@ -12,5 +12,5 @@ if (!url || !emails.length) {
   process.exit(1)
 }
 const db = drizzle({ client: neon(url), schema }) as unknown as Db
-const r = await seed(db, { today: localDate(new Date(), 'America/Los_Angeles'), guardianEmail: i => emails[i % emails.length]! })
+const r = await seed(db, { today: localDate(new Date(), process.env.TZ_NAME ?? 'America/Los_Angeles'), guardianEmail: i => emails[i % emails.length]! })
 console.log('seeded', r)
