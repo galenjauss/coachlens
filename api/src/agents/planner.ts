@@ -12,6 +12,7 @@ import { BudgetExceededError } from './budget'
 import { withRun } from './runs'
 import { getAutonomy } from '../services/settings'
 import { isUtteranceUndone } from '../services/deferred'
+import { recordDeckDrafted } from '../services/ledger'
 
 const AUDIENCE: Record<ModeConfig['id'], string> = {
   martial_arts: "kids' martial arts classes (ages 6-12)",
@@ -113,6 +114,7 @@ export async function draftDeck(deps: Deps, classId: string, forDate: string, ut
       await deps.db.delete(decks).where(eq(decks.id, deck.id)).catch(() => {})
       throw e
     }
+    await recordDeckDrafted(deps.db, utteranceId, deck.id) // C2: drafted for an utterance's plan work; its Undo removes it
     if (cause) return { result: deck.id, output: { drills: out }, ...degraded(cause) }
     return { result: deck.id, summary: `Drafted ${forDate} ${ctx.mode.planUnit.toLowerCase()}: ${out.length} ${ctx.mode.planItem}s, ${totalMinutes(out)} min (${ctx.theme})`, reason: 'theme + forms cycle + open issues', output: { drills: out } }
   })

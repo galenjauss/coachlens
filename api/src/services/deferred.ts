@@ -35,11 +35,13 @@ export async function deferOnce(deps: Deps, key: { utteranceId: string | null | 
   safeDefer(deps, key.kind, (async () => {
     if (await isUtteranceUndone(deps.db, utteranceId)) { await setStatus(deps.db, row.id, 'cancelled', ['pending']); return }
     if (!(await setStatus(deps.db, row.id, 'running', ['pending'])).length) return // cancelled before it started
+    // Undone while running: the task ends cancelled (its own undone checks stopped the writes), never done or failed.
+    const finish = async (ok: boolean) => setStatus(deps.db, row.id, await isUtteranceUndone(deps.db, utteranceId) ? 'cancelled' : ok ? 'done' : 'failed', ['running'])
     try {
       await work()
-      await setStatus(deps.db, row.id, 'done', ['running'])
+      await finish(true)
     } catch (e) {
-      await setStatus(deps.db, row.id, 'failed', ['running'])
+      await finish(false)
       throw e
     }
   })())

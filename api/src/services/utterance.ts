@@ -22,8 +22,8 @@ import { coverageAndNext, loadSessionContext, markPresent, type SessionContext }
 import { detectOnAttendance } from './insights'
 import { answerQuestion } from '../agents/answer'
 import { bindUtterance } from '../http/context'
-import { deferOnce } from './deferred'
-import { addLiveDrill, openIssue, recordAttendanceBefore } from './ledger'
+import { deferOnce, isUtteranceUndone } from './deferred'
+import { addLiveDrill, openIssue, recordAttendance } from './ledger'
 
 const DAY = 86_400_000
 export const NOTHING_HINT_NOTE = 'Try a name + what you saw'
@@ -117,7 +117,7 @@ async function applyRollCall(deps: Deps, ctx: SessionContext, utteranceId: strin
     return { kind: 'rollcall_unclear', names: unresolved }
   }
   if (ctx.roster.length) {
-    await recordAttendanceBefore(deps.db, utteranceId, ctx.sessionId, ctx.roster.map(s => s.id))
+    await recordAttendance(deps.db, utteranceId, ctx.sessionId, ctx.roster.map(s => ({ studentId: s.id, status: absent.has(s.id) ? 'absent' as const : 'present' as const, source: 'voice' as const })))
     await deps.db.insert(attendance)
       .values(ctx.roster.map(s => ({ sessionId: ctx.sessionId, studentId: s.id, status: absent.has(s.id) ? 'absent' as const : 'present' as const, source: 'voice' as const })))
       .onConflictDoUpdate({ target: [attendance.sessionId, attendance.studentId], set: { status: sql`excluded.status`, source: 'voice' } })
@@ -144,7 +144,7 @@ async function applyIntent(deps: Deps, ctx: SessionContext, utteranceId: string,
       await deferOnce(deps, { utteranceId, kind: 'plan_request' }, async () => {
         const deckId = await nextDeckFor(deps, ctx.classId, ctx.forDate, utteranceId)
         const s = deckId ? await suggestDiff(deps, deckId, intent.content, ctx.sessionId, utteranceId) : null
-        if (s) {
+        if (s && !(await isUtteranceUndone(deps.db, utteranceId))) { // C2: undone mid-flight, nothing applied
           const auto = await getAutonomy(deps.db, 'planner') === 'auto'
           if (auto) await acceptDiff(deps, s.diffId, { remember: false })
           await markAutonomy(deps, ctx.sessionId, utteranceId, auto, s.diffId, 'plan_request')
@@ -216,7 +216,7 @@ async function applyFeedback(deps: Deps, ctx: SessionContext, utteranceId: strin
     }
     const s = m.student
     const [note] = await db.insert(notes).values({ ...base, studentId: s.id }).returning({ id: notes.id })
-    await recordAttendanceBefore(db, utteranceId, ctx.sessionId, [s.id])
+    await recordAttendance(db, utteranceId, ctx.sessionId, [{ studentId: s.id, status: 'present', source: 'backstop' }])
     await markPresent(db, ctx.sessionId, s.id, 'backstop')
     const t = await trackTag(deps, ctx, utteranceId, s, intent.skillTags[0] ?? null, valence, historical, progressOn)
     if (intent.urgent) await deferOnce(deps, { utteranceId, kind: 'parent_email', subject: s.id }, () => draftParentEmail(deps, { studentId: s.id, sessionId: ctx.sessionId, utteranceId, trigger: { kind: 'urgent', content: intent.content } }))
@@ -293,7 +293,7 @@ async function applyAttendanceIntent(deps: Deps, ctx: SessionContext, utteranceI
     const m = resolveName(heard, ctx.roster)
     if (m.kind !== 'match') { actions.push({ kind: 'name_unclear', name: heard }); continue }
     await withRun(deps, { agent: 'attendance', trigger: 'voice', sessionId: ctx.sessionId, utteranceId, links: { studentId: m.student.id } }, async () => {
-      await recordAttendanceBefore(deps.db, utteranceId, ctx.sessionId, [m.student.id])
+      await recordAttendance(deps.db, utteranceId, ctx.sessionId, [{ studentId: m.student.id, status, source: 'voice' }])
       await deps.db.insert(attendance).values({ sessionId: ctx.sessionId, studentId: m.student.id, status, source: 'voice' })
         .onConflictDoUpdate({ target: [attendance.sessionId, attendance.studentId], set: { status, source: 'voice' } })
       return { result: true, summary: `Marked ${first(m.student.name)} ${status}`, reason: 'voice attendance update' }

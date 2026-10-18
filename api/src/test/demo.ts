@@ -24,7 +24,7 @@ export async function demoWorld(router: Router, over: Partial<Deps> = {}) {
   const db = await makeTestDb()
   const ids = await seed(db, { today: '2026-10-19', guardianEmail: i => `parent${i}@example.test`, pairingCode: DEMO_CODE })
   const calls: LlmCall[] = []
-  const ctl: { gate: Promise<void> | null; reached: () => void; onReach: Promise<void> } = { gate: null, reached: () => {}, onReach: Promise.resolve() }
+  const ctl: { holdName: string; gate: Promise<void> | null; reached: () => void; onReach: Promise<void> } = { holdName: 'parent_email', gate: null, reached: () => {}, onReach: Promise.resolve() }
   const deps: TestDeps = makeDeps(db, {
     llm: fakeLlm(async a => {
       calls.push({ name: a.name, prompt: a.prompt })
@@ -32,12 +32,13 @@ export async function demoWorld(router: Router, over: Partial<Deps> = {}) {
         const t = /Utterance: """([\s\S]*)"""/.exec(a.prompt)?.[1] ?? ''
         return { intents: router(t) }
       }
-      if (a.name === 'parent_email') {
+      if (a.name === ctl.holdName) {
         ctl.reached()
         if (ctl.gate) await ctl.gate
-        return { subject: 'A note from class today', body: 'Hello, this is a short factual note from class today about something we saw.' }
       }
-      throw new Error(`llm not stubbed: ${a.name}`)
+      if (a.name === 'parent_email') return { subject: 'A note from class today', body: 'Hello, this is a short factual note from class today about something we saw.' }
+      if (a.name === 'planner.diff') return { added: [{ name: 'Shark tag game', minutes: 5, kind: 'game', cues: [], focusStudentIds: [], rationale: 'more games', afterPosition: 0, reason: 'asked' }], changed: [], removed: [], rememberSuggestion: null }
+      throw new Error(`llm not stubbed: ${a.name}`) // planner.draft falls back to the starter plan
     }),
     ...over,
   })
@@ -56,7 +57,8 @@ export async function demoWorld(router: Router, over: Partial<Deps> = {}) {
   }
   const undo = (utteranceId: string) => app.request(`/v1/utterances/${utteranceId}/undo`, { method: 'POST', headers: h })
   /** Holds the next parent-email LLM call; resolves `reached` once the draft is mid-flight. */
-  const holdEmail = () => {
+  const holdEmail = (name = 'parent_email') => {
+    ctl.holdName = name
     let release!: () => void
     ctl.gate = new Promise<void>(r => { release = r })
     ctl.onReach = new Promise<void>(r => { ctl.reached = r })

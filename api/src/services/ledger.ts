@@ -7,25 +7,33 @@ import { actionLedger, attendance, drills, issues } from '../db/schema'
  * Each records what Undo needs (kind, entity, before, after). Plain inserts tagged with utterance_id need no row.
  */
 
-export type AttendanceBefore = { status: 'present' | 'absent'; source: 'voice' | 'phone' | 'backstop' } | null
+export type AttendanceState = { status: 'present' | 'absent'; source: 'voice' | 'phone' | 'backstop' }
+export type AttendanceBefore = AttendanceState | null
+export type AttendanceChange = AttendanceState & { studentId: string }
 
-/** Records each student's attendance before this utterance first changes it (later changes keep the first "before"). */
-export async function recordAttendanceBefore(db: Db, utteranceId: string | null | undefined, sessionId: string, studentIds: string[]): Promise<void> {
-  if (!utteranceId || !studentIds.length) return
+/**
+ * Records each student's attendance before this utterance first changes it, and the value it wrote (the latest
+ * write wins for "after"). Undo restores a row only while it still holds that "after" value.
+ */
+export async function recordAttendance(db: Db, utteranceId: string | null | undefined, sessionId: string, changes: AttendanceChange[]): Promise<void> {
+  if (!utteranceId || !changes.length) return
   const entity = (sid: string) => `${sessionId}:${sid}`
+  const ids = changes.map(c => c.studentId)
   const [rows, seen] = await Promise.all([
-    db.select().from(attendance).where(and(eq(attendance.sessionId, sessionId), inArray(attendance.studentId, studentIds))),
-    db.select({ entityId: actionLedger.entityId }).from(actionLedger)
-      .where(and(eq(actionLedger.utteranceId, utteranceId), eq(actionLedger.kind, 'attendance'), inArray(actionLedger.entityId, studentIds.map(entity)))),
+    db.select().from(attendance).where(and(eq(attendance.sessionId, sessionId), inArray(attendance.studentId, ids))),
+    db.select({ id: actionLedger.id, entityId: actionLedger.entityId }).from(actionLedger)
+      .where(and(eq(actionLedger.utteranceId, utteranceId), eq(actionLedger.kind, 'attendance'), inArray(actionLedger.entityId, ids.map(entity)))),
   ])
-  const done = new Set(seen.map(s => s.entityId))
-  const fresh = studentIds.filter(id => !done.has(entity(id)))
-  if (!fresh.length) return
-  await db.insert(actionLedger).values(fresh.map(studentId => {
-    const r = rows.find(x => x.studentId === studentId)
+  const fresh: (typeof actionLedger.$inferInsert)[] = []
+  for (const c of changes) {
+    const after: AttendanceState = { status: c.status, source: c.source }
+    const prior = seen.find(x => x.entityId === entity(c.studentId))
+    if (prior) { await db.update(actionLedger).set({ after }).where(eq(actionLedger.id, prior.id)); continue }
+    const r = rows.find(x => x.studentId === c.studentId)
     const before: AttendanceBefore = r ? { status: r.status, source: r.source } : null
-    return { utteranceId, kind: 'attendance' as const, entityId: entity(studentId), before }
-  }))
+    fresh.push({ utteranceId, kind: 'attendance', entityId: entity(c.studentId), before, after })
+  }
+  if (fresh.length) await db.insert(actionLedger).values(fresh)
 }
 
 export type RankState = { belt: string; rankSince: string | null }
@@ -46,5 +54,11 @@ export async function addLiveDrill(db: Db, utteranceId: string, deckId: string, 
   const shifted = existing.filter(x => x.position >= position)
   for (const d of shifted) await db.update(drills).set({ position: d.position + 1 }).where(eq(drills.id, d.id))
   const [row] = await db.insert(drills).values({ ...v, deckId, position }).returning({ id: drills.id })
-  await db.insert(actionLedger).values({ utteranceId, kind: 'drill_added', entityId: row!.id, before: { shifted }, after: { name: v.name, deckId } })
+  await db.insert(actionLedger).values({ utteranceId, kind: 'drill_added', entityId: row!.id, before: { shifted }, after: { name: v.name, deckId, position } })
+}
+
+/** A plan the utterance's deferred planner work drafted for a later class (Undo removes it while unstarted). */
+export async function recordDeckDrafted(db: Db, utteranceId: string | null | undefined, deckId: string): Promise<void> {
+  if (!utteranceId) return
+  await db.insert(actionLedger).values({ utteranceId, kind: 'deck_drafted', entityId: deckId })
 }

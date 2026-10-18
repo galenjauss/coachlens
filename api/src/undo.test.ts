@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { and, eq } from 'drizzle-orm'
 import { resetRateLimits } from './http/rateLimit'
 import { demoWorld, intent } from './test/demo'
-import { attendance, billingFlags, drills, notes, outbox, sessions, studentMetrics, students, utterances } from './db/schema'
+import { attendance, billingFlags, deckDiffs, decks, deferredTasks, drills, issues, notes, outbox, sessions, studentMetrics, students, utterances } from './db/schema'
 
 /** C2 / F02: Undo reverses every action an utterance applied, cancels its pending work, and names what it cannot recall. */
 type UndoBody = { ok: true; reversed: string[]; cancelled: string[]; notReversible: string[] }
@@ -176,5 +176,121 @@ describe('C2 undo: ledger coverage and contract', () => {
     expect(await again.json()).toEqual({ error: 'already_undone' })
     expect((await w.undo('nope')).status).toBe(404)
     expect((await w.db.select().from(utterances).where(eq(utterances.id, utteranceId)))[0]!.undoneAt).not.toBeNull()
+  })
+})
+
+const later = (t: string): unknown[] => {
+  if (/^add shark/.test(t)) return [intent({ type: 'add_drill', content: 'Shark tag', minutes: 4 })]
+  if (/^add bear/.test(t)) return [intent({ type: 'add_drill', content: 'Bear crawl', minutes: 3 })]
+  if (/^plan:/.test(t)) return [intent({ type: 'plan_request', content: 'more games next class' })]
+  if (/^Priya guard/.test(t)) return [intent({ studentNames: ['Priya'], content: 'Priya dropped her guard again', skillTags: ['guard'], valence: 'concern', observedWhen: 'today' })]
+  return router(t)
+}
+
+describe('C2 undo: later changes are kept, never overwritten (fix round 1)', () => {
+  beforeEach(() => resetRateLimits())
+
+  it('attendance changed after the roll call is kept and reported', async () => {
+    const w = await demoWorld(later)
+    const sid = await w.start('Kids · Tue')
+    const jake = await byFirst(w, 'Jake')
+    const { utteranceId } = await (await w.utter(sid, 'everyone is present', { mode: 'attendance' })).json() as { utteranceId: string }
+    // The phone later marks Jake absent.
+    await w.db.update(attendance).set({ status: 'absent', source: 'phone' }).where(and(eq(attendance.sessionId, sid), eq(attendance.studentId, jake.id)))
+    const b = await body(await w.undo(utteranceId))
+    const rows = await w.db.select().from(attendance).where(eq(attendance.sessionId, sid))
+    expect(rows.map(r => `${r.studentId}:${r.status}:${r.source}`)).toEqual([`${jake.id}:absent:phone`])
+    expect(b.notReversible).toEqual(['Kept 1 attendance change made since'])
+  })
+
+  it('a drill inserted after the undone one keeps a contiguous, duplicate-free order', async () => {
+    const w = await demoWorld(later)
+    const sid = await w.start('Kids · Tue')
+    const [se] = await w.db.select().from(sessions).where(eq(sessions.id, sid))
+    const { utteranceId } = await (await w.utter(sid, 'add shark')).json() as { utteranceId: string }
+    await w.utter(sid, 'add bear')
+    const b = await body(await w.undo(utteranceId))
+    const deck = (await w.db.select().from(drills).where(eq(drills.deckId, se!.deckId))).sort((x, y) => x.position - y.position)
+    expect(deck.map(d => d.position)).toEqual(deck.map((_, i) => i + 1))
+    expect(deck.map(d => d.name)).toContain('Bear crawl')
+    expect(deck.map(d => d.name)).not.toContain('Shark tag')
+    expect(b.reversed).toContain('Removed drill: Shark tag')
+  })
+
+  it('a rank changed since is kept with its metric row', async () => {
+    const w = await demoWorld(later)
+    const sid = await w.start('Kids · Tue')
+    const maya = await byFirst(w, 'Maya')
+    const { utteranceId } = await (await w.utter(sid, 'Maya is a black belt now')).json() as { utteranceId: string }
+    await w.app.request(`/v1/students/${maya.id}`, { method: 'PATCH', headers: w.h, body: JSON.stringify({ belt: 'brown' }) })
+    const b = await body(await w.undo(utteranceId))
+    expect((await byFirst(w, 'Maya')).belt).toBe('brown')
+    expect((await w.db.select().from(studentMetrics).where(eq(studentMetrics.utteranceId, utteranceId))).length).toBe(1)
+    expect(b.notReversible).toEqual(['Kept Maya rank (changed since)'])
+  })
+})
+
+describe('C2 undo: planner and issues (fix round 1)', () => {
+  beforeEach(() => resetRateLimits())
+
+  /** Next Tuesday's plan exists already, so the plan request edits it (no new draft). */
+  async function withNextDeck(w: Awaited<ReturnType<typeof demoWorld>>) {
+    const tue = await w.classId('Kids · Tue')
+    const [d] = await w.db.insert(decks).values({ classId: tue, forDate: '2026-10-27' }).returning()
+    await w.db.insert(drills).values([1, 2].map(i => ({ deckId: d!.id, position: i, name: `Next drill ${i}`, minutes: 5, kind: 'drill' as const })))
+    return d!.id
+  }
+  const deckNames = async (w: Awaited<ReturnType<typeof demoWorld>>, deckId: string) =>
+    (await w.db.select().from(drills).where(eq(drills.deckId, deckId))).sort((a, b) => a.position - b.position).map(d => d.name)
+
+  it('a planner diff accepted in Auto mode is reverted by Undo', async () => {
+    const w = await demoWorld(later)
+    await w.app.request('/v1/settings', { method: 'PATCH', headers: w.h, body: JSON.stringify({ autonomy: { planner: 'auto' } }) })
+    const sid = await w.start('Kids · Tue')
+    const deckId = await withNextDeck(w)
+    const before = await deckNames(w, deckId)
+    const { utteranceId } = await (await w.utter(sid, 'plan: more games next class')).json() as { utteranceId: string }
+    await w.deps.flush()
+    expect(await deckNames(w, deckId)).toContain('Shark tag game')
+    const [diff] = await w.db.select().from(deckDiffs).where(eq(deckDiffs.utteranceId, utteranceId))
+    expect(diff!.status).toBe('accepted')
+    const b = await body(await w.undo(utteranceId))
+    expect(await deckNames(w, deckId)).toEqual(before)
+    expect((await w.db.select().from(deckDiffs).where(eq(deckDiffs.id, diff!.id)))[0]!.status).toBe('undone')
+    expect(b.reversed).toContain('Reverted plan change')
+  })
+
+  it('a recurring issue opened by the note is removed, and the plan drafted for it goes too', async () => {
+    const w = await demoWorld(later)
+    const sid = await w.start('Kids · Tue')
+    const priya = await byFirst(w, 'Priya')
+    const { utteranceId } = await (await w.utter(sid, 'Priya guard down again')).json() as { utteranceId: string }
+    await w.deps.flush()
+    const open = await w.db.select().from(issues).where(and(eq(issues.studentId, priya.id), eq(issues.tag, 'guard')))
+    expect(open.length).toBe(1)
+    const tue = await w.classId('Kids · Tue')
+    expect((await w.db.select().from(decks).where(and(eq(decks.classId, tue), eq(decks.forDate, '2026-10-27')))).length).toBe(1)
+    const b = await body(await w.undo(utteranceId))
+    expect((await w.db.select().from(issues).where(and(eq(issues.studentId, priya.id), eq(issues.tag, 'guard')))).length).toBe(0)
+    expect((await w.db.select().from(decks).where(and(eq(decks.classId, tue), eq(decks.forDate, '2026-10-27')))).length).toBe(0)
+    expect(b.reversed).toEqual(expect.arrayContaining(['Removed Priya guard issue', 'Removed drafted next-class plan']))
+  })
+
+  it('RACE: Undo while auto-adjust is inside its planner call leaves no live diff and a cancelled task', async () => {
+    const w = await demoWorld(later)
+    await w.app.request('/v1/settings', { method: 'PATCH', headers: w.h, body: JSON.stringify({ autonomy: { planner: 'auto' } }) })
+    const sid = await w.start('Kids · Tue')
+    const deckId = await withNextDeck(w)
+    const before = await deckNames(w, deckId)
+    const hold = w.holdEmail('planner.diff')
+    const { utteranceId } = await (await w.utter(sid, 'Priya guard down again')).json() as { utteranceId: string }
+    await hold.reached
+    const b = await body(await w.undo(utteranceId))
+    expect(b.cancelled).toContain('Cancelled next-class plan change')
+    hold.release()
+    await w.deps.flush()
+    expect((await w.db.select().from(deckDiffs).where(eq(deckDiffs.utteranceId, utteranceId))).every(d => d.status === 'undone')).toBe(true)
+    expect(await deckNames(w, deckId)).toEqual(before)
+    expect((await w.db.select().from(deferredTasks).where(eq(deferredTasks.utteranceId, utteranceId))).map(t => t.status)).toEqual(['cancelled'])
   })
 })

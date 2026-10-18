@@ -37,7 +37,7 @@ import { ClassCreate, ClassLiveError, ClassUpdate, StudentCreate, StudentUpdateB
 import { claimOperation, completeOperation, MAX_KEY, releaseOperation } from './services/operations'
 import { undoUtterance, UndoError } from './services/undo'
 import { deferOnce } from './services/deferred'
-import { recordAttendanceBefore } from './services/ledger'
+import { recordAttendance } from './services/ledger'
 import { agentRunDetail, agentTaskRuns, agentsSummary, utteranceRuns } from './services/agents'
 import { localDate } from './logic/dates'
 import { computeCoverage, loadSessionContext, markPresent, nextStudentFor } from './services/context'
@@ -293,7 +293,7 @@ export function createApp(deps: Deps) {
         () => draftParentEmail(deps, { studentId, sessionId: n.sessionId, utteranceId: n.utteranceId, trigger: { kind: 'urgent', content: n.text } }))
     }
     if (!n.sessionId) return c.json({ coverage: null, nextStudent: null })
-    await recordAttendanceBefore(db, n.utteranceId, n.sessionId, [studentId]) // C2: the note's Undo restores this too
+    await recordAttendance(db, n.utteranceId, n.sessionId, [{ studentId, status: 'present', source: 'backstop' }]) // C2: the note's Undo restores this too
     await markPresent(db, n.sessionId, studentId, 'backstop')
     const ctx = await loadSessionContext(db, n.sessionId, null)
     return c.json({ coverage: await computeCoverage(db, ctx), nextStudent: await nextStudentFor(db, ctx, deps.now()) })
