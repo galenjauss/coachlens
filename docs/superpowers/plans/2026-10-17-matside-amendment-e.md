@@ -239,3 +239,40 @@ The demo script shows the G2 view for each beat:
 5. the mid-class returning-student insight;
 6. the end summary;
 7. agents acting (Review, Insights, autonomy toggle).
+
+## Task 35: Conversational class questions (api + small lens touch)
+**Source:** Galen, Sun ~01:00: "make the ai more conversational so I can ask it questions like 'who is forgetting to keep their guard up?' and it responds to me during class".
+
+1. **Router intent.** New `question` intent: the instructor asks something about the class or the business rather than giving a note.
+   - Examples: "who is forgetting to keep their guard up?", "who hasn't gotten feedback today?", "who's been missing class?", "who's closest to testing?", "what should I focus on next drill?", "how many are here?".
+   - It keeps `student_query` for single-student profile asks.
+   - Field: `question` (string, the instructor's question restated).
+   - Router instructions and eval cases get 5+ examples across modes.
+2. **Answer agent** (`api/src/agents/answer.ts`).
+   - **Grounding:** build a compact deterministic class digest with no LLM. It includes:
+     - roster with first names;
+     - each student's open issues (tag + count in 21 days);
+     - the last 3 note tags and texts (short);
+     - today's coverage (who got feedback this session);
+     - attendance today and the last 6 sessions;
+     - the latest metrics (rank/time in rank, PRs, grades);
+     - the current drill and the remaining deck items;
+     - new insights titles.
+   - **Model:** answer with the FAST model (Haiku) via `deps.llm`, budget-guarded, name it `'answer'` so llm.ts routes it to fast. The schema is `{ lines: string[] }`.
+     - Instructions: answer in ≤4 lines of ≤38 chars, names first, only from the digest, and say "Not enough notes yet" when the data is thin.
+     - No medical, financial or safety advice. Never invent students or numbers.
+   - **Normalize:** clip to word boundaries with the existing helpers; at most 4 lines.
+   - **Deterministic fast paths** (no LLM) when the question clearly maps:
+     - "who hasn't gotten feedback" comes from coverage;
+     - "how many are here" comes from attendance;
+     - a tag question ("guard", "hands up", "kicks"…) matching a mode tag lists students with that open issue or recent tag notes, ordered by count, e.g. `Guard: Priya (3), Leo (2), Sam (1)`.
+   - The LLM is used only when no fast path matches.
+   - Log every answer as `withRun({ agent: 'answer', trigger: 'question' })`, with the summary being the question (clipped).
+3. **Response.** The utterance response returns the answer through the existing `brief` field: `{ name: 'Answer', lines }`. The lens already shows a brief in place of the progress column with paging. Card line: `? <question clipped>`.
+   - **Lens touch:** when `brief.name === 'Answer'`, render the brief header as `ANSWER` instead of a student name. Nothing else changes.
+4. **Works anywhere a tap-to-talk works in class.** Out of class (lobby double-tap) stays planning-only.
+5. **Speed:** the fast paths answer in one router call. The LLM path is router + Haiku, with a target under 3 s server time.
+6. **Tests:** router intent parsing; each fast path; LLM path with a stub; "Not enough notes yet"; line budget; budget-exceeded gives a clean card line `● Couldn't answer · try again`; the run is logged.
+
+## Task 36: Insight poll right after roll call (lens)
+After any utterance result that changed attendance (roll call or a voice "mark present"), the controller triggers one immediate `insightPoll()` 1.5 s later, so the returning-student 💡 banner appears within seconds instead of waiting up to 30 s. This is the demo moment for the opportunistic agents.
