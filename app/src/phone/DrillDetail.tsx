@@ -11,18 +11,21 @@ type Props = {
   people: string
   roster: RosterStudent[]
   deleteAllowed: boolean
-  onSave(d: Editable): void
-  onDelete(): void
+  saving: boolean
+  error: string | null
+  onSave(d: Editable): void | Promise<void>
+  onDelete(): void | Promise<void>
   onBack(): void
 }
 
-export function DrillDetail({ api, drill, isNew, item, people, roster, deleteAllowed, onSave, onDelete, onBack }: Props) {
+export function DrillDetail({ api, drill, isNew, item, people, roster, deleteAllowed, saving, error, onSave, onDelete, onBack }: Props) {
   const uid = useId()
   const [d, setD] = useState<Editable>(drill)
   const [cues, setCues] = useState<[string, string]>([drill.cues[0] ?? '', drill.cues[1] ?? ''])
   const [alts, setAlts] = useState<DrillDraft[] | null>(null)
   const [altBusy, setAltBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [mins, setMins] = useState(String(drill.minutes)) // raw text while typing; clamped on blur/save
   const [confirmDel, setConfirmDel] = useState(false)
   const lock = useRef(false)
   const toggle = (id: string) => setD({ ...d, focusStudentIds: d.focusStudentIds.includes(id) ? d.focusStudentIds.filter(x => x !== id) : [...d.focusStudentIds, id] })
@@ -35,10 +38,12 @@ export function DrillDetail({ api, drill, isNew, item, people, roster, deleteAll
   }
   function useAlt(a: DrillDraft) {
     setD({ ...d, ...a, id: d.id })
+    setMins(String(clampMinutes(a.minutes)))
     setCues([a.cues[0] ?? '', a.cues[1] ?? ''])
   }
+  const minsOk = mins.trim() !== '' && Number.isFinite(Number(mins))
   const nameOk = d.name.trim().length > 0
-  const save = () => onSave(normalizeItem({ ...d, cues }))
+  const save = () => onSave(normalizeItem({ ...d, minutes: clampMinutes(Number(mins)), cues }))
 
   return (
     <main className="screen">
@@ -49,7 +54,7 @@ export function DrillDetail({ api, drill, isNew, item, people, roster, deleteAll
         <label className="label" htmlFor={`${uid}n`}>Name</label>
         <input id={`${uid}n`} maxLength={NAME_MAX_CHARS} value={d.name} onChange={e => setD({ ...d, name: e.target.value })} />
         <label className="label field-gap" htmlFor={`${uid}m`}>Minutes (1–30)</label>
-        <input id={`${uid}m`} type="number" inputMode="numeric" min={1} max={30} value={d.minutes} onChange={e => setD({ ...d, minutes: clampMinutes(Number(e.target.value)) })} />
+        <input id={`${uid}m`} type="number" inputMode="numeric" min={1} max={30} value={mins} onChange={e => setMins(e.target.value)} onBlur={() => { if (minsOk) setMins(String(clampMinutes(Number(mins)))) }} />
         <div className="label field-gap" id={`${uid}c`}>Cues shown on the lens (up to 2, {CUE_MAX_CHARS} characters each)</div>
         <div role="group" aria-labelledby={`${uid}c`}>
           {([0, 1] as const).map(i => (
@@ -79,13 +84,14 @@ export function DrillDetail({ api, drill, isNew, item, people, roster, deleteAll
           {alts && <p className="muted hint-left">Tap one to fill the form, then Save.</p>}
         </section>
       )}
-      <div role="alert">{err && <p className="error">{err}</p>}</div>
+      <div role="alert">{(err ?? error) && <p className="error">{err ?? error}</p>}</div>
       <div className="btns">
         {!isNew && deleteAllowed && (confirmDel
-          ? <button type="button" className="danger" onClick={onDelete}>Confirm delete</button>
-          : <button type="button" onClick={() => setConfirmDel(true)}>Delete</button>)}
-        <button type="button" className="primary" disabled={!nameOk} onClick={save}>Save</button>
+          ? <button type="button" className="danger" disabled={saving} onClick={onDelete}>Confirm delete</button>
+          : <button type="button" disabled={saving} onClick={() => setConfirmDel(true)}>Delete</button>)}
+        <button type="button" className="primary" disabled={!nameOk || !minsOk || saving} onClick={save}>{saving ? 'Saving…' : 'Save'}</button>
       </div>
+      {!minsOk && <p className="muted">Enter the minutes (1–30).</p>}
       {!nameOk && <p className="muted">Give the {item} a name to save it.</p>}
       {!isNew && !deleteAllowed && <p className="muted">A plan needs at least one {item}, so this one can’t be deleted.</p>}
     </main>

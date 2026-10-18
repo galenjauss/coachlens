@@ -97,3 +97,5 @@ button.alt:hover:not(:disabled) { border-color: var(--accent); filter: none; }
 .ask input { margin-top: 0; }
 .ask button { flex: none; }
 label.remember input { width: auto; margin: 0; flex: none; }
+
+.chip-skel { display: inline-block; width: 92px; height: 36px; border-radius: 99px; background: var(--line); opacity: .6; }
