@@ -22,6 +22,8 @@ export class Glasses {
   private key: string | null = null
   private latest: PageSpec | null = null
   private retry: ReturnType<typeof setTimeout> | null = null
+  private epoch = 0 // bumped by invalidate(); an apply that started in an older epoch must not cache its key
+  private disposed = false
   private created = false
   private last = new Map<number, string>()
   private pending: PageSpec | null = null
@@ -32,6 +34,13 @@ export class Glasses {
   /** Forget what the glasses show, so the next show() sends a full rebuild (e.g. after the app was backgrounded). */
   invalidate(): void {
     this.key = null
+    this.epoch += 1
+  }
+
+  /** Stop: cancel any pending retry and schedule no more. */
+  dispose(): void {
+    this.disposed = true
+    if (this.retry) { clearTimeout(this.retry); this.retry = null }
   }
 
   show(spec: PageSpec): Promise<void> {
@@ -60,6 +69,7 @@ export class Glasses {
   /** One retry slot: re-send the latest page once after RETRY_MS unless something newer was shown. */
   private scheduleRetry(): void {
     if (this.retry) clearTimeout(this.retry)
+    if (this.disposed) return
     const spec = this.latest
     if (!spec) return
     this.retry = setTimeout(() => {
@@ -73,6 +83,7 @@ export class Glasses {
   private async apply(spec: PageSpec): Promise<void> {
     const layout = layoutKey(spec)
     if (layout === this.key) return this.upgrade(spec)
+    const epoch = this.epoch
     const textObject = spec.texts.map(x => new TextContainerProperty({
       xPosition: x.x, yPosition: x.y, width: x.w, height: x.h, borderWidth: x.border ? 2 : 0, borderColor: 5, borderRadius: 4,
       paddingLength: 6, containerID: x.id, containerName: x.name, content: x.content, isEventCapture: x.capture ? 1 : 0,
@@ -94,6 +105,7 @@ export class Glasses {
       const ok = await this.bridge.rebuildPageContainer(new RebuildPageContainer({ containerTotalNum, textObject, listObject }))
       if (!ok) throw new Error('rebuildPageContainer failed')
     }
+    if (epoch !== this.epoch) return // invalidated mid-flight: keep the key null so the next show rebuilds
     this.key = layout
     this.last = new Map(spec.texts.map(x => [x.id, x.content]))
   }

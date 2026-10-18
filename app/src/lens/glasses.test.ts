@@ -124,4 +124,31 @@ describe('Glasses', () => {
       expect(b.calls).toEqual(['create:hdr,body', 'rebuild:dark'])
     })
   })
+
+  it('invalidate during an in-flight apply is not lost: the next show rebuilds', async () => {
+    const b = fakeBridge()
+    let release: (v: number) => void = () => {}
+    ;(b.createStartUpPageContainer as ReturnType<typeof vi.fn>).mockImplementationOnce(() => new Promise<number>(r => { release = r }))
+    const g = new Glasses(b)
+    const first = g.show(dark)
+    g.invalidate()
+    release(0)
+    await first
+    await g.show(dark)
+    expect(b.calls).toEqual(['rebuild:dark'])
+  })
+
+  it('dispose cancels a pending retry', async () => {
+    vi.useFakeTimers()
+    try {
+      const b = fakeBridge()
+      const g = new Glasses(b)
+      await g.show(pageA('1'))
+      ;(b.textContainerUpgrade as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false)
+      await g.show(pageA('2'))
+      g.dispose()
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(b.calls).toEqual(['create:hdr,body'])
+    } finally { vi.useRealTimers() }
+  })
 })

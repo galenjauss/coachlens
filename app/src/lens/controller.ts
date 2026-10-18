@@ -218,6 +218,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     dispatch,
     stop() {
       unsubscribe(); offPaired(); offStart(); offClass(); clearInterval(tick)
+      glasses.dispose()
       for (const t of Object.values(timers)) t.clear()
     },
   }
