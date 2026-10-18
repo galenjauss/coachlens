@@ -3,7 +3,7 @@ import { cors } from 'hono/cors'
 import { HTTPException } from 'hono/http-exception'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { AgentTask, DeckPatch, ExtractRequest, MAX_ALIASES, MAX_IMAGE_BASE64, MAX_ONBOARDING_TEXT, OnboardingCommit, RedraftRequest, StudentPatch, TranscribeForm, UtteranceForm } from '@matside/shared'
+import { AgentTask, DeckPatch, SettingsPatch, ExtractRequest, MAX_ALIASES, MAX_IMAGE_BASE64, MAX_ONBOARDING_TEXT, OnboardingCommit, RedraftRequest, StudentPatch, TranscribeForm, UtteranceForm } from '@matside/shared'
 import type { Deps } from './deps'
 import { attendance, billingFlags, enrollments, instructors, notes, sessions, students, classes, utterances } from './db/schema'
 import { hashToken } from './http/auth'
@@ -27,6 +27,7 @@ import { localDate } from './logic/dates'
 import { computeCoverage, loadSessionContext, markPresent, nextStudentFor } from './services/context'
 import { extractOnboarding } from './agents/onboarding'
 import { BudgetExceededError } from './agents/budget'
+import { getSettings, patchSettings, SettingsError } from './services/settings'
 import { commitOnboarding, onboardingStatus, OnboardingError } from './services/onboarding'
 
 type Vars = { Variables: { instructorId: string } }
@@ -340,6 +341,16 @@ export function createApp(deps: Deps) {
     } else ids = (await listStudents(db)).map(s => s.id)
     deps.defer(runReportCards(deps, studentIds ? ids : undefined).catch(e => console.error('[report-cards]', e)))
     return c.json({ started: ids.length })
+  })
+
+  // ---- Settings: per-agent autonomy + custom vocabulary ----
+  app.get('/v1/settings', async c => c.json(await getSettings(db)))
+  app.patch('/v1/settings', async c => {
+    const body = await json(c.req.raw, SettingsPatch)
+    try { return c.json(await patchSettings(db, body)) } catch (e) {
+      if (e instanceof SettingsError) throw new HTTPException(400, { message: e.message })
+      throw e
+    }
   })
 
   // ---- Onboarding quiz: per-step AI extraction, then one idempotent commit ----

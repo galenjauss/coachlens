@@ -64,6 +64,13 @@
       "when": 1792293339507,
       "tag": "0008_thick_grim_reaper",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792295971153,
+      "tag": "0009_agent_settings_vocab",
+      "breakpoints": true
     }
   ]
 }

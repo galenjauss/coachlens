@@ -1,7 +1,8 @@
 import { and, eq, sql } from 'drizzle-orm'
 import type { OnboardingCommit, OnboardingCommitResponse, OnboardingStatus } from '@matside/shared'
 import type { Deps } from '../deps'
-import { classes, curriculum, enrollments, guardians, instructors, students } from '../db/schema'
+import { classes, curriculum, drills, enrollments, guardians, instructors, students } from '../db/schema'
+import { addVocab, specificDrillNames } from './vocab'
 import { draftDeck } from '../agents/planner'
 import { localDate, upcomingClassDate } from '../logic/dates'
 import { nameKey } from '../logic/onboarding'
@@ -99,11 +100,15 @@ export async function commitOnboarding(deps: Deps, instructorId: string, p: Onbo
       .onConflictDoUpdate({ target: [curriculum.weekStart, curriculum.mode], set: { theme: w.theme, formsDue: w.itemsDue } })
   }
 
+  // Curriculum items and drill-like terms become custom vocabulary (best effort, deduped).
+  await addVocab(db, p.curriculum.flatMap(w => w.itemsDue))
+
   // First plans run after the response: one draft per class for its upcoming date (draftDeck skips existing decks).
   const toPlan = committedClasses.slice(0, MAX_FIRST_PLANS)
   deps.defer((async () => {
     for (const c of toPlan) {
-      await draftDeck(deps, c.id, upcomingClassDate(deps.now(), deps.env.timeZone, c.weekday)).catch(e => console.error('[onboarding:plan]', c.id, e))
+      const deckId = await draftDeck(deps, c.id, upcomingClassDate(deps.now(), deps.env.timeZone, c.weekday)).catch(e => { console.error('[onboarding:plan]', c.id, e); return null })
+      if (deckId) await addVocab(db, specificDrillNames((await db.select({ name: drills.name }).from(drills).where(eq(drills.deckId, deckId))).map(d => d.name)))
     }
   })())
 

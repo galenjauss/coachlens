@@ -1,7 +1,7 @@
-import type { SkillTag, Urgency } from '@matside/shared'
+import type { Autonomy, SkillTag, Urgency } from '@matside/shared'
 
 export type CardAction =
-  | { kind: 'feedback'; name: string; tag: SkillTag | null; count: number; recurring: boolean; urgent?: boolean }
+  | { kind: 'feedback'; name: string; tag: SkillTag | null; count: number; recurring: boolean; urgent?: boolean; deck?: Autonomy; mail?: Autonomy }
   | { kind: 'billing'; name: string; urgency: Urgency }
   | { kind: 'attendance'; present: number; absentNames: string[] }
   | { kind: 'marked'; name: string; status: 'present' | 'absent' }
@@ -23,8 +23,10 @@ function linesFor(a: CardAction): string[] {
   switch (a.kind) {
     case 'feedback': {
       const head = `✓ ${a.name}${a.tag ? ` · ${a.tag}` : ''}${a.count >= 2 ? ` (${ordinal(a.count)} time)` : ''}`
-      const urgent = a.urgent ? ['⚠ urgent · parent note drafting'] : []
-      if (a.recurring) return [head, ...urgent, ...(a.urgent ? [] : ['→ progress logged']), '→ added to report card', '→ added to next deck']
+      const urgentLine = a.urgent && a.mail !== 'off'
+      const urgent = urgentLine ? ['⚠ urgent · parent note drafting'] : []
+      const deck = a.deck === 'off' ? [] : a.deck === 'review' ? ['→ next deck change to review'] : ['→ added to next deck']
+      if (a.recurring) return [head, ...urgent, ...(urgentLine ? [] : ['→ progress logged']), '→ added to report card', ...deck]
       return [head, ...urgent]
     }
     case 'billing': return [`✓ Billing flag · ${a.name} · ${a.urgency.toUpperCase()}`]

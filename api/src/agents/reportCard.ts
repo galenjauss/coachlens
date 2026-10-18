@@ -5,6 +5,7 @@ import type { Deps } from '../deps'
 import { attendance, drills, guardians, issues, notes, outbox, reportCards, sessions, students } from '../db/schema'
 import { withRun } from './runs'
 import { modeForStudent } from '../services/context'
+import { getAutonomy } from '../services/settings'
 
 const SUBJECT: Record<ModeConfig['id'], string> = {
   martial_arts: 'a child in a martial arts class, for their parent',
@@ -30,6 +31,10 @@ export async function draftReportCard(deps: Deps, studentId: string, month: stri
   const { db } = deps
   const [existing] = await db.select().from(reportCards).where(and(eq(reportCards.studentId, studentId), eq(reportCards.month, month)))
   if (existing) return existing.outboxId
+  if (await getAutonomy(db, 'report_card') === 'off') {
+    await withRun(deps, { agent: 'report_card', trigger: 'monthly', sessionId: null, links: { studentId } }, async () => ({ result: null, summary: 'Report card skipped (off)', reason: 'autonomy: off — report cards are turned off in Settings' }))
+    return null
+  }
   return withRun(deps, { agent: 'report_card', trigger: 'monthly', sessionId: null, links: { studentId } }, async () => {
     const [s] = await db.select().from(students).where(eq(students.id, studentId))
     const [g] = await db.select().from(guardians).where(eq(guardians.studentId, studentId))

@@ -282,3 +282,32 @@ export const RedraftRequest = z.object({ instruction: z.string().trim().min(2).m
 export type RedraftRequest = z.infer<typeof RedraftRequest>
 export const RedraftResponse = z.object({ id: z.string(), kind: z.enum(['parent_email', 'report_card']), subject: z.string(), body: z.string(), status: z.literal('pending_review') })
 export type RedraftResponse = z.infer<typeof RedraftResponse>
+
+// ---- Agent autonomy + custom vocabulary (Settings) ----
+/** Agents with an autonomy setting. 'insights' has no Agents tile yet (its agent lands in a later task). */
+export const AutonomyTask = z.enum(['progress', 'parent_email', 'report_card', 'billing', 'planner', 'attendance', 'insights'])
+export type AutonomyTask = z.infer<typeof AutonomyTask>
+export const Autonomy = z.enum(['auto', 'review', 'off'])
+export type Autonomy = z.infer<typeof Autonomy>
+export const AUTONOMY_RULES: Record<AutonomyTask, { default: Autonomy; allowed: readonly Autonomy[] }> = {
+  parent_email: { default: 'review', allowed: ['auto', 'review', 'off'] },
+  report_card: { default: 'review', allowed: ['review', 'off'] },
+  planner: { default: 'review', allowed: ['auto', 'review', 'off'] },
+  billing: { default: 'auto', allowed: ['auto', 'off'] },
+  progress: { default: 'auto', allowed: ['auto', 'off'] },
+  attendance: { default: 'auto', allowed: ['auto', 'off'] },
+  insights: { default: 'review', allowed: ['auto', 'review', 'off'] },
+}
+export const MAX_VOCAB = 200
+export const VOCAB_TERM_MAX = 40
+export const VocabTerm = z.string().trim().min(1).max(VOCAB_TERM_MAX)
+export const SettingsPatch = z.object({
+  autonomy: z.partialRecord(AutonomyTask, Autonomy).optional(),
+  vocabulary: z.array(VocabTerm).max(MAX_VOCAB).optional(),
+})
+export type SettingsPatch = z.infer<typeof SettingsPatch>
+export const SettingsResponse = z.object({
+  autonomy: z.record(AutonomyTask, Autonomy),
+  vocabulary: z.array(z.string()),
+})
+export type SettingsResponse = z.infer<typeof SettingsResponse>

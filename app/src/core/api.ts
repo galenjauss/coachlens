@@ -1,6 +1,7 @@
 import {
   Alternatives, AgentRunDetail, AgentRunView, AgentsSummary, AgentTaskRun, RedraftResponse, type AgentTask, Coverage, Deck, ModeId, NextStudent, ReviewItem, RosterStudent, StartSessionResponse, StudentDetail,
   SuggestResponse, Today, TranscribeResponse, UtteranceResponse, WrapUp, type DeckPatch,
+  SettingsResponse, type SettingsPatch,
   ExtractResponse, OnboardingCommitResponse, OnboardingStatus, type ExtractRequest, type OnboardingCommit,
 } from '@matside/shared'
 import { z } from 'zod'
@@ -135,6 +136,8 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
     agentRun: (id: string) => req(`/v1/agents/runs/${encodeURIComponent(id)}`, {}, AgentRunDetail),
     redraft: (outboxId: string, instruction: string) => post(`/v1/review/outbox/${outboxId}/redraft`, { instruction }, RedraftResponse),
     patchStudentAliases: (id: string, aliases: string[]) => req(`/v1/students/${id}`, { method: 'PATCH', json: { aliases } }, z.object({ id: z.string(), aliases: z.array(z.string()) })),
+    settings: () => req('/v1/settings', {}, SettingsResponse),
+    patchSettings: (patch: SettingsPatch) => req('/v1/settings', { method: 'PATCH', json: patch }, SettingsResponse),
     runReportCards: (studentIds?: string[]) => post('/v1/report-cards/run', { studentIds }, z.object({ started: z.number() })),
     onboardingStatus: () => req('/v1/onboarding/status', {}, OnboardingStatus),
     onboardingExtract: (body: ExtractRequest) => post('/v1/onboarding/extract', body, ExtractResponse),

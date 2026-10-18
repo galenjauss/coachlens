@@ -150,3 +150,15 @@ label.remember input { width: auto; margin: 0; flex: none; }
 .alias button { flex: none; background: none; min-height: 36px; min-width: 36px; padding: 0; border-radius: 99px; font-size: 18px; line-height: 1; }
 .alias button:hover:not(:disabled) { background: var(--danger-bg); color: var(--danger); filter: none; }
 @media (max-width: 340px) { .tiles { grid-template-columns: 1fr; } }
+
+/* Autonomy segmented control (Agents task detail) and Settings vocabulary */
+.autonomy { margin: 4px 0 14px; }
+.seg { display: flex; gap: 0; padding: 3px; margin-top: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; }
+.seg-opt { flex: 1; min-height: 44px; background: transparent; border-radius: 9px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
+.seg-opt:hover:not(:disabled):not(.on) { filter: none; background: var(--line); color: var(--text); }
+.seg-opt.on { background: var(--accent); color: var(--ink-on-accent); box-shadow: 0 1px 6px rgba(0, 0, 0, .35); }
+.seg-opt.on.off { background: var(--text); color: var(--bg); }
+.seg-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.seg-opt.on:focus-visible { outline-color: var(--text); }
+.seg-copy { margin: 10px 2px 0; font-size: 13px; line-height: 1.4; min-height: 2.8em; }
+.vocab { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }

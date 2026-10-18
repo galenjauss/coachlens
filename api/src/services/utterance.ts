@@ -6,11 +6,12 @@ import { attendance, billingFlags, drills, issues, notes, utterances } from '../
 import { routeUtterance } from '../agents/router'
 import { withRun } from '../agents/runs'
 import { draftParentEmail } from '../agents/parentEmail'
-import { autoAdjustNextDeck, nextDeckFor, suggestDiff } from '../agents/planner'
+import { acceptDiff, autoAdjustNextDeck, markAutonomy, nextDeckFor, suggestDiff } from '../agents/planner'
 import { resolveName } from '../logic/names'
 import { parseAttendance, type RollCall } from '../logic/attendance'
 import { isRecurring, RECURRING_WINDOW_DAYS } from '../logic/recurring'
 import { buildCardLines, type CardAction } from '../logic/cardLines'
+import { getAutonomy } from './settings'
 import { coverageAndNext, loadSessionContext, markPresent, type SessionContext } from './context'
 
 const DAY = 86_400_000
@@ -32,7 +33,8 @@ export async function handleUtterance(
 
   const parsed = input.mode === 'attendance' ? parseAttendance(input.transcript) : null
   if (parsed) {
-    actions.push(await applyRollCall(deps, ctx, utteranceId, parsed))
+    const rc = await applyRollCall(deps, ctx, utteranceId, parsed)
+    if (rc) actions.push(rc)
   } else {
     const intents = await routeUtterance(deps, { sessionId: ctx.sessionId, utteranceId, transcript: input.transcript, roster: ctx.roster, drillName: ctx.drill?.name ?? null, theme: ctx.theme, mode: ctx.mode })
     if (!intents) {
@@ -56,7 +58,12 @@ export async function handleUtterance(
   }
 }
 
-async function applyRollCall(deps: Deps, ctx: SessionContext, utteranceId: string, parsed: RollCall): Promise<CardAction> {
+async function applyRollCall(deps: Deps, ctx: SessionContext, utteranceId: string, parsed: RollCall): Promise<CardAction | null> {
+  const run = { agent: 'attendance', trigger: 'roll_call', sessionId: ctx.sessionId, utteranceId }
+  if (await getAutonomy(deps.db, 'attendance') === 'off') {
+    await withRun(deps, run, async () => ({ result: false, summary: 'Roll call skipped (off)', reason: 'autonomy: off — voice attendance is turned off in Settings' }))
+    return null
+  }
   const named = new Map<string, string>()
   const unresolved: string[] = []
   if (parsed.kind !== 'all') {
@@ -70,7 +77,6 @@ async function applyRollCall(deps: Deps, ctx: SessionContext, utteranceId: strin
   const absent = parsed.kind === 'present'
     ? new Map(ctx.roster.filter(s => !named.has(s.id)).map(s => [s.id, first(s.name)] as const))
     : named
-  const run = { agent: 'attendance', trigger: 'roll_call', sessionId: ctx.sessionId, utteranceId }
   if (unresolved.length) {
     await withRun(deps, run, async () => ({
       result: false, summary: `Roll call not applied, unclear: ${unresolved.join(', ')}`, reason: 'unresolved names',
@@ -98,17 +104,23 @@ async function applyIntent(deps: Deps, ctx: SessionContext, utteranceId: string,
     case 'plan_request': {
       safeDefer(deps, 'plan_request', (async () => {
         const deckId = await nextDeckFor(deps, ctx.classId, ctx.forDate, utteranceId)
-        if (deckId) await suggestDiff(deps, deckId, intent.content, ctx.sessionId, utteranceId)
+        const s = deckId ? await suggestDiff(deps, deckId, intent.content, ctx.sessionId, utteranceId) : null
+        if (s) {
+          const auto = await getAutonomy(deps.db, 'planner') === 'auto'
+          if (auto) await acceptDiff(deps, s.diffId, { remember: false })
+          await markAutonomy(deps, ctx.sessionId, utteranceId, auto, s.diffId, 'plan_request')
+        }
       })())
       return { actions: [{ kind: 'plan_request' }], disambiguation: null }
     }
     case 'parent_message': {
       const actions: CardAction[] = []
+      const mailAutonomy = await getAutonomy(deps.db, 'parent_email')
       for (const n of intent.studentNames) {
         const m = resolveName(n, ctx.roster)
         if (m.kind !== 'match') { actions.push({ kind: 'name_unclear', name: n }); continue }
         safeDefer(deps, 'parent_email', draftParentEmail(deps, { studentId: m.student.id, sessionId: ctx.sessionId, utteranceId, trigger: { kind: 'request', content: intent.content } }))
-        actions.push({ kind: 'parent_note', name: first(m.student.name) })
+        if (mailAutonomy !== 'off') actions.push({ kind: 'parent_note', name: first(m.student.name) })
       }
       return { actions, disambiguation: null }
     }
@@ -139,6 +151,9 @@ async function applyFeedback(deps: Deps, ctx: SessionContext, utteranceId: strin
     await db.insert(notes).values(unresolvedBase)
     return { actions: [unassigned()], disambiguation: null }
   }
+  const progressOn = await getAutonomy(db, 'progress') === 'auto'
+  const deck = await getAutonomy(db, 'planner')
+  const mail = await getAutonomy(db, 'parent_email')
   let urgentFlagged = false
   const flagUrgent = () => {
     if (!intent.urgent || urgentFlagged) return
@@ -170,7 +185,7 @@ async function applyFeedback(deps: Deps, ctx: SessionContext, utteranceId: strin
       const recent = await db.select({ tags: notes.tags }).from(notes).where(and(eq(notes.studentId, s.id), gte(notes.createdAt, since)))
       count = recent.filter(r => r.tags.includes(tag)).length
       const [open] = await db.select().from(issues).where(and(eq(issues.studentId, s.id), eq(issues.tag, tag), eq(issues.status, 'open')))
-      recurring = isRecurring(count, Boolean(open))
+      recurring = isRecurring(count, Boolean(open)) && progressOn
       if (recurring) {
         // v2: a recurring issue feeds the report card and the next plan; it no longer emails home.
         await db.insert(issues).values({ studentId: s.id, tag })
@@ -182,9 +197,9 @@ async function applyFeedback(deps: Deps, ctx: SessionContext, utteranceId: strin
     await withRun(deps, { agent: 'progress', trigger: 'feedback', sessionId: ctx.sessionId, utteranceId, links: { noteId: note!.id, studentId: s.id } }, async () => ({
       result: true,
       summary: `Logged "${intent.content.slice(0, 60)}" → ${first(s.name)}${ctx.drill ? ` · drill: ${ctx.drill.name}` : ''}`,
-      reason: intent.urgent ? `urgent · ${reason}` : reason,
+      reason: [intent.urgent ? `urgent · ${reason}` : reason, progressOn ? '' : 'autonomy: off — recurring-issue tracking skipped'].filter(Boolean).join(' · '),
     }))
-    actions.push({ kind: 'feedback', name: first(s.name), tag, count, recurring, urgent: intent.urgent })
+    actions.push({ kind: 'feedback', name: first(s.name), tag, count, recurring, urgent: intent.urgent, deck, mail })
   }
   return { actions, disambiguation }
 }
@@ -194,6 +209,10 @@ async function applyBilling(deps: Deps, ctx: SessionContext, utteranceId: string
   const m = heard ? resolveName(heard, ctx.roster) : { kind: 'none' as const }
   const student = m.kind === 'match' ? m.student : null
   const urgency = intent.urgency ?? 'med'
+  if (await getAutonomy(deps.db, 'billing') === 'off') {
+    await withRun(deps, { agent: 'billing', trigger: 'billing', sessionId: ctx.sessionId, utteranceId }, async () => ({ result: false, summary: 'Billing flag skipped (off)', reason: 'autonomy: off — billing flags are turned off in Settings' }))
+    return { actions: [], disambiguation: null }
+  }
   const [flag] = await deps.db.insert(billingFlags).values({ studentId: student?.id ?? null, utteranceId, urgency, note: intent.content, amount: intent.amount }).returning({ id: billingFlags.id })
   const links = { billingFlagId: flag!.id, ...(student ? { studentId: student.id } : {}) }
   await withRun(deps, { agent: 'billing', trigger: 'billing', sessionId: ctx.sessionId, utteranceId, links }, async () => ({
@@ -205,6 +224,10 @@ async function applyBilling(deps: Deps, ctx: SessionContext, utteranceId: string
 async function applyAttendanceIntent(deps: Deps, ctx: SessionContext, utteranceId: string, intent: Intent): Promise<Applied> {
   const actions: CardAction[] = []
   const status = intent.attendanceStatus ?? 'present'
+  if (await getAutonomy(deps.db, 'attendance') === 'off') {
+    await withRun(deps, { agent: 'attendance', trigger: 'voice', sessionId: ctx.sessionId, utteranceId }, async () => ({ result: false, summary: 'Attendance update skipped (off)', reason: 'autonomy: off — voice attendance is turned off in Settings' }))
+    return { actions: [], disambiguation: null }
+  }
   for (const heard of intent.studentNames) {
     const m = resolveName(heard, ctx.roster)
     if (m.kind !== 'match') continue

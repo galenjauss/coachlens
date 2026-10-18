@@ -5,6 +5,8 @@ import type { Deps } from '../deps'
 import { drills, guardians, issues, notes, outbox, students } from '../db/schema'
 import { withRun } from './runs'
 import { modeForStudent } from '../services/context'
+import { getAutonomy } from '../services/settings'
+import { approveOutbox } from '../services/review'
 
 const COACH: Record<ModeConfig['id'], string> = {
   martial_arts: "a kids' martial arts instructor",
@@ -60,6 +62,11 @@ export async function draftParentEmail(
 ): Promise<string | null> {
   const { db } = deps
   const meta = { agent: 'parent_email', trigger: a.trigger.kind, sessionId: a.sessionId, utteranceId: a.utteranceId ?? null, links: { studentId: a.studentId } }
+  const autonomy = await getAutonomy(deps.db, 'parent_email')
+  if (autonomy === 'off') {
+    await withRun(deps, meta, async () => ({ result: null, summary: 'Parent email skipped (off)', reason: 'autonomy: off — parent emails are turned off in Settings' }))
+    return null
+  }
   if (a.trigger.kind === 'recurring' && await inEmailCooldown(deps, a.studentId)) {
     await withRun(deps, meta, async () => ({ result: null, summary: `Skipped auto note (one per ${EMAIL_COOLDOWN_DAYS} days)`, reason: 'email cooldown' }))
     return null
@@ -92,6 +99,13 @@ export async function draftParentEmail(
     ].join('\n')
     const email = await deps.llm.object({ name: 'parent_email', instructions: parentEmailInstructions(mode), prompt, schema: EmailOut })
     const [row] = await db.insert(outbox).values({ kind: 'parent_email', studentId: s.id, sessionId: a.sessionId, toEmail: g.email, subject: email.subject, body: email.body, trigger: a.trigger.kind }).returning()
-    return { result: row!.id, summary: `Drafted ${a.trigger.kind === 'urgent' ? 'urgent ' : ''}note to ${g.name} (${firstName}): "${email.subject}"`, reason: why, output: email, links: { outboxId: row!.id } }
+    const sent = autonomy === 'auto' ? await approveOutbox(deps, row!.id) : null
+    const note = sent ? (sent.ok ? ' and sent' : ` (auto-send failed: ${sent.error}; left for review)`) : ''
+    return {
+      result: row!.id,
+      summary: `Drafted ${a.trigger.kind === 'urgent' ? 'urgent ' : ''}note to ${g.name} (${firstName}): "${email.subject}"${note}`,
+      reason: autonomy === 'auto' ? `${why} · autonomy: auto` : why,
+      output: email, links: { outboxId: row!.id },
+    }
   })
 }

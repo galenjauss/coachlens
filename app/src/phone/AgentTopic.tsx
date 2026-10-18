@@ -2,6 +2,7 @@ import type { AgentTask, AgentTaskRun } from '@matside/shared'
 import type { Api } from '../core/api'
 import { AgentBadge } from './AgentBadge'
 import { relTime, taskLabel } from './agentsLogic'
+import { AutonomyControl } from './AutonomyControl'
 import { usePoll } from './usePoll'
 
 export function AgentTopic({ api, task, onBack, onOpenRun }: { api: Api; task: AgentTask; onBack(): void; onOpenRun(id: string): void }) {
@@ -11,6 +12,7 @@ export function AgentTopic({ api, task, onBack, onOpenRun }: { api: Api; task: A
       <button type="button" className="back" onClick={onBack}>‹ Agents</button>
       <h1>{taskLabel(task)}</h1>
       <div className="sub" role="status">{data ? `${data.length} ${data.length === 1 ? 'run' : 'runs'}, newest first` : loading ? 'Loading…' : ''}</div>
+      <AutonomyControl api={api} task={task} />
       {error && <p className="error" role="alert">Couldn’t load runs: {error} <button type="button" className="inline" onClick={reload}>Retry</button></p>}
       <ul className="rowlist">
         {data?.map((r: AgentTaskRun) => (
