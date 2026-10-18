@@ -50,31 +50,35 @@ describe('outbox', () => {
     const r = await ob.flush(async i => { calls.push(i.id); if (i.id === a.id) throw new BadResponseError(); return res(i.id) })
     expect(r.delivered.has(a.id)).toBe(true)
     expect(r.results.has(a.id)).toBe(false)
-    expect(r.dropped.has(a.id)).toBe(false)
+    expect(r.failed.has(a.id)).toBe(false)
     expect(r.results.has(b.id)).toBe(true) // the queue carried on
     expect(r.remaining).toBe(0)
     await ob.flush(async i => { calls.push(i.id); return res(i.id) })
     expect(calls).toEqual([a.id, b.id]) // a was sent exactly once
   })
-  it('drops items on 4xx and records the status', async () => {
+  it('a permanent 4xx moves the item to the failed store with its status and reason (kept, not deleted)', async () => {
     const ob = new Outbox(memoryKV())
     const a = await ob.enqueue(form)
     const r = await ob.flush(async () => { throw new ApiError(422, 'empty_transcript') })
-    expect(r.dropped.get(a.id)).toBe(422)
+    expect(r.failed.get(a.id)).toMatchObject({ status: 422, reason: 'Nothing was heard in this recording' })
     expect(r.remaining).toBe(0)
+    expect(r.failedCount).toBe(1)
+    expect((await ob.failed()).map(f => f.id)).toEqual([a.id])
   })
-  it('gives up after 5 server errors', async () => {
-    const ob = new Outbox(memoryKV())
+  it('never gives up on server errors: still queued after 5 x 500 (with backoff between)', async () => {
+    let t = 1_000
+    const ob = new Outbox(memoryKV(), () => t)
     await ob.enqueue(form)
-    for (let i = 0; i < 5; i++) await ob.flush(async () => { throw new ApiError(500, 'x') })
-    expect((await ob.list()).length).toBe(0)
+    for (let i = 0; i < 5; i++) { await ob.flush(async () => { throw new ApiError(500, 'x') }); t += 10 * 60_000 }
+    expect((await ob.list()).length).toBe(1)
+    expect((await ob.failed()).length).toBe(0)
   })
   it('keeps items on 429', async () => {
     const ob = new Outbox(memoryKV())
     await ob.enqueue(form)
     const r = await ob.flush(async () => { throw new ApiError(429, 'rate_limited') })
     expect(r.remaining).toBe(1)
-    expect(r.dropped.size).toBe(0)
+    expect(r.failed.size).toBe(0)
     expect((await ob.list())[0]!.attempts).toBe(1)
   })
   it('keeps items on 401', async () => {
@@ -82,7 +86,7 @@ describe('outbox', () => {
     await ob.enqueue(form)
     const r = await ob.flush(async () => { throw new ApiError(401, 'unauthorized') })
     expect(r.remaining).toBe(1)
-    expect(r.dropped.size).toBe(0)
+    expect(r.failed.size).toBe(0)
   })
   it('keeps an item enqueued while a flush is awaiting a slow send', async () => {
     const ob = new Outbox(memoryKV())
@@ -114,12 +118,14 @@ describe('outbox', () => {
     const [a, b] = await Promise.all([ob.enqueue(form), ob.enqueue({ ...form, text: 'two' })])
     expect((await ob.list()).map(i => i.id)).toEqual([a.id, b.id])
   })
-  it('drops a poison item after 5 unknown errors and proceeds to the next', async () => {
-    const ob = new Outbox(memoryKV())
+  it('sets a poison item aside (failed store, kept) after 5 unknown errors and proceeds to the next', async () => {
+    let t = 1_000
+    const ob = new Outbox(memoryKV(), () => t)
     const a = await ob.enqueue(form)
     const b = await ob.enqueue({ ...form, text: 'two' })
-    for (let i = 0; i < 5; i++) await ob.flush(async () => { throw new Error('zod blew up') })
+    for (let i = 0; i < 5; i++) { await ob.flush(async () => { throw new Error('zod blew up') }); t += 10 * 60_000 }
     expect((await ob.list()).map(i => i.id)).toEqual([b.id])
+    expect((await ob.failed()).map(i => i.id)).toEqual([a.id])
     const r = await ob.flush(async i => res(i.id))
     expect(r.results.has(b.id)).toBe(true)
     expect(a.id).not.toBe(b.id)
@@ -170,7 +176,7 @@ describe('api bad responses', () => {
     const api = mk(new Response('<html>portal</html>', { status: 200, headers: { 'content-type': 'text/html' } }))
     const r = await ob.flush(i => api.utterance({ sessionId: i.form.sessionId, drillId: i.form.drillId, mode: i.form.mode, text: i.form.text, audio: null }))
     expect(r.delivered.has(a.id)).toBe(false)
-    expect(r.dropped.has(a.id)).toBe(false)
+    expect(r.failed.has(a.id)).toBe(false)
     expect((await ob.list()).map(i => [i.id, i.attempts])).toEqual([[a.id, 0]])
   })
   it('a JSON 2xx with the wrong shape is still BadResponseError (delivered): the outbox removes it', async () => {
@@ -239,7 +245,7 @@ describe('recorder', () => {
     r.push(new Uint8Array([1, 2]))
     await r.start()
     r.push(new Uint8Array([3, 4]))
-    const big = new Uint8Array(16000 * 2)
+    const big = new Uint8Array(16000 * 2).fill(0x20) // speech-level energy (F14 gate)
     r.push(big)
     const res = await r.stop()
     expect([...res.wav!.slice(44, 48)]).toEqual([1, 2, 3, 4])
@@ -254,7 +260,7 @@ describe('recorder', () => {
     expect(r.bytes).toBe(0)
     r.push(new Uint8Array(100), 'glasses') // late glasses chunk: ignored
     expect(r.bytes).toBe(0)
-    const phone = new Uint8Array(16000 * 2); phone[0] = 7
+    const phone = new Uint8Array(16000 * 2).fill(0x20); phone[0] = 7
     r.push(phone, 'phone')
     const res = await r.stop()
     expect(res.bytes).toBe(32000)
@@ -345,12 +351,12 @@ describe('api errors', () => {
 describe('selectMic (dual-mic pick on stop)', () => {
   it('glasses when they have ≥ 0.4 s, else phone; glasses again when the phone has nothing', async () => {
     const { selectMic, MIN_BYTES } = await import('./audio')
-    expect(selectMic(MIN_BYTES, 99_999)).toBe('glasses')
-    expect(selectMic(MIN_BYTES + 1, 0)).toBe('glasses')
-    expect(selectMic(MIN_BYTES - 1, 1)).toBe('phone')
-    expect(selectMic(0, 50_000)).toBe('phone')
-    expect(selectMic(100, 0)).toBe('glasses') // too short either way: the glasses reason stays
-    expect(selectMic(0, 0)).toBe('glasses')
+    const loud = (bytes: number) => ({ bytes, speechMs: 1000 })
+    expect(selectMic(loud(MIN_BYTES), loud(99_999))).toBe('glasses')
+    expect(selectMic({ bytes: MIN_BYTES - 1, speechMs: 0 }, loud(1))).toBe('phone')
+    expect(selectMic({ bytes: 0, speechMs: 0 }, loud(50_000))).toBe('phone')
+    expect(selectMic({ bytes: 100, speechMs: 0 }, { bytes: 0, speechMs: 0 })).toBe('glasses') // too short either way: the glasses reason stays
+    expect(selectMic({ bytes: 0, speechMs: 0 }, { bytes: 0, speechMs: 0 })).toBe('glasses')
   })
 
   it('dual recorder buffers both sources and releases both mics', async () => {
@@ -457,13 +463,13 @@ describe('dual recorder with untagged audio', () => {
     const r = new Recorder({ audioControl: async (...a: unknown[]) => { calls.push(a); return true } }, { dual: true })
     await r.start()
     r.push(new Uint8Array(500).fill(9), 'phone')
-    r.push(new Uint8Array(20_000).fill(1)) // untagged
+    r.push(new Uint8Array(20_000).fill(3)) // untagged
     r.push(new Uint8Array(20_000).fill(9), 'phone') // ignored: the phone mic is closed
     expect(calls).toContainEqual([false, 'phone'])
     expect([r.bytesFrom('glasses'), r.bytesFrom('phone')]).toEqual([20_000, 0])
     const out = await r.stop()
     expect(r.source).toBe('glasses')
-    expect(out.wav?.[44]).toBe(1)
+    expect(out.wav?.[44]).toBe(3)
     expect(calls.slice(-2)).toEqual([[false, 'glasses'], [false]]) // the phone is not closed twice
   })
 })

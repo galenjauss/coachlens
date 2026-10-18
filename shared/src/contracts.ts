@@ -459,6 +459,65 @@ export const InsightsQuery = z.object({
 })
 export type InsightsQuery = z.input<typeof InsightsQuery>
 
+// ── Remediation contracts (docs/audit-2026-10-18/remediation-contracts.md) ──────────────────────────
+// Client-facing shapes for C2 (undo), C3 (roster and class maintenance) and C4 (unpair). Batch 2 implements
+// the server side; these must match the contract exactly.
+
+/** C2 · POST /v1/utterances/:id/undo → 200. Each label is a short human line (≤ 38 chars). 409 = { error: 'already_undone' }. */
+export const UndoResponse = z.object({
+  ok: z.literal(true),
+  reversed: z.array(z.string()),
+  cancelled: z.array(z.string()),
+  notReversible: z.array(z.string()),
+})
+export type UndoResponse = z.infer<typeof UndoResponse>
+
+/** C3 · GET /v1/notes/:id/candidates: the roster of the note's own class. */
+export const NoteCandidates = z.object({
+  classId: z.string(),
+  className: z.string(),
+  capturedAt: z.string(),
+  students: z.array(z.object({ id: z.string(), name: z.string(), nickname: z.string().nullable(), aliases: z.array(z.string()) })),
+})
+export type NoteCandidates = z.infer<typeof NoteCandidates>
+
+export const GuardianInput = z.object({ name: z.string().trim().min(1).max(80), email: z.string().trim().email().max(120) })
+export type GuardianInput = z.infer<typeof GuardianInput>
+
+/** C3 · POST /v1/students. */
+export const StudentCreate = z.object({
+  name: z.string().trim().min(1).max(80),
+  belt: z.string().trim().min(1).max(40).optional(),
+  nickname: z.string().trim().max(40).optional(),
+  classIds: z.array(z.string().min(1)),
+  guardians: z.array(GuardianInput).optional(),
+})
+export type StudentCreate = z.infer<typeof StudentCreate>
+
+/** C3 · PATCH /v1/students/:id: the existing fields plus name, nickname, classIds and guardians (replace). */
+export const StudentUpdate = z.object({
+  name: z.string().trim().min(1).max(80).optional(),
+  nickname: z.string().trim().max(40).nullable().optional(),
+  belt: z.string().trim().min(1).max(40).optional(),
+  rankSince: z.string().nullable().optional(),
+  aliases: z.array(z.string()).optional(),
+  classIds: z.array(z.string().min(1)).optional(),
+  guardians: z.array(GuardianInput).optional(),
+})
+export type StudentUpdate = z.infer<typeof StudentUpdate>
+
+/** C3 · POST /v1/classes: the existing class row's fields (weekday 0 = Sunday, startTime "HH:MM"). */
+export const ClassCreate = z.object({
+  name: z.string().trim().min(1).max(80),
+  mode: ModeId,
+  startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  weekday: z.number().int().min(0).max(6),
+})
+export type ClassCreate = z.infer<typeof ClassCreate>
+/** C3 · PATCH /v1/classes/:id. DELETE refuses with 409 while a session is live. */
+export const ClassUpdate = ClassCreate.partial()
+export type ClassUpdate = z.infer<typeof ClassUpdate>
+
 // ---- Degraded-mode status (F20 / C5) ----
 /**
  * GET /v1/status (C5). aiCallsToday counts Anthropic model calls only (failed calls included) against aiDailyCap

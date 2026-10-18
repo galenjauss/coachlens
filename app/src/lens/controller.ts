@@ -1,20 +1,21 @@
 import { ImuReportPace, OsEventTypeList, type EvenAppBridge } from '@evenrealities/even_hub_sdk'
-import { INSIGHT_AFTER_ATTENDANCE_MS, INSIGHT_AFTER_ATTENDANCE_LATE_MS, INSIGHT_POLL_MS, MIC_DUAL_START } from '../config'
+import { IDLE_DARK_MS, INSIGHT_AFTER_ATTENDANCE_MS, INSIGHT_AFTER_ATTENDANCE_LATE_MS, INSIGHT_POLL_MS, MIC_DUAL_START, RESULT_CARD_MS } from '../config'
 import { ApiError, NetworkError, TRANSCRIBE_TIMEOUT_MS, type Api } from '../core/api'
 import { MAX_RECORD_MS, Recorder, type MicSource, type StopResult } from '../core/audio'
 import { bus } from '../core/bus'
-import type { FlushResult, Outbox, OutboxForm, OutboxItem } from '../core/outbox'
+import { OutboxFullError, type FlushResult, type Outbox, type OutboxForm, type OutboxItem } from '../core/outbox'
+import { sendOutboxItem } from '../core/sendItem'
 import { KEYS, type KV } from '../core/storage'
 import { CLASS_ID_KEY } from '../phone/classPref'
-import { fromB64, toB64 } from '../core/wav'
+import { toB64 } from '../core/wav'
 import { RUNS_MAX_MS, RUNS_POLL_MS, runsDone } from './agentRuns'
 import { imuSample, toLensEvent } from './events'
 import { Glasses, type GlassesBridge } from './glasses'
 import { NodDetector, type NodConfig } from './nod'
 import { createPlanListen } from './planListen'
-import { initialState, reduce } from './reducer'
+import { autoDismisses, autoHides, initialState, reduce, resultKey } from './reducer'
 import { MIC_TICK_MS, PAIR_ERROR, render } from './render'
-import type { Effect, LensEvent, LensState } from './state'
+import type { DisplayMode, Effect, LensEvent, LensState } from './state'
 import type { Insight, UtteranceResponse } from '@matside/shared'
 
 /**
@@ -66,7 +67,9 @@ function slot() {
   return { clear, get active() { return h !== null }, set(ms: number, fn: () => void) { clear(); h = setTimeout(() => { h = null; fn() }, ms) } }
 }
 
-const errText = (e: unknown) => (e instanceof ApiError && e.status === 401 ? PAIR_ERROR : e instanceof ApiError ? `Server error ${e.status}`
+const errText = (e: unknown) => (e instanceof ApiError && e.status === 401 ? PAIR_ERROR
+  : e instanceof ApiError && e.message === 'stt_not_configured' ? 'Speech-to-text not set up'
+  : e instanceof ApiError ? `Server error ${e.status}`
   : e instanceof NetworkError && e.message === 'timeout' ? 'Server not responding' : 'Offline')
 
 /** A KV read that hangs (bridge storage) must not block loading: fall back after `ms`. */
@@ -87,14 +90,21 @@ export function attendanceChanged(res: Pick<UtteranceResponse, 'cardLines' | 'at
   return res.attendanceChanged ?? res.cardLines.some(l => /^\d+ present$|^√ .+ marked (present|absent)$/.test(l))
 }
 
+/** C6: the stored display mode; anything else (unset, garbage) is the quiet default. */
+export function parseDisplayMode(v: string | null): DisplayMode {
+  return v === 'standard' ? 'standard' : 'quiet'
+}
+
 export async function startLens(d: LensDeps): Promise<LensHandle> {
   const glasses = new Glasses(d.bridge)
   const recorder = new Recorder(d.bridge, { dual: d.micDualStart ?? MIC_DUAL_START })
   const detector = new NodDetector(d.nod)
-  const timers = { status: slot(), timerEnded: slot(), recordMax: slot(), micFallback: slot(), micMeter: slot(), think: slot(), keepWarm: slot(), outboxRetry: slot(), insightPoll: slot(), insightPollLate: slot(), banner: slot() }
+  const timers = { idle: slot(), result: slot(), status: slot(), timerEnded: slot(), recordMax: slot(), micFallback: slot(), micMeter: slot(), think: slot(), keepWarm: slot(), outboxRetry: slot(), insightPoll: slot(), insightPollLate: slot(), banner: slot() }
   const online = () => (d.isOnline ? d.isOnline() : !(typeof navigator !== 'undefined' && navigator.onLine === false))
   /** Flushes reporting on the note just recorded; background retries wait so they never take its reply. */
   let inFlight = 0
+  /** A Retry / Send now that arrived while a note was reporting: run right after it (never dropped). */
+  let reflush: { force: boolean } | null = null
   /** The host backgrounded the app: no keep-warm pings until it resumes. */
   let suspended = false
   let recStartedAt = 0
@@ -126,9 +136,21 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     if (state.active?.drillId !== prev.active?.drillId || state.active?.startedAt !== prev.active?.startedAt) armDrillTimer()
     else if (e.type === 'todayLoaded' && state.active && minutes(state) !== minutes(prev)) armDrillTimer()
     if (state.screen === 'sending' && prev.screen !== 'sending') thinkTicks()
+    displayTimers(prev)
     if (Boolean(state.session) !== Boolean(prev.session)) { keepWarm(); insightPoll() }
     // Entering the wrap-up stops the poll; leaving it with the session still on (end class failed) restarts it.
     else if ((state.screen === 'wrapup') !== (prev.screen === 'wrapup')) insightPoll()
+  }
+
+  /**
+   * C6 quiet mode: the idle display goes dark IDLE_DARK_MS after its LAST change (every change re-arms);
+   * a result card closes RESULT_CARD_MS after it appeared or was paged (agent progress does not re-arm).
+   */
+  function displayTimers(prev: LensState): void {
+    if (autoHides(state)) timers.idle.set(IDLE_DARK_MS, () => dispatch({ type: 'idleTimeout' }))
+    else timers.idle.clear()
+    if (!autoDismisses(state)) timers.result.clear()
+    else if (!timers.result.active || resultKey(state) !== resultKey(prev) || !autoDismisses(prev)) timers.result.set(RESULT_CARD_MS, () => dispatch({ type: 'resultTimeout' }))
   }
 
   /**
@@ -197,9 +219,19 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     try { n = await d.outbox.count() } catch (err) { console.warn('[outbox] count failed', err) }
     armRetry(n)
   }
-  /** A flush nobody waits on (retry timer, `online`, the phone's Retry now); skipped while a note is reporting. */
-  function backgroundFlush(): Promise<void> {
-    return inFlight > 0 ? Promise.resolve() : flush(null)
+  /**
+   * A flush nobody waits on (retry timer, `online`, the phone's Retry). While a note is reporting it is
+   * deferred, not dropped: it runs as soon as that note's flush is done.
+   */
+  function backgroundFlush(force = false): Promise<void> {
+    if (inFlight > 0) { reflush = { force: force || Boolean(reflush?.force) }; return Promise.resolve() }
+    return flush(null, force)
+  }
+  function runDeferredFlush(): void {
+    if (inFlight > 0 || !reflush) return
+    const { force } = reflush
+    reflush = null
+    void flush(null, force)
   }
 
   /** While "sending" is up, step the stage dots every MIC_METER_MS (the reducer advances sending → thinking). */
@@ -234,10 +266,8 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     }
   }
 
-  const sendItem = (i: OutboxItem) => d.api.utterance({
-    sessionId: i.form.sessionId, drillId: i.form.drillId, mode: i.form.mode, text: i.form.text,
-    audio: i.form.audioB64 ? new Blob([fromB64(i.form.audioB64) as BlobPart], { type: 'audio/wav' }) : null,
-  })
+  /** C1: the outbox item id is the operation id, so a retry after a lost reply replays instead of duplicating. */
+  const sendItem = (i: OutboxItem) => sendOutboxItem(d.api, i)
 
   /** The reply to the note just recorded: show it, then follow up on what it changed. */
   function onResult(res: UtteranceResponse): void {
@@ -247,23 +277,38 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     if (attendanceChanged(res)) insightPollSoon()
   }
 
-  /** Flush the outbox; when `currentId` is the note just recorded, report its outcome to the lens. */
-  async function flush(currentId: string | null): Promise<void> {
+  /**
+   * Flush the outbox; when `currentId` is the note just recorded, report its outcome to the lens. A
+   * background flush (no current note) reports what it sent or set aside, so nothing changes unseen (F07).
+   */
+  async function flush(currentId: string | null, force = false, lowEnergy = false): Promise<void> {
     let r: FlushResult
     // The request for the note just recorded is really going out: the stage line moves heard → sending.
     const send = (i: OutboxItem) => { if (i.id === currentId) dispatch({ type: 'sendStarted' }); return sendItem(i) }
-    try { r = await d.outbox.flush(send) } catch (err) {
+    try { r = await d.outbox.flush(send, { force }) } catch (err) {
       console.error('[outbox] flush failed', err)
       if (currentId) dispatch({ type: 'utteranceQueued' })
       return
     }
-    if (!currentId) return
+    if (!currentId) {
+      const sent = r.results.size + r.delivered.size
+      if (sent || r.failed.size) dispatch({ type: 'outboxSynced', sent, failed: r.failed.size })
+      return
+    }
+    reportCurrent(r, currentId, lowEnergy)
+    // Older notes that went through or were set aside in the same flush get a status line too (not just the badge).
+    const othersFailed = [...r.failed.keys()].filter(id => id !== currentId).length
+    if (othersFailed) dispatch({ type: 'outboxSynced', sent: 0, failed: othersFailed })
+  }
+  function reportCurrent(r: FlushResult, currentId: string, lowEnergy: boolean): void {
     const res = r.results.get(currentId)
     if (res) return onResult(res)
     if (r.delivered.has(currentId)) return dispatch({ type: 'utteranceDelivered' }) // saved; reply unreadable
-    // Dropped = the server rejected it (422 empty transcript, other 4xx, or retries exhausted): nothing was saved.
-    if (r.dropped.has(currentId)) return dispatch({ type: 'utteranceEmpty', reason: 'not_understood' })
-    dispatch({ type: 'utteranceQueued' }) // still in the outbox (offline / 5xx / not paired)
+    const failed = r.failed.get(currentId)
+    // Rejected as invalid: kept in the failed store. Only an empty transcript means "not understood"
+    // ("couldn't hear you" when the audio was also low-energy).
+    if (failed) return dispatch(failed.status === 422 && /empty|transcript/i.test(failed.code) ? { type: 'utteranceEmpty', reason: lowEnergy ? 'quiet' : 'not_understood' } : { type: 'utteranceFailed', reason: failed.reason })
+    dispatch({ type: 'utteranceQueued', reason: r.retrying.get(currentId) }) // still queued, with the true reason
   }
 
   /**
@@ -295,7 +340,8 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     }
     const base = { sessionId: eff.sessionId, drillId: eff.drillId, mode: eff.mode }
     inFlight += 1 // before the enqueue: no background flush may take this note's reply
-    try { return await sendNote(res.wav, base) } finally { inFlight -= 1 }
+    // Low speech energy is NOT a reason to drop the audio (the gate is uncalibrated): the server decides.
+    try { return await sendNote(res.wav, base, Boolean(res.lowEnergy)) } finally { inFlight -= 1; runDeferredFlush() }
   }
 
   /**
@@ -303,30 +349,34 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
    * window loses nothing. Transcribe answered → the same item becomes the text note (exactly one item);
    * failed/slow → the hold is released and the audio goes. Offline → the audio is queued unheld.
    */
-  async function sendNote(wav: Uint8Array, base: Pick<OutboxForm, 'sessionId' | 'drillId' | 'mode'>): Promise<void> {
+  async function sendNote(wav: Uint8Array, base: Pick<OutboxForm, 'sessionId' | 'drillId' | 'mode'>, lowEnergy = false): Promise<void> {
     const audio: OutboxForm = { ...base, audioB64: toB64(wav), text: null }
     const tryText = online() && typeof d.api.transcribe === 'function'
     let item: OutboxItem
     try { item = await d.outbox.enqueue(audio, tryText ? { holdUntil: Date.now() + HOLD_MS } : {}) } catch (err) {
-      // Storage failed: try once directly so the note is not silently lost.
+      // Storage failed or the unsent-notes budget is full: try once directly so the note is not silently lost;
+      // if that fails too, say exactly why (never a quiet drop).
       console.error('[outbox] enqueue failed', err)
+      const full = err instanceof OutboxFullError
       dispatch({ type: 'sendStarted' })
       let res: UtteranceResponse
-      try { res = await sendItem({ id: 'direct', createdAt: Date.now(), attempts: 0, form: audio }) } catch { return dispatch({ type: 'utteranceEmpty', reason: 'not_understood' }) }
+      try { res = await sendItem({ id: crypto.randomUUID(), createdAt: Date.now(), attempts: 0, form: audio }) } catch (e) {
+        return dispatch({ type: 'utteranceFailed', reason: `${full ? 'unsent notes full' : 'phone storage failed'} · ${errText(e)} · not saved` })
+      }
       return onResult(res)
     }
     if (tryText) {
       const heard = await transcriptFirst(wav, base.sessionId)
       if (heard === 'empty') {
         await d.outbox.drop(item.id).catch(err => console.warn('[outbox] drop failed (the server will reject it)', err))
-        return dispatch({ type: 'utteranceEmpty', reason: 'not_understood' })
+        return dispatch({ type: 'utteranceEmpty', reason: lowEnergy ? 'quiet' : 'not_understood' })
       }
       const settle = heard ? d.outbox.swap(item.id, { ...base, audioB64: null, text: heard.text }) : d.outbox.unhold(item.id)
       // A failed write leaves the hold to expire on its own: the audio still goes on a later flush.
       const swapped = await settle.catch(err => { console.warn('[outbox] update failed', err); return false })
       if (heard && swapped) dispatch({ type: 'transcriptReady', transcript: heard.text })
     }
-    return flush(item.id)
+    return flush(item.id, false, lowEnergy)
   }
 
   async function loadToday(): Promise<void> {
@@ -443,8 +493,15 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
         return
       }
       case 'undo': {
-        const r = await d.api.undo(eff.utteranceId)
-        if (r.coverage) dispatch({ type: 'coverageUpdated', coverage: r.coverage, nextStudent: state.nextStudent })
+        // F02: the lens shows "Undoing…" until this answers; then exactly what the server reversed.
+        try {
+          const r = await d.api.undo(eff.utteranceId)
+          dispatch({ type: 'undoResult', utteranceId: eff.utteranceId, res: { reversed: r.reversed, cancelled: r.cancelled, notReversible: r.notReversible } })
+          if (r.coverage) dispatch({ type: 'coverageUpdated', coverage: r.coverage, nextStudent: state.nextStudent })
+        } catch (e) {
+          const kind = e instanceof ApiError && e.status === 409 ? 'already' : e instanceof ApiError && e.status === 404 ? 'missing' : 'error'
+          dispatch({ type: 'undoFailed', utteranceId: eff.utteranceId, kind, message: errText(e) })
+        }
         return
       }
       case 'endSession': {
@@ -542,12 +599,19 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
       void paint()
     }
   })
-  const offPaired = bus.on('paired', () => dispatch({ type: 'resumed' }))
+  // Re-paired after a 401: notes held back as "unpaired" go now (backoff cleared, forced flush).
+  const offPaired = bus.on('paired', () => {
+    dispatch({ type: 'resumed' })
+    void d.outbox.resetBackoff().catch(err => console.warn('[outbox] reset failed', err)).then(() => backgroundFlush(true))
+  })
+  const offUsage = bus.on('outboxUsage', u => dispatch({ type: 'storageChanged', fraction: u.fraction }))
   const offStart = bus.on('startClass', () => dispatch({ type: 'startRequested' }))
   const offClass = bus.on('classChanged', () => { void run({ type: 'loadToday' }) })
   const offDeck = bus.on('deckChanged', () => { void run({ type: 'loadToday' }) }) // phone edited/accepted a plan: the lens reloads it
   const offOutbox = bus.on('outboxChanged', count => { dispatch({ type: 'outboxChanged', count }); armRetry(count) })
-  const offRetry = bus.on('outboxRetry', () => { void backgroundFlush() }) // phone "Retry now"
+  const offRetry = bus.on('outboxRetry', () => { void backgroundFlush(true) }) // phone "Retry": ignores the backoff
+  const offFailed = bus.on('outboxFailedChanged', count => dispatch({ type: 'failedChanged', count }))
+  const offDisplay = bus.on('displayModeChanged', mode => dispatch({ type: 'displayModeLoaded', mode }))
   const onOnline = () => { void backgroundFlush() }
   const win = typeof window !== 'undefined' ? window : null
   win?.addEventListener('online', onOnline)
@@ -568,11 +632,14 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
   void syncImu() // IMU on from lens start (nod works on home too); off on exit
   void run({ type: 'flushOutbox' })
   void d.outbox.count().then(n => bus.emit('outboxChanged', n), err => console.warn('[outbox] count failed', err)) // lens + phone start from the real count
+  void d.outbox.failed().then(f => bus.emit('outboxFailedChanged', f.length), err => console.warn('[outbox] failed-store read failed', err))
+  void d.outbox.usage().then(u => bus.emit('outboxUsage', u), err => console.warn('[outbox] usage read failed', err))
+  void kvGet(d.kv, KEYS.displayMode).then(v => { const mode = parseDisplayMode(v); if (mode !== state.displayMode) dispatch({ type: 'displayModeLoaded', mode }) })
 
   return {
     dispatch,
     stop() {
-      unsubscribe(); offPaired(); offStart(); offClass(); offDeck(); offOutbox(); offRetry(); if (tick) clearTimeout(tick)
+      unsubscribe(); offPaired(); offStart(); offClass(); offDeck(); offOutbox(); offRetry(); offFailed(); offDisplay(); offUsage(); if (tick) clearTimeout(tick)
       win?.removeEventListener('online', onOnline)
       exited = true
       void setImu(false)

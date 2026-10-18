@@ -7,37 +7,141 @@ export type OutboxForm = { sessionId: string; drillId: string | null; mode: 'not
 /**
  * `holdUntil`: not sent before this time (ms) — the audio waits while transcript-first may swap it to
  * text. A flush stops at a held head (keeps order); after a kill/restart the hold has expired.
+ * `nextAttemptAt`: backoff after a temporary failure (Retry-After or exponential); a forced flush ignores it.
+ * `lastError`: why the last attempt did not go through, for the phone's Unsent notes panel.
  */
-export type OutboxItem = { id: string; createdAt: number; attempts: number; form: OutboxForm; holdUntil?: number }
-/** `delivered`: the server accepted the item but its reply was unreadable (no result; never retried). */
-export type FlushResult = { results: Map<string, UtteranceResponse>; dropped: Map<string, number>; delivered: Set<string>; remaining: number }
-const MAX_ATTEMPTS = 5
+export type OutboxItem = { id: string; createdAt: number; attempts: number; form: OutboxForm; holdUntil?: number; nextAttemptAt?: number; lastError?: RetryReason }
 
-/** Last outbox count announced on the bus (0 until the first change): a screen mounting late starts from it. */
+/** Why an item is still waiting: every one of these is temporary and the item is kept. */
+export type RetryReason = 'offline' | 'rate_limited' | 'server' | 'unpaired' | 'in_progress' | 'app_error' | 'stt_unavailable'
+/** A permanent rejection (invalid input): the item moves to the failed store, kept with its reason, never deleted silently. */
+export type FailedInfo = { status: number; code: string; reason: string }
+export type FailedItem = OutboxItem & { failedAt: number; failure: FailedInfo }
+
+/**
+ * `results`: replies (a C1 replay counts as a reply). `failed`: moved to the failed store by this flush.
+ * `delivered`: the server accepted the item but its reply was unreadable (no result; never retried).
+ * `retrying`: still queued after a temporary failure, with why. `remaining` / `failedCount`: store sizes after.
+ */
+export type FlushResult = {
+  results: Map<string, UtteranceResponse>; failed: Map<string, FailedInfo>; delivered: Set<string>
+  retrying: Map<string, RetryReason>; remaining: number; failedCount: number
+}
+
+/** First backoff step after a temporary failure; doubles per attempt up to MAX_BACKOFF_MS. */
+export const BASE_BACKOFF_MS = 2_000
+export const MAX_BACKOFF_MS = 5 * 60_000
+/** Unknown (non-HTTP) errors this many times: the item moves to the failed store (kept) so it can't block the queue. */
+export const MAX_APP_ERRORS = 5
+
+export function backoffMs(attempts: number): number {
+  return Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** Math.max(0, attempts - 1))
+}
+
+/** The true reason in words (never "didn't catch that" for a network or server failure). */
+export function retryText(r: RetryReason | undefined): string {
+  switch (r) {
+    case 'offline': return 'Offline · sends when connected'
+    case 'rate_limited': return 'Server busy · retrying'
+    case 'server': return 'Server error · retrying'
+    case 'unpaired': return 'Not paired · pair to send'
+    case 'in_progress': return 'Server still saving · checking'
+    case 'app_error': return 'Couldn’t send · retrying'
+    case 'stt_unavailable': return 'Speech-to-text is not set up on the server'
+    default: return 'Waiting to send'
+  }
+}
+
+/** A permanent 4xx (or a repeated app error): the reason kept in the failed store. */
+export function failureFor(status: number, code: string): FailedInfo {
+  if (status === 422 && /empty|transcript/i.test(code)) return { status, code, reason: 'Nothing was heard in this recording' }
+  if (status === 413) return { status, code, reason: 'Recording too large to send' }
+  if (status === 400 || status === 422) return { status, code, reason: `The server rejected this note (${code || status})` }
+  if (status === 404) return { status, code, reason: 'Its class session no longer exists' }
+  if (status === 403) return { status, code, reason: 'Not allowed for this account' }
+  if (status === 0) return { status, code, reason: `Couldn’t send (app error: ${code || 'unknown'})` }
+  return { status, code, reason: `Rejected by the server (${status}${code ? ` ${code}` : ''})` }
+}
+
+/** Temporary: kept and retried. 409 is temporary only as C1's `in_progress`. */
+function transient(e: ApiError): RetryReason | null {
+  if (e.status === 401) return 'unpaired'
+  if (e.status === 429) return 'rate_limited'
+  if (e.status === 503 && e.message === 'stt_not_configured') return 'stt_unavailable'
+  if (e.status === 409 && e.message === 'in_progress') return 'in_progress'
+  if (e.status >= 500 || e.status === 408 || e.status === 425) return 'server'
+  return null
+}
+
+/** Last outbox counts announced on the bus (0 until the first change): a screen mounting late starts from them. */
 let knownCount = 0
+let knownFailed = 0
 bus.on('outboxChanged', n => { knownCount = n })
+bus.on('outboxFailedChanged', n => { knownFailed = n })
 export const knownOutboxCount = (): number => knownCount
+export const knownFailedCount = (): number => knownFailed
+
+const parse = <T>(raw: string | null): T[] => { try { return raw ? (JSON.parse(raw) as T[]) : [] } catch { return [] } }
+
+/**
+ * Storage budget for both stores together (serialized JSON chars ≈ bytes). Queued audio is base64 WAV
+ * (a 20 s note ≈ 850 KB), and the Even app's bridge storage is not unlimited, so the queue must never grow
+ * until a write fails. At OUTBOX_WARN_FRACTION the lens and phone warn; at the budget a NEW audio note is
+ * refused before recording (the lens says so) and `enqueue` rejects with OutboxFullError, which the caller
+ * turns into a direct send or a visible failure. Nothing already stored is ever evicted automatically:
+ * only the coach's Discard (or a successful send) frees space.
+ */
+export const OUTBOX_BUDGET_BYTES = 6 * 1024 * 1024
+export const OUTBOX_WARN_FRACTION = 0.7
+export class OutboxFullError extends Error { constructor() { super('outbox_full') } }
+/** Storage use after the last change: `fraction` of OUTBOX_BUDGET_BYTES. */
+export type OutboxUsage = { bytes: number; budget: number; fraction: number }
+let knownUsage: OutboxUsage = { bytes: 0, budget: OUTBOX_BUDGET_BYTES, fraction: 0 }
+bus.on('outboxUsage', u => { knownUsage = u })
+export const knownOutboxUsage = (): OutboxUsage => knownUsage
+
+/** A note with a transcript never keeps its audio (the transcript is what is sent; audio is the expensive part). */
+const slim = (form: OutboxForm): OutboxForm => (form.text && form.audioB64 ? { ...form, audioB64: null } : form)
 
 export class Outbox {
   private busy: Promise<unknown> = Promise.resolve()
-  constructor(private kv: KV) {}
+  constructor(private kv: KV, private now: () => number = Date.now, private budget = OUTBOX_BUDGET_BYTES) {}
+
+  /** Bytes both stores take now, against the budget. */
+  async usage(): Promise<OutboxUsage> {
+    const [q, f] = await Promise.all([this.kv.get(KEYS.outbox), this.kv.get(KEYS.outboxFailed)])
+    return this.usageOf((q ?? '').length + (f ?? '').length)
+  }
+  private usageOf(bytes: number): OutboxUsage { return { bytes, budget: this.budget, fraction: bytes / this.budget } }
+  /** True when a new audio note of about `bytes` would not fit (the lens refuses to record instead of losing it later). */
+  async wouldOverflow(bytes = 0): Promise<boolean> { const u = await this.usage(); return u.bytes + bytes >= u.budget }
 
   /** Notes waiting to send. */
   async count(): Promise<number> { return (await this.list()).length }
+  async list(): Promise<OutboxItem[]> { return parse<OutboxItem>(await this.kv.get(KEYS.outbox)) }
+  /** Notes the server rejected as invalid: kept with their reason until the coach retries or discards them. */
+  async failed(): Promise<FailedItem[]> { return parse<FailedItem>(await this.kv.get(KEYS.outboxFailed)) }
 
-  async list(): Promise<OutboxItem[]> {
-    const raw = await this.kv.get(KEYS.outbox)
-    try { return raw ? (JSON.parse(raw) as OutboxItem[]) : [] } catch { return [] }
-  }
-  // Short mutex for read-modify-write on storage; separate from flush serialization so
-  // enqueue never waits on a slow network send. Every saved change announces the new count.
+  // Short mutex for read-modify-write on storage (both stores); separate from flush serialization so
+  // enqueue never waits on a slow network send. Every saved change announces the new counts.
   private lock: Promise<unknown> = Promise.resolve()
-  private mutate<T>(fn: (items: OutboxItem[]) => { items: OutboxItem[]; value: T }): Promise<T> {
+  private mutate<T>(fn: (items: OutboxItem[], failed: FailedItem[]) => { items: OutboxItem[]; failed?: FailedItem[]; value: T }, o: { budgetCheck?: boolean } = {}): Promise<T> {
     const run = this.lock.then(async () => {
-      const before = await this.list()
-      const { items, value } = fn(before)
-      await this.kv.set(KEYS.outbox, JSON.stringify(items))
+      const qRaw = await this.kv.get(KEYS.outbox)
+      const fRaw = await this.kv.get(KEYS.outboxFailed)
+      const before = parse<OutboxItem>(qRaw)
+      const failedBefore = parse<FailedItem>(fRaw)
+      const { items, failed, value } = fn(before, failedBefore)
+      const qJson = items === before ? (qRaw ?? '[]') : JSON.stringify(items)
+      const fJson = failed ? JSON.stringify(failed) : (fRaw ?? '')
+      const usage = this.usageOf(qJson.length + fJson.length)
+      if (o.budgetCheck && usage.bytes > this.budget) throw new OutboxFullError() // nothing written; the caller sends directly or says so
+      // Failed store first: an item moving queue → failed is never absent from both. Unchanged stores are not rewritten.
+      if (failed) await this.kv.set(KEYS.outboxFailed, fJson)
+      if (items !== before) await this.kv.set(KEYS.outbox, qJson)
       if (items.length !== before.length) bus.emit('outboxChanged', items.length)
+      if (failed && failed.length !== failedBefore.length) bus.emit('outboxFailedChanged', failed.length)
+      if (items !== before || failed) bus.emit('outboxUsage', usage)
       return value
     })
     this.lock = run.catch(() => undefined)
@@ -45,15 +149,15 @@ export class Outbox {
   }
 
   enqueue(form: OutboxForm, opts: { holdUntil?: number } = {}): Promise<OutboxItem> {
-    const item: OutboxItem = { id: crypto.randomUUID(), createdAt: Date.now(), attempts: 0, form, ...(opts.holdUntil ? { holdUntil: opts.holdUntil } : {}) }
-    return this.mutate(items => ({ items: [...items, item], value: item }))
+    const item: OutboxItem = { id: crypto.randomUUID(), createdAt: this.now(), attempts: 0, form: slim(form), ...(opts.holdUntil ? { holdUntil: opts.holdUntil } : {}) }
+    return this.mutate(items => ({ items: [...items, item], value: item }), { budgetCheck: true })
   }
 
-  /** Replace an item's form (e.g. audio → text) and release its hold. False if the item is gone (already sent/dropped). */
+  /** Replace an item's form (e.g. audio → text) and release its hold. False if the item is gone (already sent/failed). */
   swap(id: string, form: OutboxForm): Promise<boolean> {
     return this.mutate(items => {
       const found = items.some(i => i.id === id)
-      return { items: items.map(i => (i.id === id ? { id: i.id, createdAt: i.createdAt, attempts: i.attempts, form } : i)), value: found }
+      return { items: items.map(i => (i.id === id ? { id: i.id, createdAt: i.createdAt, attempts: i.attempts, form: slim(form) } : i)), value: found }
     })
   }
 
@@ -65,25 +169,69 @@ export class Outbox {
     })
   }
 
-  /** Remove an item without sending it. False if it was already gone. */
+  /** Remove a queued item without sending it (transcribe heard nothing, or the coach discarded it). False if already gone. */
   drop(id: string): Promise<boolean> {
     return this.mutate(items => ({ items: items.filter(i => i.id !== id), value: items.some(i => i.id === id) }))
   }
 
-  private remove(id: string) { return this.mutate(items => ({ items: items.filter(i => i.id !== id), value: undefined })) }
-  private bump(id: string): Promise<number> {
-    return this.mutate(items => {
-      const attempts = (items.find(i => i.id === id)?.attempts ?? 0) + 1
-      return { items: attempts >= MAX_ATTEMPTS ? items.filter(i => i.id !== id) : items.map(i => (i.id === id ? { ...i, attempts } : i)), value: attempts }
+  /** The coach chose Retry on a failed note: back to the end of the queue with a clean slate (same id = same C1 key). */
+  retryFailed(id: string): Promise<boolean> {
+    return this.mutate((items, failed) => {
+      const f = failed.find(x => x.id === id)
+      if (!f) return { items, value: false }
+      const back: OutboxItem = { id: f.id, createdAt: f.createdAt, attempts: 0, form: f.form }
+      return { items: [...items, back], failed: failed.filter(x => x.id !== id), value: true }
     })
   }
 
-  // Serialized: never two flushes at once. Stops at the first network/5xx/429/401/unknown failure to keep order.
-  flush(send: (i: OutboxItem) => Promise<UtteranceResponse>): Promise<FlushResult> {
+  /** After re-pairing (401 fixed) or the coach's Retry: every queued note may go now (backoff cleared). */
+  resetBackoff(): Promise<number> {
+    return this.mutate(items => {
+      const waiting = items.filter(i => i.nextAttemptAt)
+      if (!waiting.length) return { items, value: 0 }
+      return { items: items.map(i => { if (!i.nextAttemptAt) return i; const { nextAttemptAt: _n, ...rest } = i; return rest }), value: waiting.length }
+    })
+  }
+
+  /** The coach chose Discard on a failed note: the only way a failed note is deleted. */
+  discardFailed(id: string): Promise<boolean> {
+    return this.mutate((items, failed) => ({ items, failed: failed.filter(x => x.id !== id), value: failed.some(x => x.id === id) }))
+  }
+
+  private remove(id: string) { return this.mutate(items => ({ items: items.filter(i => i.id !== id), value: undefined })) }
+
+  private toFailed(id: string, failure: FailedInfo) {
+    return this.mutate((items, failed) => {
+      const it = items.find(i => i.id === id)
+      if (!it) return { items, value: undefined }
+      return { items: items.filter(i => i.id !== id), failed: [...failed, { ...it, form: slim(it.form), failedAt: this.now(), failure }], value: undefined }
+    })
+  }
+
+  /** A temporary failure: count it, wait (Retry-After or exponential backoff), remember why. Offline is not counted. */
+  private defer(id: string, reason: RetryReason, retryAfterMs?: number): Promise<number> {
+    return this.mutate(items => {
+      const cur = items.find(i => i.id === id)
+      // Offline again with nothing new to record: leave storage alone (no rewrite of the queue).
+      if (cur && reason === 'offline' && cur.lastError === 'offline' && !cur.nextAttemptAt) return { items, value: cur.attempts }
+      const attempts = (cur?.attempts ?? 0) + (reason === 'offline' ? 0 : 1)
+      const wait = reason === 'offline' ? 0 : retryAfterMs ?? backoffMs(attempts)
+      const next = (i: OutboxItem): OutboxItem => {
+        const { nextAttemptAt: _old, ...rest } = i
+        return { ...rest, attempts, lastError: reason, ...(wait ? { nextAttemptAt: this.now() + wait } : {}) }
+      }
+      return { items: items.map(i => (i.id === id ? next(i) : i)), value: attempts }
+    })
+  }
+
+  /**
+   * Serialized: never two flushes at once. Stops at the first temporary failure (and at a head still in
+   * backoff) to keep order; `force` (the coach's Retry) ignores the backoff. Only a permanent rejection
+   * moves an item aside (to the failed store, kept), so the queue carries on.
+   */
+  flush(send: (i: OutboxItem) => Promise<UtteranceResponse>, opts: { force?: boolean } = {}): Promise<FlushResult> {
     const run = this.busy.then(async () => {
-      const results = new Map<string, UtteranceResponse>()
-      const dropped = new Map<string, number>()
-      const delivered = new Set<string>()
+      const r: FlushResult = { results: new Map(), failed: new Map(), delivered: new Set(), retrying: new Map(), remaining: 0, failedCount: 0 }
       const persist = async (fn: () => Promise<unknown>): Promise<boolean> => {
         try { await fn(); return true } catch (err) { console.error('[outbox] persist failed', err); return false }
       }
@@ -91,36 +239,44 @@ export class Outbox {
         let head: OutboxItem | undefined
         try { head = (await this.list())[0] } catch (err) { console.error('[outbox] read failed', err); break }
         if (!head) break
-        if (head.holdUntil && head.holdUntil > Date.now()) break // held (transcript-first may still swap it): keep order
+        if (head.holdUntil && head.holdUntil > this.now()) break // held (transcript-first may still swap it): keep order
+        if (!opts.force && head.nextAttemptAt && head.nextAttemptAt > this.now()) { r.retrying.set(head.id, head.lastError ?? 'server'); break }
         const id = head.id
         let sent: UtteranceResponse
         try {
           sent = await send(head)
         } catch (e) {
           if (e instanceof BadResponseError) { // saved on the server, reply unreadable: done, never resend (no duplicates)
-            delivered.add(id)
+            r.delivered.add(id)
             if (!(await persist(() => this.remove(id)))) break
             continue
           }
-          if (e instanceof ApiError && e.status === 401) break // needs re-pairing; keep the item
-          if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429) {
-            dropped.set(id, e.status)
-            if (!(await persist(() => this.remove(id)))) break
+          if (e instanceof NetworkError) { r.retrying.set(id, 'offline'); await persist(() => this.defer(id, 'offline')); break }
+          if (e instanceof ApiError) {
+            const why = transient(e)
+            if (why) { r.retrying.set(id, why); await persist(() => this.defer(id, why, e.retryAfterMs)); break }
+            const f = failureFor(e.status, e.message)
+            r.failed.set(id, f)
+            if (!(await persist(() => this.toFailed(id, f)))) break
             continue
           }
-          if (e instanceof NetworkError) break // offline: keep, uncounted
-          // 5xx, 429, or any unknown error: counted retry, stop to keep order
+          // Unknown (a bug or a malformed item): retried with backoff, then set aside (kept) so it can't block the queue.
           let attempts = 0
-          if (!(await persist(async () => { attempts = await this.bump(id) }))) break
-          if (attempts >= MAX_ATTEMPTS) { dropped.set(id, e instanceof ApiError ? e.status : 0); continue }
+          if (!(await persist(async () => { attempts = await this.defer(id, 'app_error') }))) break
+          if (attempts >= MAX_APP_ERRORS) {
+            const f = failureFor(0, e instanceof Error ? e.message : 'unknown')
+            r.failed.set(id, f)
+            if (!(await persist(() => this.toFailed(id, f)))) break
+            continue
+          }
+          r.retrying.set(id, 'app_error')
           break
         }
-        results.set(id, sent)
+        r.results.set(id, sent)
         if (!(await persist(() => this.remove(id)))) break
       }
-      let remaining = 0
-      try { remaining = (await this.list()).length } catch { /* keep 0 */ }
-      return { results, dropped, delivered, remaining }
+      try { r.remaining = (await this.list()).length; r.failedCount = (await this.failed()).length } catch { /* keep 0 */ }
+      return r
     })
     this.busy = run.catch(() => undefined)
     return run

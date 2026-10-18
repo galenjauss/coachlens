@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Insight, Today } from '@matside/shared'
 import { INSIGHT_BANNER_MS, INSIGHT_GLYPH } from '../config'
 import { topInsight } from './insights'
-import { BANNER_HIDDEN, STATUS_MS, initialState, reduce } from './reducer'
+import { STATUS_MS, initialState, reduce } from './reducer'
 import { ANSWER_HEADER, BRIEF_HINT, INSIGHT_HINT, remindHint, render, summaryRow, type PageSpec } from './render'
 import type { Card, LensEvent, LensState } from './state'
 import { colsFor, fitNames, rowsFor } from './text'
@@ -47,7 +47,7 @@ describe('mid-class insight banner', () => {
     expect(r.state.insightUnseen.map(i => i.id)).toEqual(['a'])
     p = render(r.state, 0)
     expect(txt(p, 'hdr')).toBe(render(peekState, 0).texts[0]!.content) // the class header is back
-    expect(txt(p, 'next')).toBe(`> Next feedback: Priya (guard) ${INSIGHT_GLYPH}1`)
+    expect(txt(p, 'next')).toBe(`> Next to note: Priya (guard) ${INSIGHT_GLYPH}1`)
   })
 
   it('a poll never re-shows a known item; low urgency and handled items never banner', () => {
@@ -60,14 +60,12 @@ describe('mid-class insight banner', () => {
     expect(second.insightUnseen.map(i => i.id)).toEqual(['b'])
   })
 
-  it('tap on the banner dismisses it (no recording); swipe opens the detail', () => {
+  it('C6: tap on the banner records (the banner waits behind ★); swipe opens the detail', () => {
     const shown = run(peekState, polled(ins('a'))).state
     const tapped = run(shown, { type: 'tap' })
-    expect(tapped.state).toMatchObject({ screen: 'peek', insightBanner: null, insightUnseen: [], status: BANNER_HIDDEN, pending: null })
-    expect(tapped.effects).toEqual([{ type: 'expireStatus', ms: STATUS_MS }]) // no startMic: the tap hid the banner
-    expect(BANNER_HIDDEN).toBe('Insight hidden · tap to record')
-    expect(txt(render(tapped.state, 0), 'next')).toBe(BANNER_HIDDEN)
-    expect(run(tapped.state, { type: 'tap' }).state.screen).toBe('recording') // the next tap records
+    expect(tapped.state).toMatchObject({ screen: 'recording', insightBanner: null })
+    expect(tapped.state.insightUnseen.map(i => i.id)).toEqual(['a'])
+    expect(tapped.effects).toContainEqual({ type: 'startMic' })
     const swiped = run(shown, { type: 'swipeDown' })
     expect(swiped.state).toMatchObject({ screen: 'insight', insightBanner: null })
     expect(swiped.state.insightDetail?.id).toBe('a')
@@ -75,8 +73,8 @@ describe('mid-class insight banner', () => {
     expect(txt(p, 'hdr')).toBe(`${INSIGHT_GLYPH} INSIGHT · Jake · Plan focus on phone`)
     expect(txt(p, 'body')).toContain('Jake: no feedback in 3 classes')
     expect(txt(p, 'foot')).toBe(INSIGHT_HINT)
-    expect(run(swiped.state, { type: 'tap' }).state).toMatchObject({ screen: 'peek', insightDetail: null })
-    expect(run(swiped.state, { type: 'swipeUp' }).state.screen).toBe('deck')
+    expect(run(swiped.state, { type: 'tap' }).state).toMatchObject({ screen: 'recording', insightDetail: null })
+    expect(run(swiped.state, { type: 'swipeUp' }).state).toMatchObject({ screen: 'peek', insightDetail: null })
   })
 
   it('long-press or double-tap still work while the banner is up (it collapses to the suffix)', () => {
@@ -139,11 +137,11 @@ describe('mid-class insight banner', () => {
   it('dismissing the card to peek promotes a pending high insight; with none pending it is a plain peek', () => {
     const card: Card = { lines: ['√ Jake · present'], transcript: 'mark Jake present', utteranceId: 'u', runs: null, runsFinal: false, page: 0 }
     const onCard = run({ ...peekState, screen: 'card', card }, polled(ins('a'))).state
-    const r = reduce(onCard, { type: 'tap' })
+    const r = reduce(onCard, { type: 'resultTimeout' }) // quiet: the card closes itself (a tap would also start a note)
     expect(r.state).toMatchObject({ screen: 'peek', card: null, insightUnseen: [] })
     expect(r.state.insightBanner?.id).toBe('a')
     expect(r.effects).toEqual([{ type: 'expireBanner', ms: INSIGHT_BANNER_MS }])
-    const plain = reduce({ ...peekState, screen: 'card', card }, { type: 'tap' })
+    const plain = reduce({ ...peekState, screen: 'card', card }, { type: 'resultTimeout' })
     expect(plain.state).toMatchObject({ screen: 'peek', insightBanner: null })
     expect(plain.effects).toEqual([])
   })
@@ -194,7 +192,7 @@ describe('end-of-class summary', () => {
     expect(st.wrapupInsight?.id).toBe('now') // this session's first, even when an older one is high
     const p = render(st, 0)
     expect(txt(p, 'body')!.split('\n')).toEqual([
-      '40 min · 6 drills · 9/12 got feedback',
+      '40 min · 6 drills · 9/12 with a note',
       'Missed: Jake, Mia, Leo',
       '7 agent actions · 3 to review',
       `${INSIGHT_GLYPH} Leo hit a new PR`,
@@ -204,7 +202,7 @@ describe('end-of-class summary', () => {
   })
   it('without an insight it is 3 rows; nobody missed means tap is just done', () => {
     const p = render({ ...atWrap, wrapup: { ...wrapup, missed: [], drillsRun: 1, agentActions: 1 } }, 0)
-    expect(txt(p, 'body')).toBe('40 min · 1 drill · 9/12 got feedback\nMissed: nobody!\n1 agent action · 3 to review')
+    expect(txt(p, 'body')).toBe('40 min · 1 drill · 9/12 with a note\nMissed: nobody!\n1 agent action · 3 to review')
     expect(txt(p, 'foot')).toBe('tap: done')
   })
   it('tap = remind (missed first next class) and home; double-tap = home; insights are cleared', () => {
@@ -223,15 +221,15 @@ describe('end-of-class summary', () => {
     for (const n of [['A'], ['Jake', 'Mia', 'Leo', 'Ann'], ['Christopher', 'Bo']]) expect(remindHint(n).length).toBeLessThanOrEqual(colsFor(576))
     expect(fitNames(['Jake', 'Mia', 'Leo'], 12)).toBe('Jake, Mia +1')
   })
-  it('row 1 never cuts the feedback count: "fed back" when "got feedback" does not fit, then the time is cut', () => {
+  it('row 1 never cuts the feedback count: "noted" when "with a note" does not fit, then the time is cut', () => {
     const big = { ...wrapup, minutes: 120, drillsRun: 12, coverage: { covered: 10, present: 12 } }
-    expect(`120 min · 12 drills · 10/12 got feedback`.length).toBeGreaterThan(colsFor(576, true))
-    expect(summaryRow(big)).toBe('120 min · 12 drills · 10/12 fed back')
-    expect(txt(render({ ...atWrap, wrapup: big }, 0), 'body')!.split('\n')[0]).toBe('120 min · 12 drills · 10/12 fed back')
-    expect(summaryRow(wrapup)).toBe('40 min · 6 drills · 9/12 got feedback')
+    expect(`120 min · 12 drills · 10/12 with a note`.length).toBeGreaterThan(colsFor(576, true))
+    expect(summaryRow(big)).toBe('120 min · 12 drills · 10/12 noted')
+    expect(txt(render({ ...atWrap, wrapup: big }, 0), 'body')!.split('\n')[0]).toBe('120 min · 12 drills · 10/12 noted')
+    expect(summaryRow(wrapup)).toBe('40 min · 6 drills · 9/12 with a note')
     const huge = { ...wrapup, minutes: 1200, drillsRun: 120, coverage: { covered: 100, present: 120 } }
-    expect(summaryRow(huge, 30)).toBe('1200 min… · 100/120 fed back') // drills cut at a word boundary, count intact
-    expect(summaryRow(huge, 30).endsWith(' · 100/120 fed back')).toBe(true)
+    expect(summaryRow(huge, 30)).toBe('1200 min… · 100/120 noted') // drills cut at a word boundary, count intact
+    expect(summaryRow(huge, 30).endsWith(' · 100/120 noted')).toBe(true)
     expect(summaryRow(huge, 30).length).toBeLessThanOrEqual(30)
   })
   it('a late wrap-up insight after the coach left the screen is ignored', () => {
@@ -250,7 +248,7 @@ describe('student brief on the agent card', () => {
     let p = render(st, 0)
     expect(txt(p, 'hdr')).toBe('1/2 swipe · Jake · green belt')
     expect(txt(p, 'said')).toBe(brief.lines.join('\n'))
-    expect(txt(p, 'agents')).toBe(`${BRIEF_HINT}\ntap: close · 2×: undo`)
+    expect(txt(p, 'agents')).toBe(`${BRIEF_HINT}\ntap: note · 2×: undo`)
     st = run(st, { type: 'swipeDown' }).state
     expect(st.card?.page).toBe(1)
     p = render(st, 0)
@@ -264,7 +262,7 @@ describe('student brief on the agent card', () => {
     const st = run(sending, { type: 'utteranceResult', res: { ...res, brief: undefined } }).state
     expect(st.card?.brief).toBeNull()
     expect(txt(render(st, 0), 'said')).toBe('"how is Jake doing"')
-    expect(reduce(st, { type: 'swipeDown' }).state).toBe(st)
+    expect(reduce(st, { type: 'swipeDown' }).state.screen).toBe('peek') // quiet: a swipe on a one-page card closes it
   })
 })
 
@@ -277,7 +275,7 @@ describe('class-question answer on the agent card', () => {
     let p = render(st, 0)
     expect(txt(p, 'hdr')).toBe(`1/2 swipe · ${ANSWER_HEADER}`)
     expect(txt(p, 'said')).toBe('Guard: Priya (3), Leo (2), Sam (1)')
-    expect(txt(p, 'agents')).toBe(`${BRIEF_HINT}\ntap: close · 2×: undo`)
+    expect(txt(p, 'agents')).toBe(`${BRIEF_HINT}\ntap: note · 2×: undo`)
     st = run(st, { type: 'swipeDown' }).state
     p = render(st, 0)
     expect(txt(p, 'hdr')).toMatch(/^2\/2 swipe · \? Who is forgetting/)

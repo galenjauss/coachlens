@@ -22,7 +22,7 @@ describe('video flow fixtures', () => {
 
   it('the flows show the scripted moments through the real reducer and render', () => {
     expect(text(frame('homeFC'), 'hdr')).toBe('COACHLENS (3/4)')
-    expect(text(frame('lobbyFB'), 'insight')).toContain('★ Gus ready to test')
+    expect(text(frame('lobbyFB'), 'insight')).toContain('★ Gus: review for next rank')
     expect(text(frame('planningFD'), 'hdr')).toBe('● Planning · 0:15')
     expect(text(frame('planningFD'), 'body')).toContain('add partner sparring')
     expect(text(frame('planResultFC'), 'hdr')).toBe('PLAN UPDATED')
@@ -30,7 +30,7 @@ describe('video flow fixtures', () => {
     expect(text(frame('recordingFB'), 'mic')).toBe('● LISTENING  0:01')
     expect(text(frame('recordingFC'), 'mic')).toBe('○ LISTENING  0:01')
     expect(text(frame('noteFE'), 'agents')).toContain('… sorting')
-    expect(text(frame('noteFJ'), 'agents')).toBe('ok sorted · ok report · ok plan\ntap: close · 2×: undo')
+    expect(text(frame('noteFJ'), 'agents')).toBe('ok sorted · ok report · ok plan\ntap: note · 2×: undo')
     expect(text(frame('rollCallFF'), 'body')).toContain('absent: Mia')
     expect(text(frame('bannerFB'), 'hdr')).toBe('★ Jake\'s back after 3 missed')
     expect(text(frame('urgentFD'), 'agents')).toContain('ok email')

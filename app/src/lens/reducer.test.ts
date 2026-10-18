@@ -110,10 +110,10 @@ describe('lens reducer', () => {
     expect(r.effects).toContainEqual({ type: 'startMic' })
   })
 
-  it('tap in dark only wakes the lens to peek: it never records', () => {
+  it('C6: tap in dark during class wakes and records in one action', () => {
     const r = run(inDark(), { type: 'tap' })
-    expect(r.state.screen).toBe('peek')
-    expect(r.effects).not.toContainEqual({ type: 'startMic' })
+    expect(r.state.screen).toBe('recording')
+    expect(r.effects).toContainEqual({ type: 'startMic' })
   })
 
   it('timerEnded peeks with the next drill name (waking a dark lens), or wrap up after the last', () => {
@@ -126,8 +126,8 @@ describe('lens reducer', () => {
     expect(r.state.status).toBe('Time · next: wrap up')
   })
 
-  it('tap to talk, tap to send; the card stays (no timeout) and polls agent runs until tapped away', () => {
-    let r = run(inPeek(), { type: 'tap' })
+  it('standard display: tap to talk, tap to send; the card stays (no timeout) and polls agent runs until tapped away', () => {
+    let r = run(inPeek(), { type: 'displayModeLoaded', mode: 'standard' }, { type: 'tap' })
     expect(r.state.screen).toBe('recording')
     r = run(r.state, { type: 'tap' })
     expect(r.effects).toContainEqual({ type: 'stopMicAndSend', mode: 'note', sessionId: 's1', drillId: 'd1' })
@@ -143,7 +143,7 @@ describe('lens reducer', () => {
     expect(r.state).toMatchObject({ screen: 'peek', card: null })
   })
 
-  it('swipe pages through a long transcript on the card (clamped); a short one ignores swipes', () => {
+  it('swipe pages through a long transcript on the card (clamped); a short one ignores swipes (standard) or closes (quiet)', () => {
     const long = 'word '.repeat(90).trim()
     let c = run(inPeek(), { type: 'tap' }, { type: 'tap' }, { ...note(['√ x']), res: { ...note(['√ x']).res, transcript: long } }).state
     expect(c.card?.page).toBe(0)
@@ -155,8 +155,10 @@ describe('lens reducer', () => {
     expect(c.card?.page).toBe(2) // 90 words → 13 lines → 3 pages
     expect(run(c, { type: 'swipeUp' }).state.card?.page).toBe(1)
     expect(c.screen).toBe('card')
-    const short = run(inPeek(), { type: 'tap' }, { type: 'tap' }, note(['√ x'])).state
+    const short = run(inPeek(), { type: 'displayModeLoaded', mode: 'standard' }, { type: 'tap' }, { type: 'tap' }, note(['√ x'])).state
     expect(reduce(short, { type: 'swipeDown' }).state).toBe(short)
+    const quiet = run(inPeek(), { type: 'tap' }, { type: 'tap' }, note(['√ x'])).state
+    expect(reduce(quiet, { type: 'swipeDown' }).state).toMatchObject({ screen: 'peek', card: null })
   })
 
   it('utteranceDelivered: a neutral card for notes (no undo), a status for roll call', () => {
@@ -216,8 +218,8 @@ describe('lens reducer', () => {
     let r = run(inPeek(), { type: 'tap' }, { type: 'tap' }, note(['√ x']))
     r = run(r.state, { type: 'doubleTap' })
     expect(r.effects).toContainEqual({ type: 'undo', utteranceId: 'u1' })
-    expect(r.state).toMatchObject({ screen: 'peek', status: 'Undone' })
-    expect(r.effects).toContainEqual({ type: 'expireStatus', ms: STATUS_MS })
+    expect(r.state).toMatchObject({ screen: 'undo', undo: { stage: 'pending' } }) // F02: no optimistic "Undone"
+    expect(r.state.status).not.toBe('Undone')
   })
 
   it('long press records (from peek or dark) and release sends', () => {
