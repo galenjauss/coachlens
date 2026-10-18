@@ -59,7 +59,7 @@ Audio waiting in the offline queue stays on your phone only until it is delivere
 
 - **How pairing works today (the live service):** the phone pairs by entering a pairing code that the developer gives you in person. This code is **reusable**: it is the same code each time, not a one-time code. After pairing, the phone holds an access token, and the server stores only a hash of it.
 - **Uninstalling does not revoke access on the server.** Deleting the app removes the token from your phone, but the server-side token stays valid. To revoke it today, contact the developer via the Even Hub listing.
-- **In the next version (implemented in source and verified locally, not yet deployed):** each instructor has their own pairing code, which the instructor can rotate; codes are stored hashed; access tokens expire after 90 days; and an **Unpair this phone** control revokes the phone's token on the server. Until that version is deployed and released, the live service behaves as described in the first two points.
+- **In the next version (implemented in source and verified locally, not yet deployed):** each instructor has their own pairing code, which the service operator can rotate; codes are stored hashed; access tokens expire after 90 days; and an **Unpair this phone** control revokes the phone's token on the server. Until that version is deployed and released, the live service behaves as described in the first two points.
 
 ## Current deployment limits
 
