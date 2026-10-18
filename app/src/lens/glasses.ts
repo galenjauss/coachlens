@@ -16,8 +16,12 @@ const layoutKey = (spec: PageSpec) => (spec.list ? `${spec.key}\u0000${spec.list
  * - same key: textContainerUpgrade only for containers whose text changed (nothing if none did).
  * Calls are serialized and bursts coalesce to the latest page.
  */
+const RETRY_MS = 2000
+
 export class Glasses {
   private key: string | null = null
+  private latest: PageSpec | null = null
+  private retry: ReturnType<typeof setTimeout> | null = null
   private created = false
   private last = new Map<number, string>()
   private pending: PageSpec | null = null
@@ -25,13 +29,20 @@ export class Glasses {
 
   constructor(private bridge: GlassesBridge) {}
 
+  /** Forget what the glasses show, so the next show() sends a full rebuild (e.g. after the app was backgrounded). */
+  invalidate(): void {
+    this.key = null
+  }
+
   show(spec: PageSpec): Promise<void> {
+    if (this.retry) { clearTimeout(this.retry); this.retry = null }
+    this.latest = spec
     this.pending = spec
-    if (!this.running) this.running = this.drain()
+    if (!this.running) this.running = this.drain(true)
     return this.running
   }
 
-  private async drain(): Promise<void> {
+  private async drain(allowRetry: boolean): Promise<void> {
     while (this.pending) {
       const spec = this.pending
       this.pending = null
@@ -40,9 +51,23 @@ export class Glasses {
       } catch (e) {
         console.error('[glasses]', e instanceof Error ? e.message : String(e))
         this.key = null // force a full rebuild on the next show
+        if (!this.pending && allowRetry) this.scheduleRetry()
       }
     }
     this.running = null
+  }
+
+  /** One retry slot: re-send the latest page once after RETRY_MS unless something newer was shown. */
+  private scheduleRetry(): void {
+    if (this.retry) clearTimeout(this.retry)
+    const spec = this.latest
+    if (!spec) return
+    this.retry = setTimeout(() => {
+      this.retry = null
+      if (this.latest !== spec) return
+      this.pending = spec
+      if (!this.running) this.running = this.drain(false)
+    }, RETRY_MS)
   }
 
   private async apply(spec: PageSpec): Promise<void> {

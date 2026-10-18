@@ -102,6 +102,22 @@ describe('render', () => {
     const p = render({ ...s, screen: 'home', starting: true }, 0)
     expect(p.texts.find(t => t.name === 'body')?.content).toContain('Starting')
   })
+  it('peek truncates a long header and a long cue to one line', () => {
+    const long = {
+      ...s,
+      today: { ...today, theme: 'Advanced competition sparring footwork', className: 'Adult black belt · Saturday morning',
+        deck: { ...today.deck, drills: [{ ...drill, cues: ['keep the rear heel light and ready', 'hands high at all times please'] }] } },
+    } as LensState
+    const p = render(long, 0)
+    const hdrL = p.texts.find(t => t.name === 'hdrL')!.content
+    expect(hdrL.length).toBeLessThanOrEqual(28)
+    expect(hdrL.endsWith('…')).toBe(true)
+    const cue = p.texts.find(t => t.name === 'box')!.content.split('\n').find(l => l.startsWith('cue:'))!
+    expect(cue.length).toBeLessThanOrEqual(40)
+    expect(cue.endsWith('…')).toBe(true)
+    expect(render(s, 0).texts.find(t => t.name === 'hdrL')!.content).toBe('STANCES · Kids · Tue')
+  })
+
   it('every page has exactly one capturing container, ≤8 texts, names ≤16 chars', () => {
     const dis = { noteId: 'n', heard: 'Mia', options: [{ id: 'a', name: 'Mia R' }, { id: 'b', name: 'Mya K' }] }
     const wrap = { sessionId: 's', minutes: 45, drillsRun: 5, coverage: { covered: 10, present: 12 }, missed: [{ id: 'j', name: 'Jake' }], agentActions: 4, pendingReview: 2 }

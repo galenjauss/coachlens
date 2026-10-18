@@ -104,6 +104,7 @@ export function reduce(s: LensState, e: LensEvent): R {
   // Gestures depend on the screen.
   switch (s.screen) {
     case 'firstRun':
+      if (e.type === 'doubleTap') return done(s, { type: 'exit' }) // root screen: platform exit rule
       return e.type === 'tap' ? done({ ...s, screen: 'home' }, { type: 'markFirstRunSeen' }, { type: 'loadToday' }) : done(s)
     case 'home':
       if (e.type === 'doubleTap') return done(s, { type: 'exit' })

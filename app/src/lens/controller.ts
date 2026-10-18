@@ -56,7 +56,9 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
   }
 
   function onStateChange(prev: LensState, e: LensEvent): void {
+    const minutes = (st: LensState) => st.today?.deck.drills.find(x => x.id === st.active?.drillId)?.minutes
     if (state.active?.drillId !== prev.active?.drillId || state.active?.startedAt !== prev.active?.startedAt) armDrillTimer()
+    else if (e.type === 'todayLoaded' && state.active && minutes(state) !== minutes(prev)) armDrillTimer()
     if (e.type === 'sessionStarted' && state.session && !prev.session) void setImu(true)
     if (e.type === 'wrapupLoaded') void setImu(false)
   }
@@ -196,6 +198,12 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
       if (recorder.recording) void d.bridge.audioControl(true, AudioInputSource.Glasses).catch(err => console.warn('[mic] re-arm failed', err))
     }
     dispatch(le)
+    if (le.type === 'resumed') {
+      // The glasses may have dropped our page while backgrounded; the dark page would otherwise never
+      // be re-sent (same spec), leaving the lens blank and deaf. One full rebuild restores it.
+      glasses.invalidate()
+      void paint()
+    }
   })
   const offPaired = bus.on('paired', () => dispatch({ type: 'resumed' }))
   const offStart = bus.on('startClass', () => dispatch({ type: 'startRequested' }))

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { afterEach, describe, it, expect, vi } from 'vitest'
 import { Glasses, type GlassesBridge } from './glasses'
 import type { PageSpec } from './render'
 
@@ -82,5 +82,46 @@ describe('Glasses', () => {
     await g.show(dark)
     await g.show(dark)
     expect((b.createStartUpPageContainer as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(2)
+  })
+
+  it('invalidate forces exactly one full rebuild on the next show', async () => {
+    const b = fakeBridge()
+    const g = new Glasses(b)
+    await g.show(dark)
+    await g.show(dark)
+    g.invalidate()
+    await g.show(dark)
+    await g.show(dark)
+    expect(b.calls).toEqual(['create:dark', 'rebuild:dark'])
+  })
+
+  describe('retry after failure', () => {
+    afterEach(() => { vi.useRealTimers() })
+    it('retries the latest spec once after 2 s', async () => {
+      vi.useFakeTimers()
+      const b = fakeBridge()
+      const g = new Glasses(b)
+      await g.show(pageA('1'))
+      ;(b.textContainerUpgrade as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false)
+      await g.show(pageA('2'))
+      expect(b.calls).toEqual(['create:hdr,body'])
+      await vi.advanceTimersByTimeAsync(1999)
+      expect(b.calls).toHaveLength(1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(b.calls).toEqual(['create:hdr,body', 'rebuild:hdr,body'])
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(b.calls).toHaveLength(2)
+    })
+    it('a newer show cancels the pending retry', async () => {
+      vi.useFakeTimers()
+      const b = fakeBridge()
+      const g = new Glasses(b)
+      await g.show(pageA('1'))
+      ;(b.textContainerUpgrade as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false)
+      await g.show(pageA('2'))
+      await g.show(dark)
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(b.calls).toEqual(['create:hdr,body', 'rebuild:dark'])
+    })
   })
 })

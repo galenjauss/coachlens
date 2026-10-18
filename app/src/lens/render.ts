@@ -25,6 +25,11 @@ export function bar(fraction: number, width = 24): string {
   return '━'.repeat(f) + '─'.repeat(width - f)
 }
 
+const HDR_MAX = 28
+const CUE_MAX = 40
+/** One line, at most `n` chars, ending in an ellipsis when cut. */
+export const clip = (text: string, n: number): string => (text.length <= n ? text : `${text.slice(0, n - 1).trimEnd()}…`)
+
 const dots = (covered: number, present: number) => {
   const c = Math.min(covered, 14)
   return '●'.repeat(c) + '○'.repeat(Math.max(0, Math.min(present, 14) - c))
@@ -75,10 +80,10 @@ function peek(s: LensState, now: number): PageSpec {
   const c = context(s, now)
   const frac = c.active && s.active ? (now - s.active.startedAt) / (c.active.minutes * 60_000) : 0
   const box = c.active
-    ? [`${c.active.name.toUpperCase()}  ${c.time}`, bar(frac), c.active.cues.length ? `cue: ${c.active.cues.join(' · ')}` : ''].join('\n')
+    ? [`${c.active.name.toUpperCase()}  ${c.time}`, bar(frac), c.active.cues.length ? clip(`cue: ${c.active.cues.join(' · ')}`, CUE_MAX) : ''].join('\n')
     : 'No drill running\n\n> Swipe to pick one'
   return { key: 'peek', list: null, texts: [
-    t(1, 'hdrL', 0, 0, 380, 40, `${(s.today?.theme ?? '').toUpperCase()} · ${s.today?.className ?? ''}`),
+    t(1, 'hdrL', 0, 0, 380, 40, clip(`${(s.today?.theme ?? '').toUpperCase()} · ${s.today?.className ?? ''}`, HDR_MAX)),
     t(2, 'hdrR', 384, 0, 192, 40, c.cov),
     t(3, 'box', 0, 44, W, 128, box, { border: true, capture: true }),
     t(4, 'next', 0, 180, W, 40, s.status ?? c.nextLine),

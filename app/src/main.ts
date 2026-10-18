@@ -9,12 +9,19 @@ import { mountPhone } from './phone/mount'
 const BRIDGE_TIMEOUT_MS = 3000
 
 async function boot(): Promise<void> {
-  // In a plain desktop browser the bridge never arrives: run phone-only with browser storage.
-  const bridge = await Promise.race([waitForEvenAppBridge(), new Promise<null>(r => setTimeout(() => r(null), BRIDGE_TIMEOUT_MS))])
+  const bridgePromise = waitForEvenAppBridge()
+  const bridge = await Promise.race([bridgePromise, new Promise<null>(r => setTimeout(() => r(null), BRIDGE_TIMEOUT_MS))])
   const kv: KV = bridge ? bridgeKV(bridge) : browserKV()
   const api = createApi(API_URL, () => kv.get(KEYS.token))
   mountPhone({ api, kv, hasGlasses: Boolean(bridge) })
-  if (bridge) await startLens({ bridge, api, kv, outbox: new Outbox(kv), tilt: TILT, logImu: IMU_LOG })
+  const lens = (b: Awaited<typeof bridgePromise>) => startLens({ bridge: b, api, kv, outbox: new Outbox(kv), tilt: TILT, logImu: IMU_LOG })
+  if (bridge) {
+    await lens(bridge)
+    return
+  }
+  // Slow bridge (or a plain browser, where it never comes): the phone UI is already up; start the
+  // lens whenever the bridge arrives. It shares the phone's KV so pairing/class choice stay in sync.
+  bridgePromise.then(b => lens(b)).catch(e => console.error('[boot] late lens start failed', e))
 }
 
 boot().catch(e => console.error('[boot]', e))

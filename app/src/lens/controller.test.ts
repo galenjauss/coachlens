@@ -173,6 +173,30 @@ describe('lens controller', () => {
     expect(b.raw.audioControl).toHaveBeenCalledWith(true, expect.anything())
   })
 
+  it('resume while dark repaints with exactly one full rebuild (never blank and deaf)', async () => {
+    const b = await toDark()
+    b.raw.rebuildPageContainer.mockClear(); b.raw.createStartUpPageContainer.mockClear()
+    b.emit({ sysEvent: { eventType: OsEventTypeList.FOREGROUND_ENTER_EVENT } }); await flush()
+    expect(b.raw.rebuildPageContainer.mock.calls.length + b.raw.createStartUpPageContainer.mock.calls.length).toBe(1)
+    expect(b.sent.at(-1)).toBe('rebuild:')
+  })
+
+  it('todayLoaded with new minutes for the active drill re-arms the drill timer', async () => {
+    let t = today
+    const b = await boot(fakeApi({ today: vi.fn(async () => t) }))
+    b.emit(tap); await flush()
+    b.emit(dbl); await flush()
+    await vi.advanceTimersByTimeAsync(PEEK_MS)
+    b.emit({ textEvent: { eventType: OsEventTypeList.SCROLL_BOTTOM_EVENT } }); await flush()
+    b.emit({ listEvent: {} }); await flush() // drill d1, 2 min
+    t = { ...today, deck: { ...today.deck, drills: today.deck.drills.map(x => (x.id === 'd1' ? { ...x, minutes: 5 } : x)) } }
+    lens!.dispatch({ type: 'resumed' }); await flush() // reloads today
+    await vi.advanceTimersByTimeAsync(2 * 60_000 + 1000)
+    expect(b.sent.join('\n')).not.toContain('Time · next')
+    await vi.advanceTimersByTimeAsync(3 * 60_000)
+    expect(b.sent.join('\n')).toContain('Time · next: Holds')
+  })
+
   it('home double-tap exits via shutDownPageContainer(1)', async () => {
     const b = await boot()
     b.emit(dbl); await flush()

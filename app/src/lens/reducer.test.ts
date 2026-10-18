@@ -38,6 +38,11 @@ describe('lens reducer', () => {
     expect(r.effects).toContainEqual({ type: 'scheduleHide', ms: PEEK_MS })
   })
 
+  it('first-run double-tap exits (root screen)', () => {
+    const r = run(initialState(false), { type: 'doubleTap' })
+    expect(r.effects).toEqual([{ type: 'exit' }])
+  })
+
   it('home double-tap exits (root rule)', () => {
     const r = run(initialState(true), { type: 'doubleTap' })
     expect(r.effects).toEqual([{ type: 'exit' }])
