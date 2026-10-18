@@ -245,7 +245,7 @@ describe('recorder', () => {
     r.push(new Uint8Array([1, 2]))
     await r.start()
     r.push(new Uint8Array([3, 4]))
-    const big = new Uint8Array(16000 * 2)
+    const big = new Uint8Array(16000 * 2).fill(0x20) // speech-level energy (F14 gate)
     r.push(big)
     const res = await r.stop()
     expect([...res.wav!.slice(44, 48)]).toEqual([1, 2, 3, 4])
@@ -260,7 +260,7 @@ describe('recorder', () => {
     expect(r.bytes).toBe(0)
     r.push(new Uint8Array(100), 'glasses') // late glasses chunk: ignored
     expect(r.bytes).toBe(0)
-    const phone = new Uint8Array(16000 * 2); phone[0] = 7
+    const phone = new Uint8Array(16000 * 2).fill(0x20); phone[0] = 7
     r.push(phone, 'phone')
     const res = await r.stop()
     expect(res.bytes).toBe(32000)
@@ -351,12 +351,12 @@ describe('api errors', () => {
 describe('selectMic (dual-mic pick on stop)', () => {
   it('glasses when they have ≥ 0.4 s, else phone; glasses again when the phone has nothing', async () => {
     const { selectMic, MIN_BYTES } = await import('./audio')
-    expect(selectMic(MIN_BYTES, 99_999)).toBe('glasses')
-    expect(selectMic(MIN_BYTES + 1, 0)).toBe('glasses')
-    expect(selectMic(MIN_BYTES - 1, 1)).toBe('phone')
-    expect(selectMic(0, 50_000)).toBe('phone')
-    expect(selectMic(100, 0)).toBe('glasses') // too short either way: the glasses reason stays
-    expect(selectMic(0, 0)).toBe('glasses')
+    const loud = (bytes: number) => ({ bytes, speechMs: 1000 })
+    expect(selectMic(loud(MIN_BYTES), loud(99_999))).toBe('glasses')
+    expect(selectMic({ bytes: MIN_BYTES - 1, speechMs: 0 }, loud(1))).toBe('phone')
+    expect(selectMic({ bytes: 0, speechMs: 0 }, loud(50_000))).toBe('phone')
+    expect(selectMic({ bytes: 100, speechMs: 0 }, { bytes: 0, speechMs: 0 })).toBe('glasses') // too short either way: the glasses reason stays
+    expect(selectMic({ bytes: 0, speechMs: 0 }, { bytes: 0, speechMs: 0 })).toBe('glasses')
   })
 
   it('dual recorder buffers both sources and releases both mics', async () => {
@@ -463,13 +463,13 @@ describe('dual recorder with untagged audio', () => {
     const r = new Recorder({ audioControl: async (...a: unknown[]) => { calls.push(a); return true } }, { dual: true })
     await r.start()
     r.push(new Uint8Array(500).fill(9), 'phone')
-    r.push(new Uint8Array(20_000).fill(1)) // untagged
+    r.push(new Uint8Array(20_000).fill(3)) // untagged
     r.push(new Uint8Array(20_000).fill(9), 'phone') // ignored: the phone mic is closed
     expect(calls).toContainEqual([false, 'phone'])
     expect([r.bytesFrom('glasses'), r.bytesFrom('phone')]).toEqual([20_000, 0])
     const out = await r.stop()
     expect(r.source).toBe('glasses')
-    expect(out.wav?.[44]).toBe(1)
+    expect(out.wav?.[44]).toBe(3)
     expect(calls.slice(-2)).toEqual([[false, 'glasses'], [false]]) // the phone is not closed twice
   })
 })

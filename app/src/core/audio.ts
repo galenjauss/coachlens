@@ -18,16 +18,56 @@ export interface RecorderOptions {
 const SDK_SOURCE: Record<MicSource, AudioInputSource> = { glasses: AudioInputSource.Glasses, phone: AudioInputSource.Phone }
 
 /**
- * Dual-mic pick on stop: the glasses audio when it has at least `minBytes` (0.4 s), otherwise the
- * phone audio; with no phone audio either, the glasses buffer (so the empty reason stays right).
+ * F14 speech-energy gate. A 20 ms frame (320 samples of 16 kHz s16le) counts as speech when its RMS is at
+ * least SPEECH_RMS (≈ -38 dBFS: well under talking at arm's length, well over a quiet room). A source has
+ * usable speech with at least MIN_SPEECH_MS of such frames. Conservative on purpose: a false "quiet" would
+ * drop a real note, so the threshold is low; calibrate on G2 hardware.
  */
-export function selectMic(glassesBytes: number, phoneBytes: number, minBytes = MIN_BYTES): MicSource {
-  if (glassesBytes >= minBytes) return 'glasses'
-  return phoneBytes > 0 ? 'phone' : 'glasses'
+export const SPEECH_RMS = 400
+export const MIN_SPEECH_MS = 200
+const FRAME_SAMPLES = 320
+const MS_PER_SAMPLE = 1000 / 16000
+
+/** Milliseconds of speech-level frames in one PCM chunk (s16le mono 16 kHz). */
+export function speechMsIn(pcm: Uint8Array): number {
+  const samples = Math.floor(pcm.length / 2)
+  const v = new DataView(pcm.buffer, pcm.byteOffset, samples * 2)
+  let ms = 0
+  for (let start = 0; start < samples; start += FRAME_SAMPLES) {
+    const end = Math.min(samples, start + FRAME_SAMPLES)
+    if (end - start < FRAME_SAMPLES / 2) break // a short tail frame is too little to judge
+    let sum = 0
+    for (let i = start; i < end; i++) { const x = v.getInt16(i * 2, true); sum += x * x }
+    if (Math.sqrt(sum / (end - start)) >= SPEECH_RMS) ms += (end - start) * MS_PER_SAMPLE
+  }
+  return ms
 }
 
-type Buffer = { chunks: Uint8Array[]; bytes: number }
-const emptyBuffers = (): Record<MicSource, Buffer> => ({ glasses: { chunks: [], bytes: 0 }, phone: { chunks: [], bytes: 0 } })
+export type MicStats = { bytes: number; speechMs: number }
+/**
+ * Dual-mic pick on stop, by audio ENERGY rather than bytes received (F14): the glasses when they carry
+ * usable speech, else the phone when it does (glasses silent → phone fallback), else the louder of the
+ * two; with no speech anywhere, the source that has audio (glasses first) so the empty/quiet reason is right.
+ */
+export function selectMic(glasses: MicStats, phone: MicStats): MicSource {
+  if (glasses.speechMs >= MIN_SPEECH_MS) return 'glasses'
+  if (phone.speechMs >= MIN_SPEECH_MS) return 'phone'
+  if (phone.speechMs > glasses.speechMs) return 'phone'
+  if (glasses.bytes >= MIN_BYTES || phone.bytes === 0) return 'glasses'
+  return 'phone'
+}
+
+type Buffer = { chunks: Uint8Array[]; bytes: number; speechMs: number }
+const emptyBuffer = (): Buffer => ({ chunks: [], bytes: 0, speechMs: 0 })
+const emptyBuffers = (): Record<MicSource, Buffer> => ({ glasses: emptyBuffer(), phone: emptyBuffer() })
+
+/** A finished buffer → what to send, or why not: no audio, too short, or no speech energy ('quiet'). */
+function result(b: Buffer): StopResult {
+  if (b.bytes === 0) return { wav: null, bytes: 0, reason: 'no_audio' }
+  if (b.bytes < MIN_BYTES) return { wav: null, bytes: b.bytes, reason: 'too_short' }
+  if (b.speechMs < MIN_SPEECH_MS) return { wav: null, bytes: b.bytes, reason: 'quiet' }
+  return { wav: pcmToWav(b.chunks), bytes: b.bytes }
+}
 
 export class Recorder {
   private buf = emptyBuffers()
@@ -42,6 +82,8 @@ export class Recorder {
   /** Bytes buffered so far (dual mode: both mics together). */
   get bytes(): number { return this.dual ? this.buf.glasses.bytes + this.buf.phone.bytes : this.buf[this.source].bytes }
   bytesFrom(src: MicSource): number { return this.buf[src].bytes }
+  /** Milliseconds of speech-level audio buffered from one mic. */
+  speechFrom(src: MicSource): number { return this.buf[src].speechMs }
 
   async start() {
     if (this.recording) return
@@ -83,7 +125,7 @@ export class Recorder {
       const ok = await this.bridge.audioControl(true, AudioInputSource.Phone)
       if (!ok) throw new Error('phone mic refused')
       this.source = 'phone'
-      this.buf.phone = { chunks: [], bytes: 0 }
+      this.buf.phone = emptyBuffer()
       return true
     } catch (e) {
       console.warn('[mic] phone mic unavailable; staying on the glasses mic', e)
@@ -115,6 +157,7 @@ export class Recorder {
     const b = this.buf[src]
     b.chunks.push(pcm)
     b.bytes += pcm.length
+    b.speechMs += speechMsIn(pcm)
   }
 
   /**
@@ -124,7 +167,7 @@ export class Recorder {
   private untaggedInDual(): void {
     console.warn('[mic] untagged audio with both mics open: closing the phone mic for this recording')
     this.phoneOpen = false
-    this.buf.phone = { chunks: [], bytes: 0 }
+    this.buf.phone = emptyBuffer()
     void this.bridge.audioControl(false, AudioInputSource.Phone).catch(e => console.warn('[mic] phone close failed', e))
   }
 
@@ -143,22 +186,17 @@ export class Recorder {
    * the mic open. Dual mode picks the mic per cut (`selectMic`); a later `stop()` returns the remainder.
    */
   cut(): StopResult {
-    const src = this.dual ? selectMic(this.buf.glasses.bytes, this.buf.phone.bytes) : this.source
-    const { chunks, bytes } = this.buf[src]
+    const src = this.dual ? selectMic(this.buf.glasses, this.buf.phone) : this.source
+    const b = this.buf[src]
     this.buf = emptyBuffers()
-    if (bytes === 0) return { wav: null, bytes, reason: 'no_audio' }
-    if (bytes < MIN_BYTES) return { wav: null, bytes, reason: 'too_short' }
-    return { wav: pcmToWav(chunks), bytes }
+    return result(b)
   }
 
   async stop(): Promise<StopResult> {
     this.recording = false
     await this.release()
-    if (this.dual) this.source = selectMic(this.buf.glasses.bytes, this.buf.phone.bytes)
-    const { chunks, bytes } = this.buf[this.source]
-    if (bytes === 0) return { wav: null, bytes, reason: 'no_audio' }
-    if (bytes < MIN_BYTES) return { wav: null, bytes, reason: 'too_short' }
-    return { wav: pcmToWav(chunks), bytes }
+    if (this.dual) this.source = selectMic(this.buf.glasses, this.buf.phone)
+    return result(this.buf[this.source])
   }
 
   async cancel() { this.recording = false; this.buf = emptyBuffers(); await this.release() }

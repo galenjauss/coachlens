@@ -63,7 +63,9 @@ const dbl = { sysEvent: { eventType: OsEventTypeList.DOUBLE_CLICK_EVENT } }
 const imu = (y: number) => ({ sysEvent: { eventType: OsEventTypeList.IMU_DATA_REPORT, imuData: { x: 0.5, y, z: 1 } } })
 const swipe = { textEvent: { eventType: OsEventTypeList.SCROLL_BOTTOM_EVENT } }
 const NOD = { enabled: true, axis: 'y' as const, threshold: 0.3, windowMs: 600, cooldownMs: 1200 }
-const pcm = (n = 1000) => ({ audioEvent: { audioPcm: new Uint8Array(n) } })
+/** Speech-level PCM (every sample 0x2020 ≈ 8224): passes the F14 energy gate. */
+const loud = (n: number) => new Uint8Array(n).fill(0x20)
+const pcm = (n = 1000) => ({ audioEvent: { audioPcm: loud(n) } })
 const flush = () => vi.advanceTimersByTimeAsync(0)
 
 describe('lens controller', () => {
@@ -134,7 +136,7 @@ describe('lens controller', () => {
     const utterance = vi.fn(async () => { throw new BadResponseError() })
     const b = await toPeek(fakeApi({ utterance }))
     b.emit(tap); await flush()
-    for (let i = 0; i < 20; i++) b.emit({ audioEvent: { audioPcm: new Uint8Array(1000) } })
+    for (let i = 0; i < 20; i++) b.emit({ audioEvent: { audioPcm: loud(1000) } })
     await vi.advanceTimersByTimeAsync(STOP_DEBOUNCE_MS)
     b.emit(tap); await flush()
     expect(b.sent.join('\n')).toContain('Saved · details unavailable')
@@ -347,7 +349,7 @@ describe('lens controller', () => {
   it('an empty transcript (422) from a note shows a retry peek, not a stuck "Sending"', async () => {
     const b = await toPeek()
     b.emit(tap); await flush() // recording
-    for (let i = 0; i < 20; i++) b.emit({ audioEvent: { audioPcm: new Uint8Array(1000) } })
+    for (let i = 0; i < 20; i++) b.emit({ audioEvent: { audioPcm: loud(1000) } })
     await vi.advanceTimersByTimeAsync(STOP_DEBOUNCE_MS)
     b.emit(tap); await flush()
     expect(b.sent.join('\n')).toContain("Didn't catch that")
@@ -420,7 +422,7 @@ describe('lens controller', () => {
     async function toCard(utteranceRuns: ReturnType<typeof vi.fn>) {
       const b = await toPeek(fakeApi({ utterance: vi.fn(async () => okRes), utteranceRuns }))
       b.emit(tap); await flush() // recording
-      for (let i = 0; i < 20; i++) b.emit({ audioEvent: { audioPcm: new Uint8Array(1000) } })
+      for (let i = 0; i < 20; i++) b.emit({ audioEvent: { audioPcm: loud(1000) } })
       await vi.advanceTimersByTimeAsync(STOP_DEBOUNCE_MS)
       b.emit(tap); await flush() // send → card
       return b

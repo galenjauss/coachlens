@@ -211,3 +211,11 @@ describe('F07 · queued and failed notes on the lens', () => {
     expect(r.state).toBe(p)
   })
 })
+
+describe('F14 · low-energy recovery on the lens', () => {
+  it('a recording with no speech energy says how to recover, not "didn\'t catch that"', () => {
+    const sending = run(inPeek(), { type: 'tap' }, { type: 'tap' }).state
+    const s = run(sending, { type: 'utteranceEmpty', reason: 'quiet' }).state
+    expect(s.status).toBe("Couldn't hear you · move closer, speak up")
+  })
+})
