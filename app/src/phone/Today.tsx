@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Api } from '../core/api'
+import { ApiError, type Api } from '../core/api'
 import { bus } from '../core/bus'
 import type { KV } from '../core/storage'
 import { ClassPicker } from './ClassPicker'
@@ -11,22 +11,40 @@ export function Today({ api, kv, onOpenDeck }: { api: Api; kv: KV; onOpenDeck(de
   const [classId, setClassId] = useState<string | null | undefined>(undefined) // undefined = KV not read yet
   const [checkIn, setCheckIn] = useState(false)
   const [actionErr, setActionErr] = useState<string | null>(null)
-  useEffect(() => { void kv.get(CLASS_ID_KEY).then(setClassId, () => setClassId(null)) }, [kv])
-  const { data: t, error, reload } = usePoll(
-    () => (classId === undefined ? new Promise<never>(() => {}) : api.today(classId ?? undefined)),
+  useEffect(() => { void kv.get(CLASS_ID_KEY).then(v => setClassId(v || null), () => setClassId(null)) }, [kv])
+
+  function clearStoredClass() {
+    setClassId(null)
+    void kv.set(CLASS_ID_KEY, '').catch(() => {}).then(() => bus.emit('classChanged', null))
+  }
+  const { data: t, error, loading, reload } = usePoll(
+    async () => {
+      try { return await api.today(classId ?? undefined) } catch (e) {
+        if (e instanceof ApiError && e.status === 404 && classId) clearStoredClass() // stale class: fall back to default (effect reloads)
+        throw e
+      }
+    },
     15000,
     [classId],
+    classId !== undefined,
   )
   useEffect(() => bus.on('sessionChanged', () => reload()), [reload])
 
-  function pick(id: string) {
+  async function pick(id: string) {
+    setActionErr(null)
+    try { await kv.set(CLASS_ID_KEY, id) } catch { setActionErr('Couldn’t save your class choice on this phone.'); return }
     setClassId(id); setCheckIn(false)
-    void kv.set(CLASS_ID_KEY, id).catch(() => {}).then(() => bus.emit('classChanged', id))
+    bus.emit('classChanged', id)
   }
-  const picker = <ClassPicker api={api} value={t?.classId ?? classId ?? null} onChange={pick} />
+  const picker = <ClassPicker api={api} value={classId ?? t?.classId ?? null} loading={loading} onChange={pick} />
+  const banner = error && <p className="error" role="alert">Couldn’t load today: {error}</p>
 
-  if (error && !t) return <main className="screen"><p className="error" role="alert">Couldn’t load today: {error}</p><div className="btns"><button type="button" onClick={reload}>Retry</button></div></main>
-  if (!t) return <main className="screen"><p className="muted" role="status">Loading…</p></main>
+  if (!t) return (
+    <main className="screen">
+      {picker}{banner}
+      {error ? <div className="btns"><button type="button" onClick={reload}>Retry</button></div> : <p className="muted" role="status">Loading…</p>}
+    </main>
+  )
 
   async function openCheckIn() {
     if (!t) return
@@ -40,6 +58,7 @@ export function Today({ api, kv, onOpenDeck }: { api: Api; kv: KV; onOpenDeck(de
   return (
     <main className="screen">
       {picker}
+      {banner}
       <span className={`mode mode-${t.mode}`}>{MODE_EMOJI[t.mode]} {t.modeLabel}</span>
       <h1>Today</h1>
       <div className="sub">{t.className} · {t.startTime} · {t.roster.length} {t.people}{t.sessionId ? ' · in progress' : ''}</div>

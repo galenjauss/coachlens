@@ -13,7 +13,7 @@ export function Pairing({ api, kv, onPaired }: { api: Api; kv: KV; onPaired(): v
     setBusy(true); setErr(null)
     try {
       const { token } = await api.pair(code.trim())
-      await kv.set(KEYS.token, token)
+      try { await kv.set(KEYS.token, token) } catch { setErr('Couldn’t save on this phone. Try again.'); return }
       bus.emit('paired', undefined)
       onPaired()
     } catch (e) {
