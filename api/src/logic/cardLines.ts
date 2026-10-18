@@ -12,6 +12,7 @@ export type CardAction =
   | { kind: 'urgent_unassigned' }
   | { kind: 'saved_unsorted' }
   | { kind: 'rollcall_unclear'; names: string[] }
+  | { kind: 'name_unclear'; name: string }
 
 const MAX_LINES = 4
 const MAX_CHARS = 38
@@ -35,6 +36,7 @@ function linesFor(a: CardAction): string[] {
     case 'unassigned': return ['● Saved · pick student in Review']
     case 'urgent_unassigned': return ['⚠ urgent · pick student']
     case 'saved_unsorted': return ['● Saved · sorting failed, see Review']
+    case 'name_unclear': return [`? Didn't catch "${a.name}" · say again`]
     case 'rollcall_unclear': return [`Didn't catch: ${a.names.join(', ')}`, 'Say it again or use phone roster']
   }
 }

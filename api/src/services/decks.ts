@@ -2,6 +2,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm'
 import type { Deck, DeckPatch } from '@matside/shared'
 import type { Db } from '../db/client'
 import { decks, drills } from '../db/schema'
+import { clampMinutes, clip, CUE_MAX, MAX_CUES, NAME_MAX, RATIONALE_MAX } from '../logic/planNormalize'
 
 export async function findDeck(db: Db, classId: string, forDate: string) {
   const [d] = await db.select({ id: decks.id }).from(decks).where(and(eq(decks.classId, classId), eq(decks.forDate, forDate)))
@@ -15,8 +16,9 @@ export async function getDeck(db: Db, deckId: string): Promise<Deck> {
   return {
     id: d.id, classId: d.classId, forDate: d.forDate, status: d.status,
     drills: rows.map(r => ({
-      id: r.id, position: r.position, name: r.name, minutes: r.minutes, kind: r.kind, cues: r.cues,
-      focusStudentIds: r.focusStudentIds, rationale: r.rationale,
+      id: r.id, position: r.position, name: clip(r.name, NAME_MAX) || 'Drill', minutes: clampMinutes(r.minutes), kind: r.kind,
+      cues: r.cues.map(c => clip(c, CUE_MAX)).filter(Boolean).slice(0, MAX_CUES),
+      focusStudentIds: r.focusStudentIds, rationale: clip(r.rationale, RATIONALE_MAX),
       startedAt: r.startedAt?.toISOString() ?? null, endedAt: r.endedAt?.toISOString() ?? null,
     })),
   }

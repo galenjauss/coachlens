@@ -4,6 +4,7 @@ import { patchDeck, getDeck } from './decks'
 import { alternativesFor, undoDiff } from '../agents/planner'
 import { classes, decks, drills, deckDiffs } from '../db/schema'
 import { eq } from 'drizzle-orm'
+import { Deck } from '@matside/shared'
 
 const draft = (name: string) => ({ name, minutes: 5, kind: 'drill' as const, cues: [], focusStudentIds: [], rationale: '' })
 
@@ -16,6 +17,16 @@ describe('decks', () => {
     const deck = await patchDeck(db, d!.id, { drills: [{ ...draft('B2'), id: b!.id }, { ...draft('New'), id: null }, { ...draft('A'), id: a!.id }] })
     expect(deck.drills.map(r => [r.name, r.position])).toEqual([['B2', 1], ['New', 2], ['A', 3]])
     expect((await db.select().from(drills).where(eq(drills.id, x!.id)))).toHaveLength(0)
+  })
+
+  it('getDeck normalizes legacy out-of-range drills on read', async () => {
+    const db = await makeTestDb()
+    const [c] = await db.insert(classes).values({ instructorId: 'i', name: 'K', weekday: 2, startTime: '17:00' }).returning()
+    const [d] = await db.insert(decks).values({ classId: c!.id, forDate: '2026-10-20' }).returning()
+    await db.insert(drills).values({ deckId: d!.id, position: 1, name: 'x'.repeat(80), minutes: 45, kind: 'drill', cues: ['c'.repeat(90), 'b', 'third'], rationale: 'r'.repeat(300) })
+    const deck = await getDeck(db, d!.id)
+    expect(Deck.safeParse(deck).success).toBe(true)
+    expect(deck.drills[0]).toMatchObject({ minutes: 30 })
   })
 
   it('alternatives come from the planner; undo marks the diff', async () => {

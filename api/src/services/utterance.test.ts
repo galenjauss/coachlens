@@ -4,6 +4,8 @@ import { makeTestDb, makeDeps, fakeLlm } from '../test/helpers'
 import { handleUtterance } from './utterance'
 import { classes, students, guardians, enrollments, curriculum, decks, drills, sessions, notes, issues, billingFlags, attendance, outbox, agentRuns } from '../db/schema'
 import { draftParentEmail } from '../agents/parentEmail'
+import { Deck } from '@matside/shared'
+import { getDeck } from './decks'
 
 const intent = (o: Partial<Record<string, unknown>>) => ({ type: 'feedback', studentNames: [], content: '', skillTags: [], urgency: null, amount: null, minutes: null, attendanceStatus: null, urgent: false, ...o })
 
@@ -130,6 +132,27 @@ describe('handleUtterance', () => {
     expect(flag).toBeTruthy()
     const [run] = await w.db.select().from(agentRuns).where(eq(agentRuns.agent, 'billing'))
     expect(run).toMatchObject({ utteranceId: r.utteranceId, links: { billingFlagId: flag!.id, studentId: w.ss[1]!.id } })
+  })
+
+  it('spoken add-drill clamps minutes and name so the deck stays schema-valid', async () => {
+    const w = await classWorld()
+    const long = 'a very long sparring round name that goes well past forty characters'
+    const deps = makeDeps(w.db, { llm: fakeLlm(() => ({ intents: [intent({ type: 'add_drill', content: long, minutes: 45 })] })) })
+    const r = await handleUtterance(deps, { sessionId: w.sessionId, drillId: null, mode: 'note', transcript: 'add a 45-minute sparring round' })
+    expect(r.cardLines[0]).toMatch(/^✓ Added:/)
+    const [d] = await w.db.select().from(drills).where(eq(drills.rationale, 'added live by instructor'))
+    expect(d!.minutes).toBe(30)
+    expect(d!.name.length).toBeLessThanOrEqual(40)
+    const [dk] = await w.db.select().from(decks)
+    expect(Deck.safeParse(await getDeck(w.db, dk!.id)).success).toBe(true)
+  })
+
+  it('parent_message with an unresolvable name saves nothing and says so', async () => {
+    const w = await classWorld()
+    const deps = makeDeps(w.db, { llm: fakeLlm(() => ({ intents: [intent({ type: 'parent_message', studentNames: ['Zed'], content: 'tell parents' })] })) })
+    const r = await handleUtterance(deps, { sessionId: w.sessionId, drillId: null, mode: 'note', transcript: 'tell Zed parents' })
+    expect(r.cardLines).toEqual(['? Didn\'t catch "Zed" · say again'])
+    expect(await w.db.select().from(notes).where(eq(notes.text, 'tell parents'))).toHaveLength(0)
   })
 
   it('router failure saves an unassigned note', async () => {

@@ -1,3 +1,4 @@
+import { clampMinutes, clip, NAME_MAX } from '../logic/planNormalize'
 import { and, eq, gte, sql } from 'drizzle-orm'
 import type { Disambiguation, Intent, UtteranceResponse } from '@matside/shared'
 import type { Deps } from '../deps'
@@ -105,15 +106,15 @@ async function applyIntent(deps: Deps, ctx: SessionContext, utteranceId: string,
       const actions: CardAction[] = []
       for (const n of intent.studentNames) {
         const m = resolveName(n, ctx.roster)
-        if (m.kind !== 'match') { actions.push({ kind: 'unassigned' }); continue }
+        if (m.kind !== 'match') { actions.push({ kind: 'name_unclear', name: n }); continue }
         safeDefer(deps, 'parent_email', draftParentEmail(deps, { studentId: m.student.id, sessionId: ctx.sessionId, utteranceId, trigger: { kind: 'request', content: intent.content } }))
         actions.push({ kind: 'parent_note', name: first(m.student.name) })
       }
       return { actions, disambiguation: null }
     }
     case 'add_drill': {
-      const minutes = intent.minutes ?? 5
-      const name = intent.content.slice(0, 40)
+      const minutes = clampMinutes(intent.minutes ?? 5)
+      const name = clip(intent.content, NAME_MAX) || 'Drill'
       const position = (ctx.drill?.position ?? 0) + 1
       await withRun(deps, { agent: 'planner', trigger: 'add_drill', sessionId: ctx.sessionId, utteranceId }, async () => {
         const existing = await deps.db.select().from(drills).where(eq(drills.deckId, ctx.deckId))

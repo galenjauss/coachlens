@@ -32,7 +32,7 @@ type Vars = { Variables: { instructorId: string } }
 const MAX_AUDIO_BYTES = 2_000_000
 const PAIR_FAIL_LIMIT = 20
 const PAIR_FAIL_WINDOW_MS = 10 * 60_000
-const MAX_TOKENS = 5
+const MAX_TOKENS = 20
 const MAX_EXTRACT_BYTES = MAX_IMAGE_BASE64 + MAX_ONBOARDING_TEXT * 4 + 4096
 
 function codesMatch(a: string, b: string): boolean {

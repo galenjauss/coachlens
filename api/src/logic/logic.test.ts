@@ -201,6 +201,14 @@ describe('review regressions', () => {
   })
 })
 
+describe('cardLines name_unclear', () => {
+  it('renders an honest not-saved line', () => {
+    const l = buildCardLines([{ kind: 'name_unclear', name: 'Zed' }])
+    expect(l).toEqual(['? Didn\'t catch "Zed" · say again'])
+    expect(l[0]!.length).toBeLessThanOrEqual(38)
+  })
+})
+
 describe('cardLines rollcall_unclear', () => {
   it('asks for a repeat', () => {
     expect(buildCardLines([{ kind: 'rollcall_unclear', names: ['Mya'] }])).toEqual(["Didn't catch: Mya", 'Say it again or use phone roster'])
