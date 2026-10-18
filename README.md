@@ -1,48 +1,142 @@
 # CoachLens
 
-**Prep Notes for the dojo.** An Even Hub app for the Even Realities G2 smart glasses, built at LA Hacks 2026 (Even Realities track).
+**Even Hub app name: CoachLens.** An Even Realities G2 app for instructors, built at LA Hacks 2026 (Even Realities track).
 
-CoachLens is for the solo instructor in the middle of a class: martial arts, personal training or tutoring. Hands are on pads or a whiteboard and eyes are on the kids, so a phone is the wrong tool. Tap the temple, say what you saw in plain language, and a team of AI agents does the paperwork while you keep teaching. The lens shows one glance of confirmation, then gets out of the way.
+CoachLens is for the solo instructor in the middle of a class: martial arts, personal training or tutoring. Your hands are on pads or a whiteboard and your eyes are on 20 kids, so a phone is the wrong tool. Tap the temple and say what you saw in plain language. A team of AI agents turns that sentence into outcomes for that one student: a logged note, a parent email draft, a change to the next plan, a PR, an attendance mark. The lens shows one glance of confirmation, then goes quiet.
 
-## The hero loop
+> "Technology should feel natural. Intelligence should be quiet. Attention should be respected." (Even Realities judging doc)
+>
+> **Natural:** one tap, then plain speech; no commands to learn. **Quiet:** the lens stays dark until something real triggers it, and agents surface insights at the lobby and the end of class, not mid-drill. **Respected:** the coach's attention stays on the students; outward-facing actions wait for the coach.
 
-1. **Tap** the glasses and **speak naturally**: "Priya, guard drops on the jab again, great energy though." No code words and no grammar. The lens shows `● LISTENING 0:04` (the dot pulses), and after you tap again, `heard > SENDING > thinking···` while the note goes out.
-2. **Agents act.** A router (Claude Haiku) splits the sentence into intents. Specialists (Claude Sonnet writers plus plain code) log progress, mark attendance, flag billing, update the next plan, and draft a parent or client email only when it is urgent or you ask.
-3. **One-glance card.** It stays until you tap it away. Left: the full transcript of what you said (swipe to page through it). Right: a compact agent progress line (`✓ sorted`, `✓ logged`, `… email`, `✓ plan`). Double-tap undoes it.
-4. **Between glances the lens stays quiet.** The persistent peek view stays on during class: drill, a per-second countdown, and the next student who needs feedback. A **nod** (calibrated on the x-axis) toggles it dark or visible on any idle screen, and a tap in the dark wakes it (it never starts recording).
-5. **Wrap-up.** Double-tap to end class. The lens shows `Missed: ...` and `Tap = coach them first next class · 2x = done`. Tapping saves the missed students so they go first next class.
+## Who is this for?
 
-Other lens details: swipe on the lens home to choose the class (`COACHLENS (2/3)`); the deck opens a drill detail (full name and every cue, swipe to page) and a tap starts the drill; if the glasses send no audio, CoachLens falls back to the phone microphone (`● LISTENING (phone)`). Lens text is wrapped and clipped at word boundaries, never mid-word.
+Solo instructors who teach on their feet: a martial-arts coach with 20 kids on the mat, a personal trainer between sets, a tutor at a whiteboard. They give dozens of corrections per class and remember two by the time they get home.
 
-The lens also nudges the instructor toward feedback coverage ("Feedback 3/12, next: Priya"), because specific feedback is what moves outcomes (see research).
+## What moment is it designed for?
 
-## Teaching modes
+The live class. The coach notices something ("Priya's guard keeps dropping", "Dee rolled her ankle") and has two seconds and no free hands. CoachLens captures that moment without breaking the class, and handles the follow-up after it: the parent email, the report card, the next plan.
 
-One engine, three flavors, each with its own skill tags, vocabulary and guardrails:
+## Why does it belong on G2?
 
-| Mode | People | Plan | Messages go to |
-|---|---|---|---|
-| Martial arts | students | drill deck | parent |
-| Personal training | clients | session plan | the client |
-| Tutoring | students | lesson plan | parent |
+- Hands are busy and eyes must stay on the students. A phone on the mat is unsafe and breaks flow.
+- A temple tap, a short sentence and a two-second glance are exactly the interaction budget a live class allows.
+- The G2 sits in the line of sight, so a 💡 insight ("Jake's back after 3 missed") or the next kid who needs feedback can land without looking away from the room.
+- The glasses keep working while the phone is locked in a bag, which is where it lives during class.
 
-Personal-training output never contains medical, injury or nutrition advice. Tutoring never guarantees grades.
+## Can the judge try it right now?
 
-## Agents
+Yes. See [Install and run on G2](#install-and-run-on-g2). The team pairs the loaner G2 at judging; put it on, tap, and talk.
 
-- **Progress**: logs a feedback note per student with skill tags. Spots recurring issues (same tag 3 or more times in 30 days) and adds them to the next plan and the monthly report card. Recurring issues do **not** email parents on their own.
-- **Parent / client email**: drafted only when a note is **urgent** (injury, behavior or safety, as judged by the router; for example "Dee rolled her ankle and sat out the last drill") or you **explicitly ask for it**. Routine and recurring issues roll into the **monthly report card** instead. Every email waits in Review for your approval.
-- **Report cards**: monthly job (and "Run now") that writes strengths, working-on, quoted coach notes and a next goal.
-- **Billing flags**: flags and notes with an urgency level only. There are no payment calls anywhere in the codebase.
-- **Planner**: drafts the next deck or lesson plan nightly, and turns "more structure", "shorter" or "low energy day" into a reviewable diff. Output is validated leniently with word-boundary length limits (names up to 80 characters, cues 90), so a long name is clipped cleanly instead of failing. If the AI is unavailable, a **starter plan** is used and visibly flagged, and it **self-heals**: the next load re-drafts it in the background (10-minute cooldown).
-- **Attendance**: "Everyone except Jake and Mia" or "Present: A, B, C" (the `present:` roll call). A feedback note also marks that student present.
-- **Name aliases**: when you reassign a note to a student, the misheard spelling is learned as an alias, so "Mya" resolves to Maya next time.
+## Not a note-taker
 
-The phone app (inside the Even app) has an **Agents** tab. It opens on topic tiles (emails, progress, billing, plan, attendance, report cards). Each tile leads to color-coded runs, then a run detail with a **"Tell this agent..."** box to steer it: redraft an email ("warmer, shorter"), reassign a note, add a billing note.
+The challenge page notes that judges "see a lot of teleprompters, translators, and note-takers". CoachLens is not one. A note is an input, not the output: each spoken note triggers autonomous agents for that student, with outcomes you can see.
 
-## Onboarding quiz
+- An urgent note ("Dee rolled her ankle and sat out the last drill") becomes a parent email draft.
+- A recurring issue (same skill tag 3+ times in 30 days) goes into the monthly report card and the next class plan.
+- A metric ("Maria hit 225 on deadlift") becomes a PR on her profile.
+- A question ("how's Priya doing?") returns a profile brief on the lens.
+- A roll call ("everyone except Jake and Mia") marks attendance, which feeds the insights agent.
 
-First run on the phone is a six-step AI-assisted quiz: coaching type, business basics, classes and schedule, roster, curriculum, then review and commit. Each step accepts pasted text, a CSV/text file or a photo (a schedule, a sign-in sheet) and extracts it with AI into editable tables. Review and fix the tables, then commit; re-running a commit does not duplicate anything. Photos are only sent when you tap **Read with AI**.
+## The lens flow
+
+| Screen | Tap | Double-tap | Swipe | Other |
+|---|---|---|---|---|
+| **Home** (class list) | Enter that class's lobby | Even's exit dialog | Cycle classes | Nod: lens dark/on |
+| **Lobby** (plan, top insight) | Start class | Planning listen | Back to home | Nod: lens dark/on |
+| **Planning listen** | Stop and apply | Cancel | | 3 min cap |
+| **Plan result** (diff summary) | OK | Undo | Back to lobby | |
+| **In class** | Talk in plain language | End class | Drill deck | Long-press: hold to talk; nod: lens dark/on |
+
+- **Planning listen.** In the lobby, double-tap and talk the plan through with your assistant instructor. The planner agent reshapes the drills and the lens shows a diff summary (`+ Partner sparring 6m`, `− Kata 2`, `~ Warm-up 10→5m`). Double-tap undoes it.
+- **Agent card.** After you speak, the card shows what you said and live agent progress, for example `✓ Maria · deadlift 225 lb (PR +10)`. For a question, it shows the student's brief instead: rank and time in rank, attendance dots (`●●○●●●`), last notes, latest metric.
+- **Voice roll call.** "Everyone except Jake and Mia" or "Present: Priya, Leo, Maya".
+- **End-of-class summary.** Minutes, drills, feedback coverage and who got none, agent actions, items to review, and the top insight. Tap puts the missed kids first in the next class.
+
+## Opportunistic insights agent
+
+Agents also act without being asked. Deterministic detectors (no LLM) run on session end, on attendance changes and nightly:
+
+| Detector | Fires when | One-tap action |
+|---|---|---|
+| Attendance decline | Absent in 2 of the last 3 sessions, or attendance halved | Draft email |
+| Returning student | Present today after 2+ consecutive absences | Shown mid-class: `💡 Jake's back after 3 missed` |
+| No feedback | Present 3 sessions running with no notes | Put first next class |
+| Ready to test | Martial arts: 90+ days in rank, no open issues | Draft email |
+| New PR | Personal training: a PR in the last 7 days | Draft praise email |
+| Grade drop | Tutoring: latest test 10+ points below the previous one | Draft email |
+| Issue resolved | No new notes on an open issue for 21 days | Mark resolved, positive note |
+| Repeated billing | 2+ open billing flags for one student | Draft email |
+
+**Quiet by design:** insights appear in the lobby and the end-of-class summary. Mid-class, only high-urgency items (a returning student, a kid still without feedback late in class) show, as a 💡 banner in the style of Even's Conversate AI insights. A banner never interrupts recording or the agent card.
+
+## Agents and autonomy
+
+- **Router** (Claude Haiku 5.5): turns a transcript into typed intents and resolves names, including learned aliases ("Mya" resolves to Maya).
+- **Progress**: notes with skill tags; spots recurring issues.
+- **Parent / client email** (Claude Sonnet 5.5): drafted for urgent notes, explicit requests and accepted insights.
+- **Report cards** (Sonnet): monthly, grounded in quoted coach notes.
+- **Planner** (Sonnet): nightly drafts, voice plan edits, note-driven adjustments.
+- **Attendance**, **billing flags** (notes only, no payments), **metrics and briefs** (deterministic), **insights** (deterministic).
+
+Every agent has an **Auto / Review / Off** setting on the phone. Emails default to Review: nothing outward-facing is sent without the coach unless they choose Auto. Each run is logged on the Agents tab, and a "Tell this agent..." box steers it ("warmer, shorter").
+
+**Plans with or without AI.** Repeat the last class, copy another class's plan, start blank, let the AI draft, or edit by hand (add, rename, minutes, reorder, cues).
+
+**Custom vocabulary.** "Words CoachLens should know" (technique names, drill names) are sent to speech-to-text with the roster names.
+
+## Speed and offline
+
+- **Transcript first:** what you said appears on the lens before the agents finish.
+- **Dual-mic start:** glasses and phone mics open together; the glasses audio is used when it has sound, otherwise the phone's.
+- **Keep-warm:** the API is pinged during a session so there are no cold starts mid-class.
+- **Offline queue:** notes are saved locally first and sync later. The lens shows `⟳ 2 queued`, and the phone offers Retry now.
+
+## Three modes and onboarding
+
+| Mode | People | Plan | Metrics | Messages go to |
+|---|---|---|---|---|
+| Martial arts | students | drill deck | rank, time in rank | parent |
+| Personal training | clients | session plan | lift PRs | the client |
+| Tutoring | students | lesson plan | test grades | parent |
+
+Personal-training output never contains medical, injury or nutrition advice; tutoring never guarantees grades. Setup is an AI onboarding quiz that reads pasted text, CSV or photos of rosters, schedules and curriculum into editable tables you confirm.
+
+## Install and run on G2
+
+**On the judges' loaner:** the team pairs it at judging. Put it on, launch CoachLens from the glasses home, tap a class, tap to start, and talk.
+
+**On your own G2 (Beta):**
+
+1. Send the team your Even account email so we can add you to the CoachLens Beta group.
+2. In the Even Realities app on your iPhone: **Me → Beta tester → CoachLens → Install**.
+3. Open CoachLens on the phone and enter the pairing code the team gives you in person.
+4. Launch CoachLens from the glasses home and tap.
+
+Testers need no API keys. iPhone is the supported device; on Android the WebView may pause when the phone locks.
+
+**Dev test URL:** https://coachlens-phone.vercel.app. With Even developer mode on, scan its QR code from the Even app.
+
+### Self-hosting
+
+Requires Node 20+ and a Postgres database (Neon recommended).
+
+```bash
+npm install
+cp api/.env.example api/.env.local   # fill in values; never commit this file
+```
+
+Required variables (see `api/.env.example` for the full list; values are never committed):
+`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `RESEND_API_KEY`, `DATABASE_URL`, `PAIRING_CODE`, `CRON_SECRET`, `DEMO_EMAIL_OVERRIDE`.
+
+```bash
+npm run dev -w api                                        # API
+npm run dev -w app                                        # Even Hub app on :5173
+cd app && npx evenhub-simulator http://localhost:5173     # G2 simulator
+npm test                                                  # all workspaces
+npm run seed -w api                                       # demo data (needs DATABASE_URL, SEED_GUARDIAN_EMAILS)
+```
+
+On real glasses over the LAN: `cd app && npx evenhub qr --url http://<your-lan-ip>:5173`. To package for the Even Hub portal: `cd app && npm run build && npx evenhub pack app.json dist -o coachlens.ehpk`. Set `VITE_API_URL` and the `network` whitelist in `app/app.json` to your API origin.
 
 ## Architecture
 
@@ -50,95 +144,64 @@ First run on the phone is a six-step AI-assisted quiz: coaching type, business b
 G2 glasses <-> BLE <-> Even app (iPhone) -- WebView: CoachLens (lens + phone UI)
                                               | HTTPS (whitelisted origin, bearer token)
                                               v
-                                api/ (Hono on Vercel Functions)
+                              api/ (Hono on Vercel Fluid Compute)
               +----------------+----------------+-----------------+
          Neon Postgres     OpenAI STT      Anthropic Claude     Resend
-         (Drizzle)     (voice -> text)  (Haiku router,        (email)
-                                         Sonnet writers)
-                  Vercel Cron: nightly planner, monthly report cards
+         (Drizzle)     (gpt-4o-transcribe) (Haiku 5.5 router,   (email)
+                                            Sonnet 5.5 writers)
+            Vercel Cron: nightly planner + insights, monthly report cards
 ```
 
-Monorepo (npm workspaces; internal package names keep the original `@matside/*` prefix):
+- **Lens:** Even Hub SDK 0.0.16 text containers, IMU (nod), `audioControl` (glasses mic). A pure reducer drives every screen; the per-second timer uses partial container updates.
+- **Phone:** React and Vite inside the Even app WebView.
+- **API:** Hono on Vercel Fluid Compute, Neon Postgres via Drizzle, Claude via the AI SDK, a daily AI budget cap (`AI_DAILY_CAP`) that fails soft.
 
 | Path | What |
 |---|---|
-| `shared/` | Zod schemas, mode definitions, name matching |
-| `api/` | Hono API, agents, Drizzle schema and migrations, live evals |
-| `app/` | Vite + TypeScript Even Hub app: `lens/` (pure reducer + G2 renderers), `phone/` (React UI), `core/` (API client, outbox, audio) |
+| `shared/` | Zod contracts, mode definitions, name matching |
+| `api/` | Hono API, agents, insights detectors, Drizzle schema and migrations, evals |
+| `app/` | Even Hub app: `lens/` (reducer + G2 renderers), `phone/` (React), `core/` (API client, outbox, audio) |
 
-Design docs: [`docs/superpowers/specs/2026-10-17-matside-design.md`](docs/superpowers/specs/2026-10-17-matside-design.md), [`docs/voice-design.md`](docs/voice-design.md), and the amendments under `docs/superpowers/plans/`.
+Internal package names keep the original `@matside/*` prefix. Design docs: [`docs/voice-design.md`](docs/voice-design.md), [`docs/originality.md`](docs/originality.md), and the amendments under `docs/superpowers/plans/`.
 
-## Cost controls
+## Judging criteria
 
-- A **daily AI call cap** (`AI_DAILY_CAP`, default 400 per America/Los_Angeles day). Over the cap, agents fail soft with "Daily AI budget reached" and nothing else breaks.
-- A fast, cheap model routes (Haiku). The larger model only writes emails, report cards and plans.
-- Provider spend limits are set in the Anthropic and OpenAI consoles.
+### Made for G2
+*"Does the experience make thoughtful use of G2 and its place in the wearer's line of sight?"*
+Every screen fits about three glanceable rows within the SDK's container limits. Gestures map to the coach's real needs: tap to talk, swipe for the drill deck, double-tap to end, nod to go dark. The IMU, the glasses mic and partial text updates are all in use. The line of sight carries only what helps right now: the drill, the clock, the next kid to coach, a 💡 returning student.
 
-## Install and run on the G2
+### Quiet by Design
+*"Does the technology appear when it is useful and stay out of the way when it isn't?"*
+The lens is dark until triggered. One gesture to talk. Insights wait for the lobby and the end-of-class summary; mid-class only high-urgency items show, and they never cover recording or the card. Emails default to Review.
 
-Testers need **no API keys**.
+### Originality
+*"Does the idea open up a new moment or use case for Even Hub?"*
+We scanned about 220 community apps plus Even's built-in features ([`docs/originality.md`](docs/originality.md)). None is for instructors. To our knowledge, CoachLens is the first Even Hub app for coaches and teachers. The partial overlaps (Even's QuickNote and Conversate, the Cue memory app, workout trackers) capture or coach the wearer; CoachLens turns a sentence about one student into agent actions for that student.
 
-1. **Join the Beta.** Send the team your Even account email. We add you to the CoachLens Beta group in the Even Hub developer portal. (Or use the loaner glasses and phone at the table.)
-2. **Install.** In the Even Realities app on your iPhone: **Me -> Beta tester -> CoachLens -> Install**.
-3. **Pair.** Open CoachLens on the phone and enter the pairing code `<pairing code from the team>`.
-4. **Wear the G2 and tap.** Launch CoachLens from the glasses home, tap to start class, and talk.
+### Experience & Polish
+*"Is it clear, natural, and easy to use?"*
+Plain speech, no syntax. The transcript shows first, the agent card confirms, and double-tap undoes. Lens text is clipped at word boundaries. Notes survive offline. Setup is a quiz that reads a photo of your roster.
 
-iPhone is the supported device. On Android the WebView may be suspended when the phone locks.
+### Execution
+*"Can a judge put on G2 and experience the core idea right now?"*
+Yes: the loaner is paired at the table, and the core loop (tap, speak, card) runs on real G2 hardware. 500+ automated tests (shared, api, app) plus live router evals.
 
-## Local development
-
-Requires Node 20+ and a Neon (or any Postgres) database.
-
-```bash
-npm install
-cp api/.env.example api/.env.local   # then fill in the values (never commit this file)
-```
-
-Variables in `api/.env.example`: `DATABASE_URL`, `ANTHROPIC_API_KEY`, `MODEL_FAST`, `MODEL_SMART`, `AI_DAILY_CAP`, `OPENAI_API_KEY`, `STT_MODEL`, `RESEND_API_KEY`, `MAIL_FROM`, `PAIRING_CODE`, `CRON_SECRET`, `ALLOWED_ORIGINS`, `DEMO_EMAIL_OVERRIDE`, `INSTRUCTOR_NAME`, `TZ_NAME`, `SEED_GUARDIAN_EMAILS`.
-
-```bash
-npm run dev -w api                    # API
-npm run dev -w app                    # Even Hub app on :5173
-cd app && npx evenhub-simulator http://localhost:5173   # G2 simulator
-npm test                              # all workspaces (shared, api, app)
-```
-
-To try on real glasses over the network: `cd app && npx evenhub qr --url http://<your-lan-ip>:5173` and scan it from the Even app.
-
-Package for the Even Hub portal:
-
-```bash
-cd app && npm run build && npx evenhub pack app.json dist -o coachlens.ehpk
-```
-
-Set `VITE_API_URL` (see `app/.env.example`) and the `network` whitelist in `app/app.json` to your API origin.
-
-## Policy and security notes
+## Policy and security
 
 - **Billing is flags only.** No payments, no financial advice.
-- **Parent and client emails need approval.** Nothing outward-facing sends without a tap in Review.
-- **Demo emails go to a single owned inbox** (`DEMO_EMAIL_OVERRIDE`), and the data is seeded fake students.
+- **Outward emails respect per-agent autonomy** (default Review). Demo emails go to one owned inbox (`DEMO_EMAIL_OVERRIDE`), and all students are seeded fakes.
 - **Injuries are logged as observations**, never diagnosed.
-- **CORS is `*` on purpose.** The Even WebView sends a custom-scheme or null origin that cannot be allow-listed. Every `/v1/*` call needs a bearer token from pairing and no cookies are used, so there is no ambient credential for another origin to ride.
+- **CORS is `*` on purpose.** The Even WebView sends a custom-scheme or null origin. Every `/v1/*` call needs a bearer token from pairing and no cookies are used.
 - Secrets live only in Vercel environment variables. The app bundle holds no keys.
 
-## Status (hardware-tested on a real G2)
+## Tests
 
-Working on glasses: the per-second timer (partial text updates), the agent card with transcript and progress, one-gesture talk with a phone-microphone fallback when the glasses send no audio, the nod toggle calibrated on the x-axis (rest about -0.11, nod about -0.55; threshold about -0.22), and phone-screen scrolling in the iOS WebView (a nested scroller in the class picker was the cause of the earlier scroll bug; verified in a desktop browser, so confirm on the iPhone).
-
-Known limits: the nod toggle is experimental, the `✓` glyph may not render in the lens font on every firmware (falls back to `●`), and card text width was tuned by eye. Lens card text may need narrowing (`SAID_COLS` in the lens config) on other firmware.
-
-Tests: 400 across shared (12), api (140) and app (248), plus live eval suites for the agents (martial arts 15/15, personal training 5/5, tutoring 5/5).
+<<TEST_COUNTS>>
 
 ## Research
 
-Evidence and gaps are in [`docs/research.md`](docs/research.md). Highlights:
-
-- High-information feedback d=0.99 versus praise d=0.24 (Wisniewski, Zierer and Hattie 2020 meta-analysis).
-- Weekly personalized teacher-to-parent messages cut course failure from 15.8% to 9.3% (Kraft and Rogers 2015, randomized trial).
-- About 1 in 5 new gym members quit within 90 days; automated follow-up converts 85% versus 71% manual (Gymdesk 2026 benchmark, 4.6k gyms).
-- Lumilo (CMU, 2018): teacher glasses showing who needs attention improved learning.
+Evidence and gaps are in [`docs/research.md`](docs/research.md). High-information feedback d=0.99 versus praise d=0.24 (Wisniewski, Zierer and Hattie 2020); weekly personalized teacher-to-parent messages cut course failure from 15.8% to 9.3% (Kraft and Rogers 2015); Lumilo (CMU, 2018) teacher glasses showing who needs attention improved learning.
 
 ## Credits
 
-Built by Galen Jauss (who teaches kids martial arts) with Claude Code, for LA Hacks 2026. Thanks to the Even Realities team for platform guidance. Built on the Even Hub SDK, Hono, Drizzle, Neon, Vercel, Anthropic Claude, OpenAI transcription and Resend.
+Built by Galen Jauss (who teaches kids martial arts) with Claude Code, for LA Hacks 2026. Thanks to the Even Realities team for platform guidance.

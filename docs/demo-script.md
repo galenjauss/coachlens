@@ -1,25 +1,29 @@
 # CoachLens demo script (2:30)
 
-Record through-the-lens footage if possible, plus the phone screen. Use the seeded fake students and the owned demo inbox. Confirm before recording: iPhone on charge, Do Not Disturb on, API warm (open `https://matside-api.vercel.app/health` once; cold start is about 6 s), mode set to Martial arts, class chosen by swiping on the lens home.
+Even Hub app name: **CoachLens**. Lens text below is the exact string where the app fixes it; values in *italics* come from the seed and may differ slightly on the day.
 
-| Time | Shot | Say / do |
-|---|---|---|
-| 0:00-0:12 | Instructor with pads, kids in the background (or B-roll). Title card with numbers. | "I teach kids martial arts alone. Twelve kids, hands on pads, and I forget who I corrected. High-information feedback is four times as effective as praise (d=0.99 vs 0.24)." |
-| 0:12-0:22 | Phone: onboarding quiz, speed-through. Paste a schedule, show the extracted editable tables, tap commit. | "Setup is a six-step quiz. Paste a schedule or snap a sign-in sheet; AI fills the tables, I check them and commit." |
-| 0:22-0:30 | Lens home: swipe to choose the class (`COACHLENS (2/3)`), tap. | "One engine, three kinds of teaching. I pick the class on the lens." |
-| 0:30-0:44 | Lens: roll-call hint, tap, "Present: Priya, Leo, Maya..." or "Everyone except Jake and Mia". Card: `12 present / absent: Jake, Mia`. | "Roll call is one sentence." |
-| 0:44-0:56 | Lens: swipe to the deck, open a drill detail (full name and cues), tap to start. Peek with the per-second countdown and `Next feedback: Priya`. | "The peek stays on all class: the drill, the clock, and who has not had feedback." |
-| 0:56-1:20 | Lens: tap, say "Priya, guard drops on the jab again, great energy though", tap. Show `● LISTENING 0:04`, then `heard > SENDING > thinking···`, then the card: transcript left, progress right (`✓ sorted`, `✓ logged`, `… email`, `✓ plan`). | "No commands. I just talk. Agents log it, update tonight's plan, and tell me what they did." |
-| 1:20-1:40 | Lens: tap, say "Dee rolled her ankle and sat out the last drill". Card shows `⚠ urgent · parent note drafting`. Phone: Agents tab, a red tile. | "Injury, behavior or safety: the router marks it urgent and drafts a parent email now. Routine issues don't email anyone; they roll into the monthly report card." |
-| 1:40-1:58 | Phone: Agents tab, open the topic tile, the color-coded run, then the detail. Type in "Tell this agent..." "warmer, shorter", watch it redraft. Review, tap Send. Cut to the inbox. | "Every email waits for my approval, and I can steer the agent in plain words." |
-| 1:58-2:08 | Phone: Students, Priya, "Run report cards", show October's card with quoted coach notes. | "Monthly, each parent gets a report card grounded in what I actually said in class." |
-| 2:08-2:22 | Lens: nod to go dark, tap to wake, double-tap to end class. Wrap-up: `Missed: Jake, Leo, Mia`, `Tap = coach them first next class · 2x = done`; tap. | "At the end I see who I missed, and they go first next class." |
-| 2:22-2:30 | Title card: "CoachLens. Prep Notes for the dojo." Repo and Beta install info. | "Teach the class. CoachLens runs the business." |
+| Time | G2 shows | Phone shows | Voiceover |
+|---|---|---|---|
+| **0:00–0:12** Hook | (lens dark) | (in pocket) | "I teach kids martial arts. Twenty kids, both hands on pads, no time. I correct a dozen kids a class and remember two by dinner. Who is this for? Coaches like me. What moment? The middle of class." |
+| **0:12–0:22** Home → lobby | Home: class list, swipe to *Kids · Tue*, tap. Lobby: class name, start time, plan length, first 3 drills, footer `tap start · 2× plan · swipe back` | — | "My glasses show tonight's class. Before we start, I plan it with my assistant." |
+| **0:22–0:40** Planning conversation | Double-tap. `● Planning · 0:14` with the last words heard. Tap to stop: `Thinking · updating the plan…`, then the diff: `+ Partner sparring 6m` / `− Kata 2` / `~ Warm-up 10→5m` | — | (Coach and assistant talk naturally: "Let's cut Kata 2, shorter warm-up, add partner sparring.") "We just talk. The planner reshapes the drills and shows me the diff. Double-tap would undo it." |
+| **0:40–0:58** Start class, roll call, insight | Tap OK, tap start. Tap, say "Everyone except Mia." Card: what was said, then attendance done. Then the banner: `💡 Jake's back after 3 missed` / `welcome him` | — | "Roll call is one sentence. Jake is here, and the insights agent noticed he'd missed three classes. A returning kid is high urgency, so it shows now; everything else waits." |
+| **0:58–1:30** Notes | Tap, "Priya needs to keep her hands up, guard keeps dropping." Card: transcript left, progress right (`✓ sorted`, `✓ logged`, `✓ plan`). Tap, "Dee rolled her ankle and sat out the last drill." Card: urgent, `… email` (parent note drafting). Cut to the *PT · Mon 6:00* session: "Maria hit 225 on deadlift." Card: `✓ Maria · deadlift 225 lb (PR +10)`. Tap, "How's Priya doing?" Brief: *`Priya Rao · orange (8 mo)`*, *`●●○●●● steady`*, last notes, latest metric | — | "No commands. What I said shows first, then what the agents did. A routine correction goes to her progress and the next plan. An injury drafts a parent email. A lift becomes a PR. And I can ask about any kid without picking up my phone. This is not a note-taker: every note triggers agents with outcomes." |
+| **1:30–1:50** End-of-class summary | Double-tap, tap to confirm. `40 min · 6 drills · 9/12 got feedback` / `Missed: Jake, Leo, Ava` / `7 agent actions · 3 to review` / `tap: put Jake, Leo first next class`. Tap | — | "When class ends, I see who got no feedback. One tap puts them first next class." |
+| **1:50–2:15** Agents acting | (lens dark) | **Review:** the Dee email draft, tap Send (lands in the demo inbox). **Today → From your agents:** `Maria ready to test`, tap **Do it**, outcome shown inline. **Agents → Parent email:** autonomy control **Auto · Review · Off**, set on Review | "After class the agents have already done the work. The email waits for me. The insights agent noticed Maria is ready to test, and one tap drafts it. Every agent has Auto, Review or Off; emails never leave without me unless I choose Auto." |
+| **2:15–2:30** Close | Nod: lens dark | Title card: CoachLens, "Install: Even app → Me → Beta tester → CoachLens" | "Made for G2: hands free, line of sight. Quiet by design: dark until it matters. To our knowledge, the first Even Hub app for coaches and teachers. Try it on our loaner right now. CoachLens: teach the class, the agents do the rest." |
 
-## Before you record
-- Billing line is optional if time is tight: "Leo's dad still owes for sparring gear, kinda urgent" gives `✓ Billing flag · Leo · HIGH`. It reinforces "billing is flags only, no payments."
-- If the nod misfires on camera, skip it; a tap in the dark wakes the lens (it never starts recording).
-- Keep one safety take: the phone screen recorded through the iOS screen recorder, in case through-the-lens footage is too dim.
+## Recording checklist
+
+- [ ] **Reseed first.** From the repo root with the production env loaded: `DATABASE_URL=... SEED_GUARDIAN_EMAILS=... npm run seed -w api` (the seed is idempotent; it sets up Jake's absences, Priya's guard issue, Maria's PR and the ready-to-test hit).
+- [ ] **`DEMO_EMAIL_OVERRIDE` is set** in the Vercel env so every email goes to the owned demo inbox.
+- [ ] Insights autonomy on **Review** (so `Maria ready to test` is waiting) and parent email on **Review**.
+- [ ] **Footage:** through-the-lens capture if bright enough, otherwise the Even Hub simulator (`cd app && npx evenhub-simulator <url>`) for the lens shots. Record the phone with the iOS screen recorder as a safety take.
+- [ ] Warm the API: open `https://matside-api.vercel.app/health` once (keep-warm takes over once class starts).
+- [ ] iPhone charged, Do Not Disturb on, the martial-arts class selected.
+- [ ] Check the 💡 glyph renders on the G2; if not, `INSIGHT_GLYPH` falls back to `✦` (update this script's lens text to match).
+- [ ] If the nod misfires on camera, skip it; a tap in the dark wakes the lens.
 
 ## At the table (live)
-Let judges wear the G2 and try: roll call, one spoken note, the agent card. Pairing code is given in person.
+
+The team pairs the loaner G2 in person (the pairing code is never written down). Let judges tap a class, tap start, say a roll call and one note about a student, and watch the card. Then show the end-of-class summary and the phone's Review tab.
