@@ -127,3 +127,18 @@ export function mergeNotes(modelNotes: string, dropped: string[], label: string)
   if (dropped.length) parts.push(`Skipped ${dropped.length} ${label} I couldn't read fully: ${dropped.slice(0, 5).join('; ')}${dropped.length > 5 ? '…' : ''}`)
   return parts.filter(Boolean).join(' ').slice(0, 600)
 }
+
+/**
+ * Text-only extracts: an email the model returns must appear in the pasted text (case-insensitive),
+ * otherwise it is treated as invented and nulled. Returns how many were removed.
+ */
+export function groundEmails(items: StudentDraft[], text: string): { items: StudentDraft[]; removed: number } {
+  const hay = text.toLowerCase()
+  let removed = 0
+  const out = items.map(s => {
+    if (!s.guardianEmail || hay.includes(s.guardianEmail.toLowerCase())) return s
+    removed++
+    return { ...s, guardianEmail: null }
+  })
+  return { items: out, removed }
+}

@@ -1,6 +1,6 @@
 import { MODE_IDS, MODES, ModeProposal, type ExtractRequest, type ExtractResponse, type ModeId } from '@matside/shared'
 import type { Deps, LlmImage } from '../deps'
-import { cleanClasses, cleanCurriculum, cleanRoster, mergeNotes, RawClasses, RawCurriculum, RawRoster } from '../logic/onboarding'
+import { cleanClasses, cleanCurriculum, cleanRoster, groundEmails, mergeNotes, RawClasses, RawCurriculum, RawRoster } from '../logic/onboarding'
 
 const modeList = MODE_IDS.map(id => `${id} (${MODES[id].label})`).join(', ')
 
@@ -57,7 +57,10 @@ export async function extractOnboarding(deps: Deps, req: ExtractRequest, today: 
     case 'roster': {
       const out = await deps.llm.object({ ...base, schema: RawRoster })
       const c = cleanRoster(out)
-      return { step: 'roster', students: c.items, notes: mergeNotes(out.notes, c.dropped, 'entries') }
+      // Without a photo, every email must come from the pasted text; anything else was made up.
+      const g = req.text?.trim() && !images ? groundEmails(c.items, req.text) : { items: c.items, removed: 0 }
+      const removedNote = g.removed ? ` ${g.removed} email${g.removed === 1 ? '' : 's'} not found in your text ${g.removed === 1 ? 'was' : 'were'} removed.` : ''
+      return { step: 'roster', students: g.items, notes: (mergeNotes(out.notes, c.dropped, 'entries') + removedNote).trim() }
     }
     case 'curriculum': {
       const out = await deps.llm.object({ ...base, schema: RawCurriculum })

@@ -35,7 +35,7 @@ export function StudentDetailView({ api, id, onBack }: { api: Api; id: string; o
     <main className="screen">
       {back}
       <h1>{s.name}</h1>
-      <div className="sub">{s.belt} · age {s.age} · {s.classCount} classes</div>
+      <div className="sub">{s.belt}{s.age !== null ? ` · age ${s.age}` : ''} · {s.classCount} classes</div>
       <AliasEditor api={api} studentId={s.id} firstName={s.name.split(' ')[0] ?? s.name} />
       <section className="card" aria-labelledby="sd-work"><div className="label" id="sd-work">Working on</div>
         {open.map(i => <div key={i.tag} className="dot">{i.tag} <span className="pill high">recurring</span></div>)}

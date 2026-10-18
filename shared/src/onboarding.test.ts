@@ -26,6 +26,7 @@ describe('onboarding contracts', () => {
     expect(OnboardingCommit.safeParse({ ...commit, students: [{ ...commit.students[0], guardianEmail: 'nope' }] }).success).toBe(false)
     expect(OnboardingCommit.safeParse({ ...commit, basics: { ...commit.basics, timeZone: 'Mars/Base' } }).success).toBe(false)
     expect(OnboardingCommit.safeParse({ ...commit, classes: [] }).success).toBe(false)
+    expect(OnboardingCommit.safeParse({ ...commit, classes: [commit.classes[0], { ...commit.classes[0], name: ' kids  TUE ', weekday: 4 }] }).success).toBe(false)
   })
   it('knows IANA time zones', () => {
     expect(isTimeZone('America/New_York')).toBe(true)

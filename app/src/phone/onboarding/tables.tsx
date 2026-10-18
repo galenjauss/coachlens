@@ -126,8 +126,8 @@ export function WeekTable({ rows, mode, onPatch, onRemove }: {
         {rows.map((w, i) => (
           <tr key={w.key}>
             <th scope="row" className="ob-sticky">
-              <input className="ob-cell ob-w-age" type="number" min={1} max={52} aria-label={`Week number, row ${i + 1}`} value={w.week}
-                onChange={e => { const n = Math.round(Number(e.target.value)); if (n >= 1 && n <= 52) onPatch(w.key, { week: n, weekStart: null }) }} />
+              <CommitCell value={String(w.week)} type="number" label={`Week number, row ${i + 1}`} className="ob-w-age"
+                onCommit={v => { const n = Math.round(Number(v)); if (n >= 1 && n <= 52) onPatch(w.key, { week: n, weekStart: null }) }} />
             </th>
             <td><CommitCell value={w.theme} label={`${m.weeklyLabel}, week ${w.week}`} invalid={weekIssues(w).includes('theme')} onCommit={v => onPatch(w.key, { theme: v.trim() })} className="ob-w-name" /></td>
             <td><CommitCell value={w.itemsDue.join(', ')} label={`${m.itemsDueLabel}, week ${w.week}`} onCommit={v => onPatch(w.key, { itemsDue: v.split(',').map(x => x.trim()).filter(Boolean).slice(0, 10) })} className="ob-w-email" /></td>

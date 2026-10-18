@@ -196,7 +196,7 @@ export const StudentDetail = z.object({
   id: z.string(),
   name: z.string(),
   belt: z.string(),
-  age: z.number().int(),
+  age: z.number().int().nullable(), // null when unknown (birth year not set)
   classCount: z.number().int(),
   issues: z.array(z.object({ tag: SkillTag, status: z.enum(['open', 'resolved']) })),
   notes: z.array(z.object({ date: z.string(), drillName: z.string().nullable(), text: z.string() })),

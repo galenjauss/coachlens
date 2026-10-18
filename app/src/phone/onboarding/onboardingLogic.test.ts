@@ -112,6 +112,13 @@ describe('buildCommit', () => {
     expect(buildCommit({ ...dup, classes: mergeClasses(dup.classes, []).map((c, i) => ({ ...c, name: i ? 'kids tue' : c.name })) }, '2026-10-21'))
       .toEqual({ ok: false, errors: ['Two classes share a name — rename one.'] })
   })
+  it('reports two weeks with the same number instead of dropping one', () => {
+    const d = ready()
+    const clash = { ...d, weeks: d.weeks.map(w => ({ ...w, week: 1 })) }
+    expect(buildCommit(clash, '2026-10-21')).toEqual({ ok: false, errors: ['Two weeks share week 1. Change one week number.'] })
+    const dated = { ...d, weeks: [d.weeks[0]!, { ...d.weeks[1]!, week: 9, weekStart: '2026-10-21' }] }
+    expect(buildCommit(dated, '2026-10-21')).toEqual({ ok: false, errors: ['Two weeks share week 9. Change one week number.'] })
+  })
   it('explicit week dates snap to Monday', () => {
     expect(weekStartFor({ week: 5, weekStart: '2026-11-04', theme: 't', itemsDue: [] }, '2026-10-21')).toBe('2026-11-02')
     expect(weekStartFor({ week: 1, weekStart: null, theme: 't', itemsDue: [] }, '2026-10-25')).toBe('2026-10-19')

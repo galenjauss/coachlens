@@ -4,6 +4,9 @@ import type { Db } from '../db/client'
 import type { Deps } from '../deps'
 import { agentRuns, attendance, drills, issues, notes, outbox, reportCards, students } from '../db/schema'
 
+/** Unknown ages are stored as birthYear >= this year (onboarding without an age): report null. */
+export const ageFrom = (year: number, birthYear: number): number | null => (birthYear >= year ? null : year - birthYear)
+
 export async function listStudents(db: Db): Promise<RosterStudent[]> {
   return db.select({ id: students.id, name: students.name, nickname: students.nickname, belt: students.belt, aliases: students.aliases }).from(students).orderBy(asc(students.name))
 }
@@ -20,7 +23,7 @@ export async function getStudentDetail(deps: Deps, id: string): Promise<StudentD
     .where(eq(reportCards.studentId, id)).orderBy(desc(reportCards.month)).limit(1)
   return {
     id: s.id, name: s.name, belt: s.belt,
-    age: Number(new Intl.DateTimeFormat('en-CA', { timeZone: deps.env.timeZone, year: 'numeric' }).format(deps.now())) - s.birthYear,
+    age: ageFrom(Number(new Intl.DateTimeFormat('en-CA', { timeZone: deps.env.timeZone, year: 'numeric' }).format(deps.now())), s.birthYear),
     classCount: cc?.n ?? 0,
     issues: iss.map(i => ({ tag: i.tag, status: i.status })),
     notes: ns.map(n => ({ date: n.at.toISOString().slice(0, 10), drillName: n.drill, text: n.text })),

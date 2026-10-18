@@ -71,6 +71,9 @@ export const ExtractResponse = z.discriminatedUnion('step', [
 ])
 export type ExtractResponse = z.infer<typeof ExtractResponse>
 
+/** Case/space-insensitive key: classes and students are matched by it. */
+export const onboardingNameKey = (s: string): string => s.trim().replace(/\s+/g, ' ').toLowerCase()
+
 export function isTimeZone(tz: string): boolean {
   try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true } catch { return false }
 }
@@ -92,7 +95,8 @@ export type CommitWeek = z.infer<typeof CommitWeek>
 export const OnboardingCommit = z.object({
   mode: ModeId,
   basics: OnboardingBasics,
-  classes: z.array(ClassDraft).min(1).max(30),
+  classes: z.array(ClassDraft).min(1).max(30)
+    .refine(cs => new Set(cs.map(c => onboardingNameKey(c.name))).size === cs.length, 'duplicate class names'),
   students: z.array(StudentDraft).max(300),
   curriculum: z.array(CommitWeek).max(52),
 })

@@ -242,11 +242,15 @@ export function buildCommit(d: Draft, today: string): CommitBuild {
   const weeks = d.weeks.filter(w => w.theme.trim() || w.itemsDue.length)
   const badWeeks = weeks.filter(w => weekIssues(w).length).length
   if (badWeeks) errors.push(`${badWeeks} curriculum week${badWeeks === 1 ? ' needs' : 's need'} a theme.`)
+  const seenWeeks = new Set<string>()
+  for (const w of weeks) {
+    const ws = weekStartFor(w, today)
+    if (seenWeeks.has(ws)) { errors.push(`Two weeks share week ${w.week}. Change one week number.`); break }
+    seenWeeks.add(ws)
+  }
   if (errors.length) return { ok: false, errors }
 
   const known = d.classes.map(c => c.name.trim())
-  const byWeek = new Map<string, { weekStart: string; theme: string; itemsDue: string[] }>()
-  for (const w of weeks) { const ws = weekStartFor(w, today); byWeek.set(ws, { weekStart: ws, theme: w.theme.trim(), itemsDue: w.itemsDue.map(i => i.trim()).filter(Boolean) }) }
   const body = {
     mode: d.mode!,
     basics: { schoolName: d.basics.schoolName.trim(), coachName: d.basics.coachName.trim(), timeZone: d.basics.timeZone },
@@ -260,7 +264,7 @@ export function buildCommit(d: Draft, today: string): CommitBuild {
       guardianEmail: blankToNull(s.guardianEmail)?.toLowerCase() ?? null,
       classNames: s.classNames.flatMap(n => { const m = known.find(k => nameKey(k) === nameKey(n)); return m ? [m] : [] }),
     })),
-    curriculum: [...byWeek.values()],
+    curriculum: weeks.map(w => ({ weekStart: weekStartFor(w, today), theme: w.theme.trim(), itemsDue: w.itemsDue.map(i => i.trim()).filter(Boolean) })),
   }
   const parsed = OnboardingCommit.safeParse(body)
   if (!parsed.success) return { ok: false, errors: ['Some values are too long or invalid. Check the highlighted cells.'] }

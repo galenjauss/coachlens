@@ -7,7 +7,8 @@ import { createApp } from './app'
 import { classes, curriculum, decks, enrollments, guardians, instructors, students } from './db/schema'
 import { BudgetExceededError } from './agents/budget'
 import type { Llm } from './deps'
-import { cleanClasses, cleanCurriculum, cleanRoster, normalizeTime, normalizeWeekday } from './logic/onboarding'
+import { cleanClasses, cleanCurriculum, cleanRoster, groundEmails, normalizeTime, normalizeWeekday } from './logic/onboarding'
+import { ageFrom } from './services/students'
 
 type Call = { name: string; prompt: string; instructions: string; images?: { data: string; mediaType: string }[] }
 
@@ -118,6 +119,20 @@ describe('onboarding logic', () => {
   })
 })
 
+describe('grounding and ages', () => {
+  it('groundEmails nulls emails that are not in the text (case-insensitive)', () => {
+    const s = (name: string, guardianEmail: string | null) => ({ name, nickname: null, level: null, age: null, guardianName: null, guardianEmail, classNames: [] })
+    const r = groundEmails([s('A', 'mom@x.com'), s('B', 'made@up.com'), s('C', null)], 'A - MOM@X.com\nB\nC')
+    expect(r.items.map(i => i.guardianEmail)).toEqual(['mom@x.com', null, null])
+    expect(r.removed).toBe(1)
+  })
+  it('ageFrom: unknown (birth year this year or later) is null', () => {
+    expect(ageFrom(2026, 2018)).toBe(8)
+    expect(ageFrom(2026, 2026)).toBeNull()
+    expect(ageFrom(2026, 2030)).toBeNull()
+  })
+})
+
 describe('POST /v1/onboarding/extract', () => {
   beforeEach(() => resetRateLimits())
 
@@ -150,6 +165,20 @@ describe('POST /v1/onboarding/extract', () => {
     expect(body.students.map(s => [s.name, s.guardianEmail])).toEqual([['Priya Rao', 'anita@example.com'], ['Leo Diaz', null]])
     expect(calls[0]!.images).toEqual([{ data: 'iVBORw0KGgoAAAANSUhEUg==', mediaType: 'image/png' }])
     expect(calls[0]!.prompt).toContain('attached image')
+  })
+
+  it('roster from text: drops emails that are not in the pasted text and says so', async () => {
+    const llm = fakeLlm(() => ({
+      students: [
+        { name: 'Priya Rao', nickname: null, level: null, age: null, guardianName: null, guardianEmail: 'Anita@Example.com', classNames: [] },
+        { name: 'Leo Diaz', nickname: null, level: null, age: null, guardianName: null, guardianEmail: 'leo.parent@gmail.com', classNames: [] },
+      ],
+      notes: 'Found 2.',
+    }))
+    const { post } = await setup(llm)
+    const body = await (await post('/v1/onboarding/extract', { step: 'roster', text: 'Priya Rao anita@example.com\nLeo Diaz' })).json() as { students: { guardianEmail: string | null }[]; notes: string }
+    expect(body.students.map(s => s.guardianEmail)).toEqual(['anita@example.com', null])
+    expect(body.notes).toContain('1 email not found in your text was removed')
   })
 
   it('curriculum: weeks with Monday dates', async () => {
@@ -252,6 +281,7 @@ describe('POST /v1/onboarding/commit', () => {
     expect(r.status).toBe(400)
     expect(await r.json()).toEqual({ error: 'unknown classes: Nope' })
     expect((await post('/v1/onboarding/commit', { ...COMMIT, classes: [] })).status).toBe(400)
+    expect((await post('/v1/onboarding/commit', { ...COMMIT, classes: [COMMIT.classes[0], { ...COMMIT.classes[1], name: 'KIDS ·  Tue' }] })).status).toBe(400)
     expect((await post('/v1/onboarding/commit', { ...COMMIT, basics: { ...COMMIT.basics, timeZone: 'Moon/Base' } })).status).toBe(400)
     expect(await counts(db)).toEqual({ classes: 0, students: 0, guardians: 0, enrollments: 0, weeks: 0 })
   })
