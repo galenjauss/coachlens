@@ -22,9 +22,9 @@ Even Hub app name: **CoachLens**. Lens text below is the exact string where the 
 
 ## Recording checklist
 
-- [ ] **Reseed first, the same day as recording.** From the repo root with the production env loaded: `DATABASE_URL=... SEED_GUARDIAN_EMAILS=... npm run seed -w api`. **This WIPES all data** before reseeding. The PR insight only counts for 7 days and insights dedupe weekly, so a stale seed loses beats. The seed sets up: Jake (missed 3 in a row), Priya (two earlier guard notes and a resolved `focus` issue; the live note is her 3rd), Gus (martial arts, ready to test), Maria Gomez (PT, squat PR 185 three days ago), Eli (no feedback), Noah (grade drop 84% → 72%) and Leo (repeated billing flags).
+- [ ] **Reseed first, the same day as recording.** From the repo root with the production env loaded: `DATABASE_URL=... SEED_GUARDIAN_EMAILS=... npm run seed -w api`. **This WIPES all data** before reseeding. The PR insight only counts for 7 days and insights dedupe weekly, so a stale seed loses beats. The seed sets up: Jake (missed 3 in a row), Priya (two earlier guard notes and a resolved `focus` issue; the live note is her 3rd), Gus (martial arts, due a rank review; "ready to test" in the deployed version), Maria Gomez (PT, squat PR 185 three days ago), Eli (no feedback), Noah (grade drop 84% → 72%) and Leo (repeated billing flags).
 - [ ] **`DEMO_EMAIL_OVERRIDE` is set** in the Vercel env so every email goes to the owned demo inbox.
-- [ ] Insights autonomy on **Review** (so `Gus ready to test` is waiting) and parent email on **Review**.
+- [ ] Insights autonomy on **Review** (so the Gus rank-review insight is waiting: `Gus ready to test` deployed, `Gus: review for next rank` in source) and parent email on **Review**.
 - [ ] **Footage:** through-the-lens capture if bright enough, otherwise the Even Hub simulator (if simulator footage is used, the film must say so and must not imply real-time latency) (`cd app && npx evenhub-simulator <url>`) for the lens shots. Record the phone with the iOS screen recorder as a safety take.
 - [ ] Warm the API: open `https://coachlens-api.vercel.app/health` once (keep-warm takes over once class starts).
 - [ ] iPhone charged, Do Not Disturb on, the martial-arts class selected.
