@@ -3,6 +3,7 @@ import type { Api } from '../core/api'
 import { usePeopleLabel } from './kvContext'
 import { cap, outcomeFor } from './reviewLogic'
 import { StudentDetailView } from './StudentDetail'
+import { StudentForm } from './StudentForm'
 import { usePoll } from './usePoll'
 
 export function Students({ api }: { api: Api }) {
@@ -11,8 +12,9 @@ export function Students({ api }: { api: Api }) {
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [adding, setAdding] = useState(false)
   const people = usePeopleLabel(api) // from the stored class's mode, never api.today()
-  if (open) return <StudentDetailView api={api} id={open} onBack={() => setOpen(null)} />
+  if (open) return <StudentDetailView api={api} id={open} onBack={() => { setOpen(null); void reload() }} onDeleted={name => { setOpen(null); setMsg(`${name} and their data were deleted.`); void reload() }} />
 
   async function runAll() {
     if (busy) return
@@ -26,7 +28,9 @@ export function Students({ api }: { api: Api }) {
     <main className="screen">
       <h1>{cap(people)}</h1>
       <div className="sub">{data ? `${data.length} on your roster` : loading ? 'Loading…' : ''}</div>
-      <div className="btns tight"><button type="button" disabled={busy} onClick={runAll}>{busy ? 'Starting…' : 'Draft monthly report cards now'}</button></div>
+      {adding
+        ? <StudentForm api={api} onCancel={() => setAdding(false)} onDone={m => { setAdding(false); setMsg(m); void reload() }} />
+        : <div className="btns tight"><button type="button" className="primary" onClick={() => { setMsg(null); setAdding(true) }}>Add a student</button><button type="button" disabled={busy} onClick={runAll}>{busy ? 'Starting…' : 'Draft monthly report cards now'}</button></div>}
       <div aria-live="polite">{msg && <p className="notice">{msg}</p>}</div>
       {err && <p className="error" role="alert">{err}</p>}
       {error && <p className="error" role="alert">Couldn’t load {people}: {error} <button type="button" className="inline" onClick={reload}>Retry</button></p>}

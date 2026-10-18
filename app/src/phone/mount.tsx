@@ -1,11 +1,12 @@
 import './theme.css'
 import { createRoot, type Root } from 'react-dom/client'
 import type { Api } from '../core/api'
+import type { Outbox } from '../core/outbox'
 import type { KV } from '../core/storage'
 import { App } from './App'
 import { KVContext } from './kvContext'
 
-export type PhoneDeps = { api: Api; kv: KV; hasGlasses: boolean }
+export type PhoneDeps = { api: Api; kv: KV; outbox: Outbox; hasGlasses: boolean }
 
 let root: Root | null = null
 

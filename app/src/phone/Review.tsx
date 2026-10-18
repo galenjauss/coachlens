@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { DeckDiff, ReviewItem } from '@matside/shared'
-import type { Api } from '../core/api'
-import { approveAllNotice, bulkEmailIds, outcomeFor, visibleEmailIds } from './reviewLogic'
+import type { DeckDiff } from '@matside/shared'
+import type { Api, ReviewItemClient as ReviewItem } from '../core/api'
+import { approveAllNotice, bulkEmailIds, filterCandidates, outcomeFor, urgentFirst, visibleEmailIds } from './reviewLogic'
 import { usePoll } from './usePoll'
 import { useAction } from './useAction'
-import { usePeopleLabel } from './kvContext'
+
+/** F17: an urgent item says so first. */
+const Urgent = ({ item }: { item: { urgent?: boolean } }) => (item.urgent ? <span className="pill high urgent">Urgent</span> : null)
+const when = (iso: string) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? iso : d.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }) }
 
 export function DiffList({ diff, names }: { diff: DeckDiff; names?: Record<string, string> }) {
   const empty = !diff.removed.length && !diff.changed.length && !diff.added.length
@@ -36,7 +39,7 @@ function EmailCard({ api, item, onGone, refresh, locked, onDirty }: Props & { it
   const empty = !subject.trim() || !body.trim()
   return (
     <article className="card" aria-label={`${label} for ${item.studentName}`}>
-      <div className="card-head"><span className="pill">{label}</span><span className="muted">{item.studentName} · to {item.to}</span></div>
+      <div className="card-head"><Urgent item={item} /><span className="pill">{label}</span><span className="muted">{item.studentName} · to {item.to}</span></div>
       {edit ? (
         <>
           <input ref={subjectRef} aria-label="Subject" value={subject} onChange={e => setSubject(e.target.value)} />
@@ -65,7 +68,7 @@ function BillingCard({ api, item, onGone, refresh, locked }: Props & { item: Ext
   const trimmed = note.trim()
   return (
     <article className="card" aria-label={`Billing flag for ${item.studentName}`}>
-      <div className="card-head"><span className={`pill ${item.urgency === 'high' ? 'high' : ''}`}>Billing flag · {item.urgency.toUpperCase()}</span><span className="muted">{item.studentName}</span></div>
+      <div className="card-head"><Urgent item={item} /><span className={`pill ${item.urgency === 'high' ? 'high' : ''}`}>Billing flag · {item.urgency.toUpperCase()}</span><span className="muted">{item.studentName}</span></div>
       <div className="pre">{item.note}{item.amount != null ? ` · $${item.amount}` : ''}</div>
       <input aria-label={`Note for ${item.studentName}`} placeholder="Add a note…" value={note} onChange={e => setNote(e.target.value)} />
       {err && <p className="error" role="alert">{err}</p>}
@@ -77,18 +80,46 @@ function BillingCard({ api, item, onGone, refresh, locked }: Props & { item: Ext
   )
 }
 
-function NoteCard({ api, item, roster, onGone, refresh, locked }: Props & { item: Extract<ReviewItem, { kind: 'unassigned_note' }>; roster: { id: string; name: string }[] }) {
+/**
+ * F16: assign a note only to someone in ITS class (GET /v1/notes/:id/candidates), shown with the class name and
+ * when it was said; search, then pick (no all-roster chip wall). The server's membership check stays.
+ */
+function NoteCard({ api, item, onGone, refresh, locked }: Props & { item: Extract<ReviewItem, { kind: 'unassigned_note' }> }) {
   const { busy, err, run } = useAction(onGone, refresh)
+  const { data: cand, error: candErr, reload } = usePoll(() => api.noteCandidates(item.id), null, [item.id])
+  const [q, setQ] = useState(item.heard ?? '')
+  const [pick, setPick] = useState<string | null>(null)
+  const matches = cand ? filterCandidates(cand.students, q) : []
+  const shown = matches.length ? matches : cand?.students ?? [] // nothing matched "heard": show the whole class roster
+  const chosen = cand?.students.find(s => s.id === pick) ?? null
   return (
     <article className="card" aria-label="Unassigned note">
-      <div className="card-head"><span className="pill">Unassigned note</span>{item.heard && <span className="muted">heard “{item.heard}”</span>}</div>
+      <div className="card-head"><Urgent item={item} /><span className="pill">Unassigned note</span>{item.heard && <span className="muted">heard “{item.heard}”</span>}</div>
       <div className="pre">{item.text}</div>
-      <div className="label chips-label">Assign to</div>
-      <div className="chips" role="group" aria-label="Assign note to">
-        {roster.map(s => <button key={s.id} type="button" disabled={busy || locked} aria-label={`Assign to ${s.name}`} onClick={() => run(() => api.assignNote(item.id, s.id), `Assigned to ${s.name.split(' ')[0]}.`)}>{s.name}</button>)}
-      </div>
+      {cand && <div className="muted">{cand.className} · {when(cand.capturedAt)}</div>}
+      {candErr && <p className="error" role="alert">Couldn’t load this class’s roster. <button type="button" className="inline" onClick={() => { void reload() }}>Retry</button></p>}
+      {cand && (
+        <>
+          <label className="label chips-label" htmlFor={`find-${item.id}`}>Assign to someone in {cand.className}</label>
+          <input id={`find-${item.id}`} type="search" placeholder="Search this class" value={q} onChange={e => { setQ(e.target.value); setPick(null) }} />
+          <ul className="rowlist pick-list" role="listbox" aria-label={`Students in ${cand.className}`}>
+            {shown.slice(0, 8).map(s => (
+              <li key={s.id} role="option" aria-selected={pick === s.id}>
+                <button type="button" className={`rowbtn pick ${pick === s.id ? 'on' : ''}`} disabled={busy || locked} onClick={() => setPick(s.id)}>
+                  <span className="grow">{s.name}{s.nickname ? <span className="muted"> “{s.nickname}”</span> : null}</span>{pick === s.id ? '✓' : ''}
+                </button>
+              </li>
+            ))}
+            {shown.length > 8 && <li className="muted">{shown.length - 8} more · search to narrow</li>}
+            {!cand.students.length && <li className="muted">No one is enrolled in {cand.className}.</li>}
+          </ul>
+        </>
+      )}
       {err && <p className="error" role="alert">{err}</p>}
-      <div className="btns"><button type="button" disabled={busy || locked} onClick={() => run(() => api.dismissNote(item.id), 'Note dismissed.')}>Dismiss note</button></div>
+      <div className="btns">
+        <button type="button" disabled={busy || locked} onClick={() => run(() => api.dismissNote(item.id), 'Note dismissed.')}>Dismiss note</button>
+        <button type="button" className="primary" disabled={busy || locked || !chosen} onClick={() => chosen && run(() => api.assignNote(item.id, chosen.id), `Assigned to ${chosen.name.split(' ')[0]}.`)}>{chosen ? `Assign to ${chosen.name.split(' ')[0]}` : 'Assign'}</button>
+      </div>
     </article>
   )
 }
@@ -110,11 +141,9 @@ function DiffCard({ api, item, onGone, refresh, locked }: Props & { item: Extrac
 
 export function Review({ api }: { api: Api }) {
   const { data, error, loading, reload } = usePoll(() => api.review(), 5000)
-  const { data: roster } = usePoll(() => api.students(), null)
   const [notice, setNotice] = useState<string | null>(null)
   const [bulkErr, setBulkErr] = useState<string | null>(null)
   const [bulkBusy, setBulkBusy] = useState(false)
-  const people = usePeopleLabel(api) // from the stored class's mode, never api.today()
   const onGone = useCallback((t: string) => setNotice(t), [])
   const [dirty, setDirty] = useState<ReadonlySet<string>>(new Set())
   const onDirty = useCallback((id: string, d: boolean) => setDirty(prev => {
@@ -134,7 +163,8 @@ export function Review({ api }: { api: Api }) {
   return (
     <main className="screen">
       <h1>Review</h1>
-      <div className="sub" role="status">{data ? (data.length === 1 ? '1 item' : `${data.length} items`) : loading ? 'Loading…' : ''} · {people} drafts and flags wait here</div>
+      {/* F16: this list covers every class, so the label never follows the selected class's mode. */}
+      <div className="sub" role="status">{data ? (data.length === 1 ? '1 item' : `${data.length} items`) : loading ? 'Loading…' : ''} · drafts and flags from all your classes · urgent first</div>
       {error && <p className="error" role="alert">Couldn’t load review: {error} <button type="button" className="inline" onClick={reload}>Retry</button></p>}
       <div aria-live="polite">{notice && <p className="notice">{notice} <button type="button" className="inline" onClick={() => setNotice(null)}>Dismiss</button></p>}</div>
       {bulkErr && <p className="error" role="alert">{bulkErr}</p>}
@@ -142,12 +172,12 @@ export function Review({ api }: { api: Api }) {
         <div className="btns bulk"><button type="button" className="primary" disabled={bulkBusy} onClick={approveAll}>{bulkBusy ? 'Sending…' : `Send ${emailIds.length} unedited emails`}</button></div>
       )}
       {excluded > 0 && <p className="muted" id="bulk-hint">Edited emails are sent individually.</p>}
-      {data?.map(item => {
+      {data && urgentFirst(data).map(item => {
         const p = { api, onGone, refresh: reload, locked: bulkBusy }
         switch (item.kind) {
           case 'parent_email': case 'report_card': return <EmailCard key={item.id} {...p} item={item} onDirty={onDirty} />
           case 'billing': return <BillingCard key={item.id} {...p} item={item} />
-          case 'unassigned_note': return <NoteCard key={item.id} {...p} item={item} roster={roster ?? []} />
+          case 'unassigned_note': return <NoteCard key={item.id} {...p} item={item} />
           case 'deck_diff': return <DiffCard key={item.id} {...p} item={item} />
         }
       })}

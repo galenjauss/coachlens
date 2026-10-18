@@ -16,7 +16,7 @@ export function InsightsList({ api }: { api: Api }) {
     <section className="card ideas-card" aria-labelledby="all-insights">
       <header className="ideas-head">
         <span className="ideas-bulb" aria-hidden="true">💡</span>
-        <h2 id="all-insights">{open ? `${open} waiting on you` : 'All caught up'}</h2>
+        <h2 id="all-insights">All classes · {open ? `${open} waiting on you` : 'all caught up'}</h2>
       </header>
       <ul className="ideas">
         {all.map(i => <InsightRow key={i.id} api={api} insight={i} outcome={settled[i.id] ?? null} onSettled={settle(i)} />)}

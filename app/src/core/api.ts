@@ -4,7 +4,7 @@ import {
   SettingsResponse, type SettingsPatch,
   InsightsResponse, InsightAcceptResponse, type InsightsQuery,
   ExtractResponse, OnboardingCommitResponse, OnboardingStatus, type ExtractRequest, type OnboardingCommit,
-  UndoResponse, NoteCandidates, type StudentCreate, type StudentUpdate, type ClassCreate, type ClassUpdate,
+  UndoResponse, NoteCandidates, StatusResponse, type StudentCreate, type StudentUpdate, type ClassCreate, type ClassUpdate,
 } from '@matside/shared'
 import { z } from 'zod'
 import { bus } from './bus'
@@ -191,6 +191,8 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
     deleteClass: (id: string) => req(`/v1/classes/${encodeURIComponent(id)}`, { method: 'DELETE' }, ok),
     /** C4: revoke this phone's token on the server (the caller then clears it locally). */
     unpair: () => post('/v1/unpair', {}, ok),
+    /** C5 / F20: AI budget used today and whether speech-to-text is configured. */
+    status: () => req('/v1/status', {}, StatusResponse),
     feed: (since?: string) => req(`/v1/agents/feed${since ? `?since=${encodeURIComponent(since)}` : ''}`, {}, z.array(AgentRunView)),
     agentsSummary: () => req('/v1/agents/summary', {}, AgentsSummary),
     agentTask: (task: AgentTask, limit = 50) => req(`/v1/agents/${task}?limit=${limit}`, {}, z.array(AgentTaskRun)),

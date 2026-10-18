@@ -39,3 +39,16 @@ export function approveAllNotice(r: { sent: number; failed: number }): string {
 }
 
 export function cap(s: string): string { return s ? s[0]!.toUpperCase() + s.slice(1) : s }
+
+/** F17: urgent items first; otherwise the server's order is kept. Does not mutate. */
+export function urgentFirst<T extends { urgent?: boolean }>(items: readonly T[]): T[] {
+  return [...items.filter(i => i.urgent), ...items.filter(i => !i.urgent)]
+}
+
+type Candidate = { id: string; name: string; nickname: string | null; aliases: string[] }
+/** F16: search the note's own class roster by name, nickname or learned alias. */
+export function filterCandidates<T extends Candidate>(students: readonly T[], query: string): T[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return [...students]
+  return students.filter(s => [s.name, s.nickname ?? '', ...s.aliases].some(v => v.toLowerCase().includes(q)))
+}
