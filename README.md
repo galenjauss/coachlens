@@ -35,6 +35,7 @@ The challenge page notes that judges "see a lot of teleprompters, translators, a
 - A recurring issue (same skill tag 3+ times in 30 days) goes into the monthly report card and the next class plan.
 - A metric ("Maria hit 225 on deadlift") becomes a PR on her profile.
 - A question ("how's Priya doing?") returns a profile brief on the lens.
+- A class question ("who is forgetting to keep their guard up?") returns an ANSWER card built from the class's notes, for example `Guard: Priya (3), Leo (2)`. See [Class questions](#class-questions).
 - A roll call ("everyone except Jake and Mia") marks attendance, which feeds the insights agent.
 
 ## The lens flow
@@ -52,9 +53,18 @@ The challenge page notes that judges "see a lot of teleprompters, translators, a
 - **Voice roll call.** "Everyone except Jake and Mia" or "Present: Priya, Leo, Maya".
 - **End-of-class summary.** Minutes, drills, feedback coverage and who got none, agent actions, items to review, and the top insight. Tap puts the missed kids first in the next class.
 
+## Class questions
+
+Tap and ask the lens about the whole class, not one student. The answer lands as an ANSWER card:
+
+- "Who is forgetting to keep their guard up?" shows `Guard: Priya (3), Leo (2)`.
+- "Who hasn't gotten feedback today?" lists the students with no notes yet.
+- "How many are here?" answers instantly from attendance, with no AI call.
+- "What should I focus on next drill?" uses the fast model, grounded only in this class's data. When the notes are thin it says "Not enough notes yet" instead of guessing.
+
 ## Opportunistic insights agent
 
-Agents also act without being asked. Deterministic detectors (no LLM) run on session end, on attendance changes and nightly:
+Agents also act without being asked. Deterministic detectors (no LLM) run on session end, on attendance changes and nightly. After roll call an immediate insight check runs, so a returning-student banner appears about 2 s later:
 
 | Detector | Fires when | One-tap action |
 |---|---|---|
@@ -133,7 +143,7 @@ npm run dev -w api                                        # API
 npm run dev -w app                                        # Even Hub app on :5173
 cd app && npx evenhub-simulator http://localhost:5173     # G2 simulator
 npm test                                                  # all workspaces
-npm run seed -w api                                       # demo data (needs DATABASE_URL, SEED_GUARDIAN_EMAILS)
+npm run seed -w api                                       # demo data; WIPES all data first (needs DATABASE_URL, SEED_GUARDIAN_EMAILS)
 ```
 
 On real glasses over the LAN: `cd app && npx evenhub qr --url http://<your-lan-ip>:5173`. To package for the Even Hub portal: `cd app && npm run build && npx evenhub pack app.json dist -o coachlens.ehpk`. Set `VITE_API_URL` and the `network` whitelist in `app/app.json` to your API origin.
@@ -168,7 +178,7 @@ Internal package names keep the original `@matside/*` prefix. Design docs: [`doc
 
 ### Made for G2
 *"Does the experience make thoughtful use of G2 and its place in the wearer's line of sight?"*
-Every screen fits about three glanceable rows within the SDK's container limits. Gestures map to the coach's real needs: tap to talk, swipe for the drill deck, double-tap to end, nod to go dark. The IMU, the glasses mic and partial text updates are all in use. The line of sight carries only what helps right now: the drill, the clock, the next kid to coach, a 💡 returning student.
+Every screen fits about three glanceable rows within the SDK's container limits. Gestures map to the coach's real needs: tap to talk, swipe for the drill deck, double-tap to end, nod to go dark. The IMU, the glasses mic and partial text updates are all in use. The line of sight carries only what helps right now: the drill, the clock, the next kid to coach, a 💡 returning student, or the answer to a question about the class (`Guard: Priya (3), Leo (2)`).
 
 ### Quiet by Design
 *"Does the technology appear when it is useful and stay out of the way when it isn't?"*
@@ -180,11 +190,11 @@ We scanned about 220 community apps plus Even's built-in features ([`docs/origin
 
 ### Experience & Polish
 *"Is it clear, natural, and easy to use?"*
-Plain speech, no syntax. The transcript shows first, the agent card confirms, and double-tap undoes. Lens text is clipped at word boundaries. Notes survive offline. Setup is a quiz that reads a photo of your roster.
+Plain speech, no syntax. The transcript shows first, the agent card confirms, and double-tap undoes. Ask the class a question ("who is forgetting to keep their guard up?") and get an ANSWER card, with instant answers for counts. Lens text is clipped at word boundaries. Notes survive offline. Setup is a quiz that reads a photo of your roster.
 
 ### Execution
 *"Can a judge put on G2 and experience the core idea right now?"*
-Yes: the loaner is paired at the table, and the core loop (tap, speak, card) runs on real G2 hardware. 500+ automated tests (shared, api, app) plus live router evals.
+Yes: the loaner is paired at the table, and the core loop (tap, speak, card) runs on real G2 hardware. 500+ automated tests (shared, api, app) plus live router evals: 43/44 cases pass on the live model across the three modes.
 
 ## Policy and security
 

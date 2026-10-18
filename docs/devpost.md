@@ -19,6 +19,7 @@ CoachLens turns the G2 into an instructor's assistant during class.
 - **Home and lobby.** Swipe through your classes and tap one to open its lobby: the plan and the top insight. Tap starts class. Double-tap starts a **planning listen**: talk the plan through with your assistant, and the AI reshapes the drills, showing a diff on the lens (`+ Partner sparring 6m`, `− Kata 2`) with undo.
 - **In class.** Tap and talk in plain language. Swipe opens the drill deck, double-tap ends class, long-press is hold-to-talk, a nod turns the lens dark or on. Roll call is one sentence: "everyone except Jake and Mia".
 - **Agent card.** What you said appears first, then live agent progress. "Dee rolled her ankle and sat out the last drill" is urgent, so a parent email draft is created. Recurring issues roll into the report card and the next plan. "Maria hit 225 on deadlift" logs a PR (`✓ Maria · deadlift 225 lb (PR +10)`). "How's Priya doing?" shows her brief: rank and time in rank, attendance dots (`●●○●●●`), last notes, metrics.
+- **Class questions.** Tap and ask "who is forgetting to keep their guard up?" and the lens shows an ANSWER card such as `Guard: Priya (3), Leo (2)`. Also "who hasn't gotten feedback today?", "how many are here?" (instant, no AI call) and "what should I focus on next drill?" (fast model, grounded only in class data; says "Not enough notes yet" when thin).
 - **Opportunistic insights.** Deterministic detectors find attendance decline, returning students, kids with no feedback, students ready to test, new PRs, grade drops, resolved issues and repeated billing flags. Each has a one-tap action: draft an email, put the student first next class, or mark the issue resolved. A returning student shows mid-class as `💡 Jake's back after 3 missed`, the way Even's Conversate shows AI insights.
 - **End-of-class summary.** Minutes, drills, feedback coverage (who got none), agent actions, items to review, top insight. Tap puts the missed kids first next class.
 - **Phone companion** (in the Even app): Review queue for drafts, Insights with Do it / Dismiss, an Agents tab with per-agent **Auto / Review / Off**, student profiles with metrics, a plan editor that works with or without AI (repeat last class, copy another class, blank, AI draft, manual edits), custom vocabulary for speech-to-text, and an AI onboarding quiz that reads pasted text, CSV or photos of rosters, schedules and curriculum.
@@ -81,7 +82,7 @@ Yes. The team pairs the loaner G2 at the table. Tap a class, tap to start, say "
 
 ### Made for G2
 *"Does the experience make thoughtful use of G2 and its place in the wearer's line of sight?"*
-Every screen fits about three rows within the SDK's container limits. It uses the IMU (nod to go dark), the glasses mic, partial text updates for the timer, and a gesture map designed around a coach's hands: tap to talk, swipe for the deck, double-tap to end, long-press to hold-to-talk.
+Every screen fits about three rows within the SDK's container limits, including the ANSWER card for class questions (`Guard: Priya (3), Leo (2)`). It uses the IMU (nod to go dark), the glasses mic, partial text updates for the timer, and a gesture map designed around a coach's hands: tap to talk, swipe for the deck, double-tap to end, long-press to hold-to-talk.
 
 ### Quiet by Design
 *"Does the technology appear when it is useful and stay out of the way when it isn't?"*
@@ -93,11 +94,11 @@ We checked about 220 community apps plus Even's built-in features. None is built
 
 ### Experience & Polish
 *"Is it clear, natural, and easy to use?"*
-No syntax: "Dee rolled her ankle and sat out the last drill" just works. The transcript appears first, the card confirms, double-tap undoes. Plans work with or without AI. Notes survive a dead network.
+No syntax: "Dee rolled her ankle and sat out the last drill" just works, and so does asking the class "who is forgetting to keep their guard up?" (instant answers for counts like "how many are here?"). The transcript appears first, the card confirms, double-tap undoes. Plans work with or without AI. Notes survive a dead network.
 
 ### Execution
 *"Can a judge put on G2 and experience the core idea right now?"*
-Yes, on the loaner, paired at the table. Hardware-tested on a real G2: the tap-speak-card loop, the per-second timer, the nod, the phone-mic fallback. 500+ automated tests (shared, api, app) plus live router evals across all three modes.
+Yes, on the loaner, paired at the table. Hardware-tested on a real G2: the tap-speak-card loop, the per-second timer, the nod, the phone-mic fallback. 500+ automated tests (shared, api, app) plus live router evals across all three modes: 43/44 cases pass on the live model.
 
 ## Built with
 
