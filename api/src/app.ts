@@ -3,7 +3,7 @@ import { cors } from 'hono/cors'
 import { HTTPException } from 'hono/http-exception'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { AgentTask, DeckPatch, ExtractRequest, MAX_ALIASES, MAX_IMAGE_BASE64, MAX_ONBOARDING_TEXT, OnboardingCommit, RedraftRequest, StudentPatch, UtteranceForm } from '@matside/shared'
+import { AgentTask, DeckPatch, ExtractRequest, MAX_ALIASES, MAX_IMAGE_BASE64, MAX_ONBOARDING_TEXT, OnboardingCommit, RedraftRequest, StudentPatch, TranscribeForm, UtteranceForm } from '@matside/shared'
 import type { Deps } from './deps'
 import { attendance, billingFlags, enrollments, instructors, notes, sessions, students, classes, utterances } from './db/schema'
 import { hashToken } from './http/auth'
@@ -12,6 +12,7 @@ import { allow, isBlocked, recordFailure } from './http/rateLimit'
 import { getToday, listClasses } from './services/today'
 import { endSession, logDrill, requireSession, startSession } from './services/sessions'
 import { handleUtterance } from './services/utterance'
+import { hintsFor } from './services/hints'
 import { listReview, approveOutbox, skipOutbox, approveAllOutbox, handleBilling, noteBilling, dismissNote, type ActionResult } from './services/review'
 import { getDeck, patchDeck } from './services/decks'
 import { runReportCards } from './agents/reportCard'
@@ -126,8 +127,12 @@ export function createApp(deps: Deps) {
     return c.json({ ok: true })
   })
 
-  app.post('/v1/utterance', async c => {
-    if (!allow(`utt:${c.get('instructorId')}`, 120)) {
+  /**
+   * Shared by /v1/utterance and /v1/transcribe: per-instructor rate limit (own bucket per route),
+   * the request size cap, and the multipart parse. `audio()` applies the audio size cap.
+   */
+  const audioUpload = async (c: Context<Vars>, bucket: string) => {
+    if (!allow(`${bucket}:${c.get('instructorId')}`, 120)) {
       c.header('Retry-After', '10')
       throw new HTTPException(429, { message: 'slow down' })
     }
@@ -135,17 +140,38 @@ export function createApp(deps: Deps) {
     let body: Awaited<ReturnType<typeof c.req.parseBody>>
     try { body = await c.req.parseBody() } catch { throw new HTTPException(400, { message: 'invalid multipart' }) }
     const str = (k: string) => (typeof body[k] === 'string' && body[k] !== '' ? (body[k] as string) : null)
+    const audio = (): File | null => {
+      const a = body['audio']
+      if (!(a instanceof File)) return null
+      if (a.size > MAX_AUDIO_BYTES) throw new HTTPException(413, { message: 'audio too large' })
+      return a
+    }
+    return { str, audio }
+  }
+  const transcribe = async (audio: File, hints: string[]) => (await deps.stt.transcribe(new Uint8Array(await audio.arrayBuffer()), hints)).trim()
+
+  app.post('/v1/utterance', async c => {
+    const { str, audio } = await audioUpload(c, 'utt')
     const form = UtteranceForm.safeParse({ sessionId: str('sessionId'), drillId: str('drillId'), mode: str('mode'), text: str('text') })
     if (!form.success) throw new HTTPException(400, { message: 'invalid utterance form' })
-    const ctx = await loadSessionContext(db, (await requireSession(db, form.data.sessionId)).id, null)
+    await requireSession(db, form.data.sessionId)
     let transcript = form.data.text
-    const audio = body['audio']
-    if (!transcript && audio instanceof File) {
-      if (audio.size > MAX_AUDIO_BYTES) throw new HTTPException(413, { message: 'audio too large' })
-      transcript = (await deps.stt.transcribe(new Uint8Array(await audio.arrayBuffer()), ctx.roster.flatMap(r => [r.name, ...(r.aliases ?? [])]))).trim()
-    }
+    const file = transcript ? null : audio()
+    if (file) transcript = await transcribe(file, await hintsFor(db, { sessionId: form.data.sessionId }))
     if (!transcript) throw new HTTPException(422, { message: 'empty_transcript' })
     return c.json(await handleUtterance(deps, { sessionId: form.data.sessionId, drillId: form.data.drillId, mode: form.data.mode, transcript }))
+  })
+
+  /** Transcript-first: STT only (nothing saved). The lens then sends the text as an utterance. */
+  app.post('/v1/transcribe', async c => {
+    const { str, audio } = await audioUpload(c, 'stt')
+    const form = TranscribeForm.safeParse({ sessionId: str('sessionId'), classId: str('classId') })
+    if (!form.success) throw new HTTPException(400, { message: 'invalid transcribe form' })
+    const file = audio()
+    if (!file) throw new HTTPException(400, { message: 'missing audio' })
+    const transcript = await transcribe(file, await hintsFor(db, form.data))
+    if (!transcript) throw new HTTPException(422, { message: 'empty_transcript' })
+    return c.json({ transcript })
   })
 
   app.post('/v1/utterances/:id/undo', async c => {

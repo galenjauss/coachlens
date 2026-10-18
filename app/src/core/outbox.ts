@@ -1,5 +1,6 @@
 import type { UtteranceResponse } from '@matside/shared'
 import { ApiError, BadResponseError, NetworkError } from './api'
+import { bus } from './bus'
 import { KEYS, type KV } from './storage'
 
 export type OutboxForm = { sessionId: string; drillId: string | null; mode: 'note' | 'attendance'; audioB64: string | null; text: string | null }
@@ -8,21 +9,31 @@ export type OutboxItem = { id: string; createdAt: number; attempts: number; form
 export type FlushResult = { results: Map<string, UtteranceResponse>; dropped: Map<string, number>; delivered: Set<string>; remaining: number }
 const MAX_ATTEMPTS = 5
 
+/** Last outbox count announced on the bus (0 until the first change): a screen mounting late starts from it. */
+let knownCount = 0
+bus.on('outboxChanged', n => { knownCount = n })
+export const knownOutboxCount = (): number => knownCount
+
 export class Outbox {
   private busy: Promise<unknown> = Promise.resolve()
   constructor(private kv: KV) {}
+
+  /** Notes waiting to send. */
+  async count(): Promise<number> { return (await this.list()).length }
 
   async list(): Promise<OutboxItem[]> {
     const raw = await this.kv.get(KEYS.outbox)
     try { return raw ? (JSON.parse(raw) as OutboxItem[]) : [] } catch { return [] }
   }
   // Short mutex for read-modify-write on storage; separate from flush serialization so
-  // enqueue never waits on a slow network send.
+  // enqueue never waits on a slow network send. Every saved change announces the new count.
   private lock: Promise<unknown> = Promise.resolve()
   private mutate<T>(fn: (items: OutboxItem[]) => { items: OutboxItem[]; value: T }): Promise<T> {
     const run = this.lock.then(async () => {
-      const { items, value } = fn(await this.list())
+      const before = await this.list()
+      const { items, value } = fn(before)
       await this.kv.set(KEYS.outbox, JSON.stringify(items))
+      if (items.length !== before.length) bus.emit('outboxChanged', items.length)
       return value
     })
     this.lock = run.catch(() => undefined)

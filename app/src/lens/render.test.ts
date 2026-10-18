@@ -369,3 +369,27 @@ describe('layout budget', () => {
     }
   })
 })
+
+describe('queued suffix + provisional card', () => {
+  it('peek and home add a compact queued suffix to the status row only when notes wait', async () => {
+    const { QUEUED_GLYPH } = await import('../config')
+    const next = (st: LensState) => render(st, 0).texts.find(t => t.name === 'next')!.content
+    expect(next(s)).toBe('> Next feedback: Priya (guard)')
+    expect(next({ ...s, queued: 2 })).toBe(`> Next feedback: Priya (guard)\n${QUEUED_GLYPH} 2 queued`) // spare row
+    expect(next({ ...s, nextStudent: { id: 'p', name: 'Al', reason: 'x' }, queued: 2 })).toBe(`> Next feedback: Al (x) ${QUEUED_GLYPH} 2 queued`)
+    expect(next({ ...s, status: '● Saved · will sync', queued: 1 })).toBe(`● Saved · will sync ${QUEUED_GLYPH} 1 queued`)
+    const foot = (st: LensState) => render({ ...st, screen: 'home', session: null }, 0).texts.find(t => t.name === 'foot')!.content
+    expect(foot(s)).toBe('2×: exit')
+    expect(foot({ ...s, queued: 3 })).toBe(`2×: exit ${QUEUED_GLYPH} 3 queued`)
+    for (const st of [{ ...s, queued: 12, status: 'x '.repeat(80) }, { ...s, queued: 12, screen: 'home' as const }]) {
+      for (const t of render(st, 0).texts) for (const line of t.content.split('\n')) expect(line.length).toBeLessThanOrEqual(colsFor(576))
+    }
+  })
+
+  it('a provisional card shows the transcript and "… sorting" (no undo hint)', () => {
+    const card = { lines: [], transcript: 'Priya guard up', utteranceId: null, runs: null, runsFinal: false, page: 0, provisional: true }
+    const p = render({ ...s, screen: 'card', card }, 0)
+    expect(p.texts.find(t => t.name === 'said')?.content).toContain('Priya guard up')
+    expect(p.texts.find(t => t.name === 'agents')?.content).toBe('… sorting\ntap: close')
+  })
+})

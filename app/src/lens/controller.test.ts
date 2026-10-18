@@ -8,7 +8,9 @@ import { KEYS, memoryKV } from '../core/storage'
 import { CLASS_ID_KEY } from '../phone/classPref'
 import { RUNS_MAX_MS, RUNS_POLL_MS } from './agentRuns'
 import { AudioInputSource } from '@evenrealities/even_hub_sdk'
-import { MIC_FALLBACK_MS, MIC_METER_MS, startLens, STOP_DEBOUNCE_MS, TICK_MS, type LensBridge, type LensHandle } from './controller'
+import { KEEP_WARM_MS, MIC_FALLBACK_MS, MIC_METER_MS, OUTBOX_RETRY_MS, startLens, STOP_DEBOUNCE_MS, TICK_MS, type LensBridge, type LensHandle } from './controller'
+import { NetworkError, TRANSCRIBE_TIMEOUT_MS } from '../core/api'
+import { QUEUED_GLYPH } from '../config'
 import { STATUS_MS } from './reducer'
 
 const today = {
@@ -67,11 +69,11 @@ describe('lens controller', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-20T17:00:00Z')) })
   afterEach(() => { lens?.stop(); lens = null; vi.useRealTimers() })
 
-  async function boot(api = fakeApi(), firstRunSeen = true, opts: { nod?: typeof NOD } = {}) {
+  async function boot(api = fakeApi(), firstRunSeen = true, opts: { nod?: typeof NOD; micDualStart?: boolean; isOnline?: () => boolean } = {}) {
     const kv = memoryKV()
     if (firstRunSeen) await kv.set(KEYS.firstRunSeen, '1')
     const b = fakeBridge()
-    lens = await startLens({ bridge: b.bridge, api, kv, outbox: new Outbox(kv), nod: opts.nod ?? NOD })
+    lens = await startLens({ bridge: b.bridge, api, kv, outbox: new Outbox(kv), nod: opts.nod ?? NOD, micDualStart: opts.micDualStart, isOnline: opts.isOnline })
     await flush()
     return { ...b, kv, api }
   }
@@ -505,8 +507,9 @@ describe('lens controller', () => {
       expect(b.sent.slice(m).some(x => x.includes('> agents'))).toBe(false) // ticks stop with the card
     })
 
-    it('no glasses audio within 1.5 s → switches to the phone mic and says so', async () => {
-      const b = await toPeek()
+    const SEQ = { micDualStart: false } // the sequential fallback (MIC_DUAL_START off)
+    it('sequential: no glasses audio within 1.5 s → switches to the phone mic and says so', async () => {
+      const b = await toPeek(fakeApi(), SEQ)
       b.emit(tap); await flush()
       await vi.advanceTimersByTimeAsync(MIC_FALLBACK_MS - 100)
       expect(b.raw.audioControl).not.toHaveBeenCalledWith(true, AudioInputSource.Phone)
@@ -516,8 +519,8 @@ describe('lens controller', () => {
       expect(b.sent.at(-1)).toBe('upgrade:mic=○ waiting for phone mic…')
     })
 
-    it('the switch closes the glasses mic first; a late glasses chunk after it is ignored, phone audio counts', async () => {
-      const b = await toPeek()
+    it('sequential: the switch closes the glasses mic first; a late glasses chunk after it is ignored, phone audio counts', async () => {
+      const b = await toPeek(fakeApi(), SEQ)
       b.emit(tap); await flush()
       b.raw.audioControl.mockClear()
       await vi.advanceTimersByTimeAsync(MIC_FALLBACK_MS + 100)
@@ -530,8 +533,8 @@ describe('lens controller', () => {
       expect(b.sent.at(-1)).toMatch(/^upgrade:mic=[●○] LISTENING \(phone\) {2}0:0\d$/)
     })
 
-    it('glasses audio arriving in time → no phone fallback', async () => {
-      const b = await toPeek()
+    it('sequential: glasses audio arriving in time → no phone fallback', async () => {
+      const b = await toPeek(fakeApi(), SEQ)
       b.emit(tap); await flush()
       b.emit(pcm())
       await vi.advanceTimersByTimeAsync(MIC_FALLBACK_MS * 2)
@@ -554,15 +557,194 @@ describe('lens controller', () => {
       expect(utterance).toHaveBeenCalledTimes(1)
     })
 
-    it('no audio at all → says the glasses sent nothing (never reaches the API)', async () => {
+    it('sequential: no audio at all → says the glasses sent nothing (never reaches the API)', async () => {
       const utterance = vi.fn()
-      const b = await toPeek(fakeApi({ utterance, }))
+      const b = await toPeek(fakeApi({ utterance, }), SEQ)
       b.raw.audioControl.mockImplementation(async (on?: boolean, src?: string) => !(on && src === AudioInputSource.Phone)) // phone mic refused too
       b.emit(tap); await flush()
       await vi.advanceTimersByTimeAsync(2000)
       b.emit(tap); await flush()
       expect(b.sent.join('\n')).toContain('No audio from glasses')
       expect(utterance).not.toHaveBeenCalled()
+    })
+  })
+
+  /** Record one note: tap, the given audio events, wait out the debounce, tap to stop. */
+  async function say(b: Awaited<ReturnType<typeof boot>>, events: Record<string, unknown>[]) {
+    b.emit(tap); await flush()
+    for (const e of events) b.emit(e)
+    await vi.advanceTimersByTimeAsync(STOP_DEBOUNCE_MS)
+    b.emit(tap); await flush()
+  }
+  const chunk = (source: string, fill: number, n = 1000) => ({ audioEvent: { audioPcm: new Uint8Array(n).fill(fill), source } })
+  const twenty = (e: Record<string, unknown>) => Array.from({ length: 20 }, () => e)
+  /** First PCM byte of the WAV sent as an utterance (after the 44-byte header). */
+  const sentFill = async (utterance: ReturnType<typeof vi.fn>) => new Uint8Array(await (utterance.mock.calls[0]![0] as { audio: Blob }).audio.arrayBuffer())[44]
+  const okRes = { utteranceId: 'u1', transcript: 'Priya guard up', cardLines: ['✓ Priya · guard'], coverage: { covered: 1, present: 12 }, nextStudent: null, disambiguation: null }
+  /** The payload of the first utterance call. */
+  const firstPayload = (fn: { mock: { calls: unknown[][] } }) => fn.mock.calls[0]![0] as { text: string | null; audio: Blob | null }
+
+  describe('dual-mic start', () => {
+    it('opens the glasses and phone mics together; stop releases both', async () => {
+      const b = await toPeek()
+      b.raw.audioControl.mockClear()
+      b.emit(tap); await flush()
+      expect(b.raw.audioControl.mock.calls).toEqual([[true, AudioInputSource.Glasses], [true, AudioInputSource.Phone]])
+      await vi.advanceTimersByTimeAsync(MIC_FALLBACK_MS * 2)
+      expect(b.raw.audioControl).toHaveBeenCalledTimes(2) // no sequential switch
+      b.raw.audioControl.mockClear()
+      b.emit(tap); await flush()
+      expect(b.raw.audioControl.mock.calls).toEqual([[false, AudioInputSource.Glasses], [false, AudioInputSource.Phone], [false]])
+    })
+
+    it('stop keeps the glasses audio when it has ≥ 0.4 s, even if the phone heard more', async () => {
+      const utterance = vi.fn(async () => okRes)
+      const b = await toPeek(fakeApi({ utterance }))
+      await say(b, [...twenty(chunk(AudioInputSource.Glasses, 7)), ...twenty(chunk(AudioInputSource.Phone, 9)), ...twenty(chunk(AudioInputSource.Phone, 9))])
+      expect(await sentFill(utterance)).toBe(7)
+    })
+
+    it('stop uses the phone audio when the glasses sent < 0.4 s', async () => {
+      const utterance = vi.fn(async () => okRes)
+      const b = await toPeek(fakeApi({ utterance }))
+      await say(b, [chunk(AudioInputSource.Glasses, 7), ...twenty(chunk(AudioInputSource.Phone, 9))])
+      expect(await sentFill(utterance)).toBe(9)
+    })
+
+    it('the mic line says "(phone)" once only the phone has heard anything for 1.5 s', async () => {
+      const b = await toPeek()
+      b.emit(tap); await flush()
+      b.emit(chunk(AudioInputSource.Phone, 1, 3200))
+      await vi.advanceTimersByTimeAsync(MIC_METER_MS)
+      expect(b.sent.at(-1)).toMatch(/^upgrade:mic=[●○] LISTENING {2}0:00$/)
+      await vi.advanceTimersByTimeAsync(MIC_FALLBACK_MS)
+      expect(b.sent.at(-1)).toMatch(/^upgrade:mic=[●○] LISTENING \(phone\) {2}0:0\d$/)
+    })
+  })
+
+  describe('transcript-first', () => {
+    it('shows "You said" from /v1/transcribe at once, then sends ONE text utterance and fills the card', async () => {
+      let answer: (v: unknown) => void = () => {}
+      const transcribe = vi.fn(async () => 'Priya guard up')
+      const utterance = vi.fn(() => new Promise(r => { answer = r }))
+      const b = await toPeek(fakeApi({ transcribe, utterance }))
+      const n = b.sent.length
+      await say(b, twenty(pcm()))
+      expect(transcribe).toHaveBeenCalledTimes(1)
+      expect(transcribe).toHaveBeenCalledWith(expect.any(Blob), { sessionId: 's1' })
+      expect(utterance).toHaveBeenCalledTimes(1)
+      expect(transcribe.mock.invocationCallOrder[0]!).toBeLessThan(utterance.mock.invocationCallOrder[0]!)
+      expect(utterance).toHaveBeenCalledWith({ sessionId: 's1', drillId: null, mode: 'note', text: 'Priya guard up', audio: null })
+      const shown = b.sent.slice(n).join('\n')
+      expect(shown).toContain('Priya guard up') // before the reply
+      expect(shown).toContain('… sorting')
+      const m = b.sent.length
+      answer(okRes); await flush()
+      expect(b.sent.slice(m).join('\n')).toContain('✓ Priya · guard')
+      lens!.dispatch({ type: 'resumed' }); await flush() // flushes again: nothing left to send
+      expect(utterance).toHaveBeenCalledTimes(1)
+    })
+
+    it('a transcribe failure falls back to sending the audio (once)', async () => {
+      const transcribe = vi.fn(async () => { throw new ApiError(500, 'stt down') })
+      const utterance = vi.fn(async () => okRes)
+      const b = await toPeek(fakeApi({ transcribe, utterance }))
+      await say(b, twenty(pcm()))
+      expect(utterance).toHaveBeenCalledTimes(1)
+      const p = firstPayload(utterance)
+      expect(p.text).toBeNull()
+      expect(p.audio).toBeInstanceOf(Blob)
+      expect(b.sent.slice(-3).join('\n')).toContain('✓ Priya · guard')
+    })
+
+    it('a transcribe slower than 5 s falls back to the audio', async () => {
+      const transcribe = vi.fn(() => new Promise(() => {}))
+      const utterance = vi.fn(async () => okRes)
+      const b = await toPeek(fakeApi({ transcribe, utterance }))
+      await say(b, twenty(pcm()))
+      expect(utterance).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(TRANSCRIBE_TIMEOUT_MS)
+      expect(utterance).toHaveBeenCalledTimes(1)
+      expect(firstPayload(utterance).audio).toBeInstanceOf(Blob)
+    })
+
+    it('offline skips transcribe and queues the audio directly', async () => {
+      const transcribe = vi.fn(async () => 'x')
+      const utterance = vi.fn(async () => { throw new NetworkError('offline') })
+      const b = await toPeek(fakeApi({ transcribe, utterance }), { isOnline: () => false })
+      await say(b, twenty(pcm()))
+      expect(transcribe).not.toHaveBeenCalled()
+      expect(firstPayload(utterance).audio).toBeInstanceOf(Blob)
+      expect(b.sent.join('\n')).toContain('Saved · will sync')
+    })
+
+    it('an empty transcript (422) says so and sends nothing', async () => {
+      const transcribe = vi.fn(async () => { throw new ApiError(422, 'empty_transcript') })
+      const utterance = vi.fn()
+      const b = await toPeek(fakeApi({ transcribe, utterance }))
+      await say(b, twenty(pcm()))
+      expect(utterance).not.toHaveBeenCalled()
+      expect(b.sent.join('\n')).toContain("Didn't catch that")
+    })
+  })
+
+  describe('offline queue', () => {
+    /** The most recent peek status row sent (a rebuild carries every container). */
+    const lastStatus = (b: Awaited<ReturnType<typeof boot>>) => b.sent.filter(x => x.startsWith('upgrade:next=') || x.startsWith('rebuild:')).at(-1) ?? ''
+    it(`peek shows "${QUEUED_GLYPH} 1 queued", retries every 20 s, and clears once sent`, async () => {
+      let up = false
+      const utterance = vi.fn(async () => { if (!up) throw new NetworkError('offline'); return okRes })
+      const counts: number[] = []
+      const off = bus.on('outboxChanged', n => counts.push(n))
+      try {
+        const b = await toPeek(fakeApi({ utterance }))
+        await say(b, twenty(pcm()))
+        expect(lastStatus(b)).toContain(`${QUEUED_GLYPH} 1 queued`)
+        await vi.advanceTimersByTimeAsync(OUTBOX_RETRY_MS)
+        expect(utterance).toHaveBeenCalledTimes(2) // still offline: kept
+        up = true
+        await vi.advanceTimersByTimeAsync(OUTBOX_RETRY_MS)
+        expect(utterance).toHaveBeenCalledTimes(3)
+        expect(lastStatus(b)).not.toContain('queued')
+        expect(counts.slice(-2)).toEqual([1, 0])
+        await vi.advanceTimersByTimeAsync(OUTBOX_RETRY_MS * 3)
+        expect(utterance).toHaveBeenCalledTimes(3) // nothing left: no more retries
+      } finally { off() }
+    })
+
+    it('the phone "Retry now" flushes the outbox', async () => {
+      let up = false
+      const utterance = vi.fn(async () => { if (!up) throw new NetworkError('offline'); return okRes })
+      const b = await toPeek(fakeApi({ utterance }))
+      await say(b, twenty(pcm()))
+      up = true
+      bus.emit('outboxRetry', undefined); await flush()
+      expect(utterance).toHaveBeenCalledTimes(2)
+      expect(lastStatus(b)).not.toContain('queued')
+    })
+  })
+
+  describe('keep-warm', () => {
+    it('pings /health every 4 min during a session; stops on app suspend and on session end', async () => {
+      const health = vi.fn(async () => ({ ok: true }))
+      const b = await boot(fakeApi({ health }))
+      await vi.advanceTimersByTimeAsync(KEEP_WARM_MS)
+      expect(health).not.toHaveBeenCalled() // no session yet
+      b.emit(tap); await flush() // start class
+      b.emit(dbl); await flush() // skip roll call
+      await vi.advanceTimersByTimeAsync(KEEP_WARM_MS * 2)
+      expect(health).toHaveBeenCalledTimes(2)
+      b.emit({ sysEvent: { eventType: OsEventTypeList.FOREGROUND_EXIT_EVENT } }); await flush()
+      await vi.advanceTimersByTimeAsync(KEEP_WARM_MS * 2)
+      expect(health).toHaveBeenCalledTimes(2)
+      b.emit({ sysEvent: { eventType: OsEventTypeList.FOREGROUND_ENTER_EVENT } }); await flush()
+      await vi.advanceTimersByTimeAsync(KEEP_WARM_MS)
+      expect(health).toHaveBeenCalledTimes(3)
+      b.emit(dbl); await flush() // confirm end
+      b.emit(tap); await flush() // end → wrap-up
+      b.emit(tap); await flush() // done → home (session over)
+      await vi.advanceTimersByTimeAsync(KEEP_WARM_MS * 2)
+      expect(health).toHaveBeenCalledTimes(3)
     })
   })
 })

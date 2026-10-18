@@ -16,7 +16,7 @@ export function initialState(firstRunSeen: boolean): LensState {
   return {
     screen: firstRunSeen ? 'home' : 'firstRun', today: null, classes: [], selectedClassId: null, session: null, active: null,
     coverage: { covered: 0, present: 0 }, nextStudent: null, card: null, disambiguation: null, wrapup: null,
-    pending: null, mic: null, thinking: null, detail: null, darkFrom: null, attendanceLines: [], status: null, loadError: null, starting: false,
+    pending: null, mic: null, thinking: null, detail: null, darkFrom: null, attendanceLines: [], status: null, loadError: null, starting: false, queued: 0,
   }
 }
 
@@ -98,6 +98,8 @@ function homeTap(s: LensState): R {
 }
 
 function utteranceResult(s: LensState, e: Extract<LensEvent, { type: 'utteranceResult' }>): R {
+  // A late reply while the coach is already recording the next note: keep the numbers, never steal the screen.
+  if (s.screen === 'recording' || s.screen === 'attendance') return done({ ...s, coverage: e.res.coverage, nextStudent: e.res.nextStudent })
   const base = { ...s, coverage: e.res.coverage, nextStudent: e.res.nextStudent, pending: null }
   if (s.pending?.mode === 'attendance') return done({ ...base, screen: 'attendanceDone', attendanceLines: e.res.cardLines })
   const card = { lines: e.res.cardLines, transcript: e.res.transcript, utteranceId: e.res.utteranceId, runs: null, runsFinal: false, page: 0 }
@@ -158,6 +160,13 @@ function dataEvent(s: LensState, e: LensEvent, now: number): R | null {
       return done({ ...s, status }, expire)
     }
     case 'utteranceResult': return utteranceResult(s, e)
+    case 'transcriptReady': {
+      // Show "You said" at once; agents sort it when the text note's reply lands (roll call keeps its own flow).
+      if (s.screen !== 'sending' || s.pending?.mode !== 'note') return done(s)
+      const card = { lines: [], transcript: e.transcript, utteranceId: null, runs: null, runsFinal: false, page: 0, provisional: true }
+      return done({ ...s, screen: 'card', card, status: null })
+    }
+    case 'outboxChanged': return s.queued === e.count ? done(s) : done({ ...s, queued: e.count })
     case 'runsLoaded': {
       if (!s.card || s.card.utteranceId !== e.utteranceId) return done(s)
       return done({ ...s, card: { ...s.card, runs: e.runs ?? s.card.runs, runsFinal: e.final } })

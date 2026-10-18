@@ -7,6 +7,10 @@ type Events = {
   imuDebug: boolean
   /** The server rejected our token (401): the phone shows Pairing again; the lens says "Pair on phone". */
   unauthorized: void
+  /** Notes waiting in the outbox changed (count after the change). */
+  outboxChanged: number
+  /** The phone asked to send queued notes now (the lens controller flushes). */
+  outboxRetry: void
 }
 type Handler<T> = (p: T) => void
 const handlers: { [K in keyof Events]?: Handler<Events[K]>[] } = {}

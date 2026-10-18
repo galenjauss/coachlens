@@ -1,6 +1,6 @@
 import {
   Alternatives, AgentRunDetail, AgentRunView, AgentsSummary, AgentTaskRun, RedraftResponse, type AgentTask, Coverage, Deck, ModeId, NextStudent, ReviewItem, RosterStudent, StartSessionResponse, StudentDetail,
-  SuggestResponse, Today, UtteranceResponse, WrapUp, type DeckPatch,
+  SuggestResponse, Today, TranscribeResponse, UtteranceResponse, WrapUp, type DeckPatch,
   ExtractResponse, OnboardingCommitResponse, OnboardingStatus, type ExtractRequest, type OnboardingCommit,
 } from '@matside/shared'
 import { z } from 'zod'
@@ -38,22 +38,26 @@ export const REQUEST_TIMEOUT_MS = 45_000
 /** One agent run started by an utterance (GET /v1/utterances/:id/runs). Status kept loose: the server may add values. */
 export const UtteranceRun = z.object({ agent: z.string(), summary: z.string(), status: z.string(), createdAt: z.string() })
 export type UtteranceRun = z.infer<typeof UtteranceRun>
+/** Transcript-first: how long the lens waits for /v1/transcribe before falling back to sending the audio. */
+export const TRANSCRIBE_TIMEOUT_MS = 5_000
+export type TranscribeScope = { sessionId?: string | null; classId?: string | null }
 export type UtterancePayload = { sessionId: string; drillId: string | null; mode: 'note' | 'attendance'; text: string | null; audio: Blob | null }
 
 export function createApi(baseUrl: string, getToken: () => Promise<string | null>, fetchImpl: typeof fetch = (...a) => fetch(...a)) {
-  async function req<T>(path: string, init: RequestInit & { json?: unknown } = {}, schema?: z.ZodType<T>): Promise<T> {
+  async function req<T>(path: string, init: RequestInit & { json?: unknown; timeoutMs?: number } = {}, schema?: z.ZodType<T>): Promise<T> {
     const headers = new Headers(init.headers)
     const token = await getToken()
     if (token) headers.set('Authorization', `Bearer ${token}`)
     let body = init.body
     if (init.json !== undefined) { headers.set('Content-Type', 'application/json'); body = JSON.stringify(init.json) }
     const ctl = new AbortController()
-    const timer = setTimeout(() => ctl.abort(), REQUEST_TIMEOUT_MS)
+    const { timeoutMs = REQUEST_TIMEOUT_MS, json: _json, ...rest } = init
+    const timer = setTimeout(() => ctl.abort(), timeoutMs)
     let res: Response
     let raw: unknown
     let isJson = false
     try {
-      try { res = await fetchImpl(`${baseUrl}${path}`, { ...init, headers, body, signal: ctl.signal }) } catch (e) {
+      try { res = await fetchImpl(`${baseUrl}${path}`, { ...rest, headers, body, signal: ctl.signal }) } catch (e) {
         throw new NetworkError(ctl.signal.aborted ? 'timeout' : e instanceof Error ? e.message : 'network')
       }
       const text = await res.text().catch(() => '')
@@ -91,6 +95,16 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
       if (p.audio) f.set('audio', p.audio, 'note.wav')
       return req('/v1/utterance', { method: 'POST', body: f }, UtteranceResponse)
     },
+    /** Speech-to-text only (nothing saved); roster hints from the session or class. 422 = nothing heard. */
+    transcribe: async (wav: Blob, scope: TranscribeScope = {}, timeoutMs = TRANSCRIBE_TIMEOUT_MS): Promise<string> => {
+      const f = new FormData()
+      if (scope.sessionId) f.set('sessionId', scope.sessionId)
+      if (scope.classId) f.set('classId', scope.classId)
+      f.set('audio', wav, 'note.wav')
+      return (await req('/v1/transcribe', { method: 'POST', body: f, timeoutMs }, TranscribeResponse)).transcript
+    },
+    /** Keep-warm ping (no auth needed). */
+    health: () => req('/health', {}, z.object({ ok: z.boolean() })),
     /** Agent progress for one utterance; null when the endpoint (or utterance) is not there yet (404). */
     utteranceRuns: async (utteranceId: string): Promise<UtteranceRun[] | null> => {
       try { return await req(`/v1/utterances/${encodeURIComponent(utteranceId)}/runs`, {}, z.array(UtteranceRun)) } catch (e) {

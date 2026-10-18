@@ -10,20 +10,46 @@ export type EmptyReason = 'no_audio' | 'too_short' | 'not_understood'
 
 type AudioBridge = { audioControl(isOpen: boolean, source?: AudioInputSource): Promise<boolean> }
 export type StopResult = { wav: Uint8Array; bytes: number } | { wav: null; bytes: number; reason: Exclude<EmptyReason, 'not_understood'> }
+export interface RecorderOptions {
+  /** Open the glasses and phone mics together and buffer both (see `selectMic`). */
+  dual?: boolean
+}
+
+const SDK_SOURCE: Record<MicSource, AudioInputSource> = { glasses: AudioInputSource.Glasses, phone: AudioInputSource.Phone }
+
+/**
+ * Dual-mic pick on stop: the glasses audio when it has at least `minBytes` (0.4 s), otherwise the
+ * phone audio; with no phone audio either, the glasses buffer (so the empty reason stays right).
+ */
+export function selectMic(glassesBytes: number, phoneBytes: number, minBytes = MIN_BYTES): MicSource {
+  if (glassesBytes >= minBytes) return 'glasses'
+  return phoneBytes > 0 ? 'phone' : 'glasses'
+}
+
+type Buffer = { chunks: Uint8Array[]; bytes: number }
+const emptyBuffers = (): Record<MicSource, Buffer> => ({ glasses: { chunks: [], bytes: 0 }, phone: { chunks: [], bytes: 0 } })
 
 export class Recorder {
-  private chunks: Uint8Array[] = []
+  private buf = emptyBuffers()
+  /** Phone mic opened alongside the glasses one (dual mode). */
+  private phoneOpen = false
   recording = false
+  /** Single mode: the mic being recorded. Dual mode: 'glasses' while recording, the picked mic after stop. */
   source: MicSource = 'glasses'
-  bytes = 0
-  constructor(private bridge: AudioBridge) {}
+  readonly dual: boolean
+  constructor(private bridge: AudioBridge, opts: RecorderOptions = {}) { this.dual = opts.dual ?? false }
+
+  /** Bytes buffered so far (dual mode: both mics together). */
+  get bytes(): number { return this.dual ? this.buf.glasses.bytes + this.buf.phone.bytes : this.buf[this.source].bytes }
+  bytesFrom(src: MicSource): number { return this.buf[src].bytes }
 
   async start() {
     if (this.recording) return
-    this.chunks = []
-    this.bytes = 0
+    this.buf = emptyBuffers()
     this.source = 'glasses'
+    this.phoneOpen = false
     this.recording = true
+    if (this.dual) return this.startBoth()
     try {
       const ok = await this.bridge.audioControl(true, AudioInputSource.Glasses)
       if (!ok) throw new Error('mic unavailable')
@@ -33,20 +59,31 @@ export class Recorder {
     }
   }
 
+  /** Dual: open both mics at once. Fails only when neither opens. */
+  private async startBoth(): Promise<void> {
+    const open = (src: MicSource) => this.bridge.audioControl(true, SDK_SOURCE[src]).then(ok => ok, e => { console.warn('[mic] open failed', src, e); return false })
+    const [glasses, phone] = await Promise.all([open('glasses'), open('phone')])
+    this.phoneOpen = phone
+    if (!phone) console.warn('[mic] phone mic unavailable; recording from the glasses only')
+    if (!glasses && !phone) {
+      this.recording = false
+      throw new Error('mic unavailable')
+    }
+  }
+
   /**
-   * No glasses audio arrived: close the glasses mic, then record from the phone mic with a fresh
-   * buffer (the two sources never mix in one WAV). Returns false, and re-opens the glasses mic,
-   * if the phone mic could not be opened.
+   * Single mode, no glasses audio arrived: close the glasses mic, then record from the phone mic with
+   * a fresh buffer (the two sources never mix in one WAV). Returns false, and re-opens the glasses
+   * mic, if the phone mic could not be opened. Dual mode never switches (both are already open).
    */
   async switchToPhone(): Promise<boolean> {
-    if (!this.recording || this.source === 'phone') return false
+    if (!this.recording || this.dual || this.source === 'phone') return false
     try {
       await this.bridge.audioControl(false)
       const ok = await this.bridge.audioControl(true, AudioInputSource.Phone)
       if (!ok) throw new Error('phone mic refused')
       this.source = 'phone'
-      this.chunks = []
-      this.bytes = 0
+      this.buf.phone = { chunks: [], bytes: 0 }
       return true
     } catch (e) {
       console.warn('[mic] phone mic unavailable; staying on the glasses mic', e)
@@ -55,27 +92,48 @@ export class Recorder {
     }
   }
 
-  /** Re-open the current source (the host may close the mic while backgrounded). */
-  rearm(): Promise<boolean> {
-    return this.bridge.audioControl(true, this.source === 'phone' ? AudioInputSource.Phone : AudioInputSource.Glasses)
+  /** Re-open the open mic(s) (the host may close the mic while backgrounded). */
+  async rearm(): Promise<boolean> {
+    if (!this.dual) return this.bridge.audioControl(true, SDK_SOURCE[this.source])
+    const glasses = await this.bridge.audioControl(true, AudioInputSource.Glasses)
+    if (this.phoneOpen) await this.bridge.audioControl(true, AudioInputSource.Phone).catch(e => console.warn('[mic] phone re-arm failed', e))
+    return glasses
   }
 
-  /** Add PCM from the current source; chunks tagged with the other source (e.g. late glasses audio after the switch) are dropped. */
+  /**
+   * Add PCM. Single mode: only from the current source (late glasses audio after the switch is
+   * dropped). Dual mode: into that source's buffer. Untagged chunks count as the current/glasses mic.
+   */
   push(pcm: Uint8Array, source?: string) {
     if (!this.recording) return
-    if (source && source !== this.source) return
-    this.chunks.push(pcm)
-    this.bytes += pcm.length
+    let src: MicSource = this.source
+    if (source === 'glasses' || source === 'phone') src = source
+    else if (source) return
+    if (!this.dual && src !== this.source) return
+    const b = this.buf[src]
+    b.chunks.push(pcm)
+    b.bytes += pcm.length
+  }
+
+  /** Close every mic this recording opened (dual: both, then the plain close). */
+  private async release(): Promise<void> {
+    if (this.dual) {
+      const close = (src: AudioInputSource) => this.bridge.audioControl(false, src).catch(e => console.warn('[mic] close failed', src, e))
+      await Promise.all([close(AudioInputSource.Glasses), ...(this.phoneOpen ? [close(AudioInputSource.Phone)] : [])])
+      this.phoneOpen = false
+    }
+    await this.bridge.audioControl(false)
   }
 
   async stop(): Promise<StopResult> {
     this.recording = false
-    await this.bridge.audioControl(false)
-    const bytes = this.bytes
+    await this.release()
+    if (this.dual) this.source = selectMic(this.buf.glasses.bytes, this.buf.phone.bytes)
+    const { chunks, bytes } = this.buf[this.source]
     if (bytes === 0) return { wav: null, bytes, reason: 'no_audio' }
     if (bytes < MIN_BYTES) return { wav: null, bytes, reason: 'too_short' }
-    return { wav: pcmToWav(this.chunks), bytes }
+    return { wav: pcmToWav(chunks), bytes }
   }
 
-  async cancel() { this.recording = false; this.chunks = []; this.bytes = 0; await this.bridge.audioControl(false) }
+  async cancel() { this.recording = false; this.buf = emptyBuffers(); await this.release() }
 }

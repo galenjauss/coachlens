@@ -416,3 +416,49 @@ describe('lens reducer', () => {
     })
   })
 })
+
+describe('transcript-first + offline queue', () => {
+  const sending = (mode: 'note' | 'attendance'): LensState => ({
+    ...initialState(true), screen: 'sending', session: { id: 's1', startedAt: 0 },
+    pending: { mode, returnTo: 'peek', viaLongPress: false, at: 0 }, thinking: { stage: 'sending', tick: 0, since: 0 },
+  })
+  const res = { utteranceId: 'u1', transcript: 'Priya guard up', cardLines: ['✓ Priya · guard'], coverage: { covered: 1, present: 3 }, nextStudent: null, disambiguation: null }
+
+  it('transcriptReady shows a provisional card at once; the reply then fills it', () => {
+    const r = reduce(sending('note'), { type: 'transcriptReady', transcript: 'Priya guard up' })
+    expect(r.state.screen).toBe('card')
+    expect(r.state.card).toMatchObject({ transcript: 'Priya guard up', utteranceId: null, provisional: true, lines: [] })
+    expect(r.effects).toEqual([])
+    const done = reduce(r.state, { type: 'utteranceResult', res })
+    expect(done.state.card).toMatchObject({ utteranceId: 'u1', lines: ['✓ Priya · guard'] })
+    expect(done.state.card?.provisional).toBeUndefined()
+    expect(done.effects).toEqual([{ type: 'pollRuns', utteranceId: 'u1' }])
+  })
+
+  it('roll call ignores transcriptReady (keeps the stage line)', () => {
+    const s = sending('attendance')
+    expect(reduce(s, { type: 'transcriptReady', transcript: 'everyone' }).state).toBe(s)
+  })
+
+  it('a provisional card that then queues offline goes back to peek with "will sync"', () => {
+    const card = reduce(sending('note'), { type: 'transcriptReady', transcript: 'x' }).state
+    const r = reduce(card, { type: 'utteranceQueued' })
+    expect(r.state.screen).toBe('peek')
+    expect(r.state.status).toBe('● Saved · will sync')
+  })
+
+  it('a late reply while recording the next note keeps the screen', () => {
+    const rec: LensState = { ...sending('note'), screen: 'recording' }
+    const r = reduce(rec, { type: 'utteranceResult', res })
+    expect(r.state.screen).toBe('recording')
+    expect(r.state.coverage).toEqual({ covered: 1, present: 3 })
+  })
+
+  it('outboxChanged tracks the queued count', () => {
+    const s = initialState(true)
+    expect(s.queued).toBe(0)
+    const r = reduce(s, { type: 'outboxChanged', count: 2 })
+    expect(r.state.queued).toBe(2)
+    expect(reduce(r.state, { type: 'outboxChanged', count: 2 }).state).toBe(r.state)
+  })
+})

@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { API_URL } from '../config'
 import { bus } from '../core/bus'
 import { KEYS } from '../core/storage'
 import { Agents } from './Agents'
@@ -26,8 +25,14 @@ export function App({ api, kv }: PhoneDeps) {
     void kv.set(KEYS.token, '').catch(e => console.warn('[pair] could not clear the token', e))
     setDeckId(null); setSetup(false); setPaired(false)
   }), [kv])
-  // Warm the serverless instance; cold starts are slow. Failure is irrelevant.
-  useEffect(() => { void fetch(`${API_URL}/health`).catch(() => {}) }, [])
+  // Warm the serverless instance on open and on every return to the app; cold starts are slow. Failure is irrelevant.
+  useEffect(() => {
+    const ping = () => { void api.health().catch(() => {}) }
+    const onVisible = () => { if (document.visibilityState === 'visible') ping() }
+    ping()
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [api])
   // Once paired, open the setup quiz automatically while the school has no classes yet.
   useEffect(() => {
     if (paired !== true) return

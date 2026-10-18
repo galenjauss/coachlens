@@ -321,3 +321,72 @@ describe('api errors', () => {
     } finally { vi.useRealTimers() }
   })
 })
+
+describe('selectMic (dual-mic pick on stop)', () => {
+  it('glasses when they have ≥ 0.4 s, else phone; glasses again when the phone has nothing', async () => {
+    const { selectMic, MIN_BYTES } = await import('./audio')
+    expect(selectMic(MIN_BYTES, 99_999)).toBe('glasses')
+    expect(selectMic(MIN_BYTES + 1, 0)).toBe('glasses')
+    expect(selectMic(MIN_BYTES - 1, 1)).toBe('phone')
+    expect(selectMic(0, 50_000)).toBe('phone')
+    expect(selectMic(100, 0)).toBe('glasses') // too short either way: the glasses reason stays
+    expect(selectMic(0, 0)).toBe('glasses')
+  })
+
+  it('dual recorder buffers both sources and releases both mics', async () => {
+    const calls: unknown[][] = []
+    const r = new Recorder({ audioControl: async (...a: unknown[]) => { calls.push(a); return true } }, { dual: true })
+    await r.start()
+    r.push(new Uint8Array(100).fill(1), 'glasses')
+    r.push(new Uint8Array(20_000).fill(2), 'phone')
+    expect([r.bytesFrom('glasses'), r.bytesFrom('phone'), r.bytes]).toEqual([100, 20_000, 20_100])
+    const out = await r.stop()
+    expect(r.source).toBe('phone')
+    expect(out.wav?.[44]).toBe(2)
+    expect(calls).toEqual([[true, 'glasses'], [true, 'phone'], [false, 'glasses'], [false, 'phone'], [false]])
+  })
+
+  it('dual recorder still records when only one mic opens; fails when neither does', async () => {
+    const glassesOnly = new Recorder({ audioControl: async (on: boolean, src?: string) => !(on && src === 'phone') }, { dual: true })
+    await glassesOnly.start()
+    expect(glassesOnly.recording).toBe(true)
+    const none = new Recorder({ audioControl: async (on: boolean) => !on }, { dual: true })
+    await expect(none.start()).rejects.toThrow('mic unavailable')
+    expect(none.recording).toBe(false)
+  })
+})
+
+describe('outbox count + change events', () => {
+  it('count() and outboxChanged follow enqueue, delivery and drops', async () => {
+    const { bus } = await import('./bus')
+    const { knownOutboxCount } = await import('./outbox')
+    const seen: number[] = []
+    const off = bus.on('outboxChanged', n => seen.push(n))
+    try {
+      const o = new Outbox(memoryKV())
+      expect(await o.count()).toBe(0)
+      await o.enqueue(form)
+      await o.enqueue(form)
+      expect(await o.count()).toBe(2)
+      expect(knownOutboxCount()).toBe(2)
+      let first = true
+      await o.flush(async i => { if (first) { first = false; throw new ApiError(400, 'bad') } return res(i.id) })
+      expect(await o.count()).toBe(0)
+      expect(seen).toEqual([1, 2, 1, 0])
+      expect(knownOutboxCount()).toBe(0)
+    } finally { off() }
+  })
+
+  it('an offline flush keeps the items and announces nothing', async () => {
+    const { bus } = await import('./bus')
+    const o = new Outbox(memoryKV())
+    await o.enqueue(form)
+    const seen: number[] = []
+    const off = bus.on('outboxChanged', n => seen.push(n))
+    try {
+      await o.flush(async () => { throw new NetworkError('offline') })
+      expect(await o.count()).toBe(1)
+      expect(seen).toEqual([])
+    } finally { off() }
+  })
+})

@@ -1,8 +1,9 @@
 import { ImuReportPace, OsEventTypeList, type EvenAppBridge } from '@evenrealities/even_hub_sdk'
-import { ApiError, NetworkError, type Api } from '../core/api'
-import { MAX_RECORD_MS, Recorder, type StopResult } from '../core/audio'
+import { MIC_DUAL_START } from '../config'
+import { ApiError, NetworkError, TRANSCRIBE_TIMEOUT_MS, type Api } from '../core/api'
+import { MAX_RECORD_MS, Recorder, type MicSource, type StopResult } from '../core/audio'
 import { bus } from '../core/bus'
-import type { FlushResult, Outbox, OutboxItem } from '../core/outbox'
+import type { FlushResult, Outbox, OutboxForm, OutboxItem } from '../core/outbox'
 import { KEYS, type KV } from '../core/storage'
 import { CLASS_ID_KEY } from '../phone/classPref'
 import { fromB64, toB64 } from '../core/wav'
@@ -23,8 +24,17 @@ const TICK_SLACK_MS = 20
 // Only the peek ticks. While recording/sending the display stays still: on G2, display updates
 // compete with mic audio on Bluetooth (a busy link delivered almost no PCM).
 const TICKING = new Set<LensState['screen']>(['peek'])
-/** Glasses audio must start arriving within this long, else the phone mic takes over. */
+/**
+ * Sequential mode (MIC_DUAL_START off): glasses audio must start arriving within this long, else the
+ * phone mic takes over. Dual mode: after this long with only phone audio, the mic line says "(phone)".
+ */
 export const MIC_FALLBACK_MS = 1500
+/** While a session is active, ping /health this often so the serverless API stays warm. */
+export const KEEP_WARM_MS = 4 * 60_000
+/** While notes wait in the outbox, retry sending them this often. */
+export const OUTBOX_RETRY_MS = 20_000
+/** UtteranceForm caps `text` at 1000 chars: a longer transcript goes as audio instead (never rejected). */
+const MAX_TEXT = 1000
 /** The "hearing you" line (and the thinking dots) refresh at most this often. */
 export const MIC_METER_MS = MIC_TICK_MS
 /** Host events after which the app is no longer in front: the IMU is turned off (re-armed on resume). */
@@ -36,6 +46,10 @@ export type LensBridge = GlassesBridge & Pick<EvenAppBridge, 'audioControl' | 'i
 export interface LensDeps {
   bridge: LensBridge; api: Api; kv: KV; outbox: Outbox; nod: NodConfig
   imuPace?: ImuReportPace; logImu?: boolean
+  /** Open both mics at record start (default MIC_DUAL_START). */
+  micDualStart?: boolean
+  /** Network state (default navigator.onLine): offline skips transcribe and queues the audio. */
+  isOnline?: () => boolean
 }
 export interface LensHandle { dispatch(e: LensEvent): void; stop(): void }
 
@@ -43,7 +57,7 @@ export interface LensHandle { dispatch(e: LensEvent): void; stop(): void }
 function slot() {
   let h: ReturnType<typeof setTimeout> | null = null
   const clear = () => { if (h) clearTimeout(h); h = null }
-  return { clear, set(ms: number, fn: () => void) { clear(); h = setTimeout(() => { h = null; fn() }, ms) } }
+  return { clear, get active() { return h !== null }, set(ms: number, fn: () => void) { clear(); h = setTimeout(() => { h = null; fn() }, ms) } }
 }
 
 const errText = (e: unknown) => (e instanceof ApiError && e.status === 401 ? 'Pair on phone' : e instanceof ApiError ? `Server error ${e.status}`
@@ -63,9 +77,14 @@ async function readFirstRunSeen(kv: KV): Promise<boolean> {
 
 export async function startLens(d: LensDeps): Promise<LensHandle> {
   const glasses = new Glasses(d.bridge)
-  const recorder = new Recorder(d.bridge)
+  const recorder = new Recorder(d.bridge, { dual: d.micDualStart ?? MIC_DUAL_START })
   const detector = new NodDetector(d.nod)
-  const timers = { status: slot(), timerEnded: slot(), recordMax: slot(), micFallback: slot(), micMeter: slot(), think: slot() }
+  const timers = { status: slot(), timerEnded: slot(), recordMax: slot(), micFallback: slot(), micMeter: slot(), think: slot(), keepWarm: slot(), outboxRetry: slot() }
+  const online = () => (d.isOnline ? d.isOnline() : !(typeof navigator !== 'undefined' && navigator.onLine === false))
+  /** Flushes reporting on the note just recorded; background retries wait so they never take its reply. */
+  let inFlight = 0
+  /** The host backgrounded the app: no keep-warm pings until it resumes. */
+  let suspended = false
   let recStartedAt = 0
   let state: LensState = initialState(await readFirstRunSeen(d.kv))
   let imuOn = false
@@ -91,6 +110,34 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     if (state.active?.drillId !== prev.active?.drillId || state.active?.startedAt !== prev.active?.startedAt) armDrillTimer()
     else if (e.type === 'todayLoaded' && state.active && minutes(state) !== minutes(prev)) armDrillTimer()
     if (state.screen === 'sending' && prev.screen !== 'sending') thinkTicks()
+    if (Boolean(state.session) !== Boolean(prev.session)) keepWarm()
+  }
+
+  /** Ping /health every KEEP_WARM_MS while a session is active and the app is in front; else stop. */
+  function keepWarm(): void {
+    if (!state.session || suspended || exited) return timers.keepWarm.clear()
+    if (timers.keepWarm.active) return
+    timers.keepWarm.set(KEEP_WARM_MS, () => {
+      void Promise.resolve(d.api.health?.()).catch(err => console.warn('[keep-warm] ping failed', errText(err)))
+      keepWarm()
+    })
+  }
+
+  /** While notes wait in the outbox, retry every OUTBOX_RETRY_MS (keeps its cadence across count changes). */
+  function armRetry(count: number): void {
+    if (count <= 0 || exited) return timers.outboxRetry.clear()
+    if (timers.outboxRetry.active) return
+    timers.outboxRetry.set(OUTBOX_RETRY_MS, () => { void retryFlush() })
+  }
+  async function retryFlush(): Promise<void> {
+    await backgroundFlush()
+    let n = 0
+    try { n = await d.outbox.count() } catch (err) { console.warn('[outbox] count failed', err) }
+    armRetry(n)
+  }
+  /** A flush nobody waits on (retry timer, `online`, the phone's Retry now); skipped while a note is reporting. */
+  function backgroundFlush(): Promise<void> {
+    return inFlight > 0 ? Promise.resolve() : flush(null)
   }
 
   /** While "sending" is up, step the stage dots every MIC_METER_MS (the reducer advances sending → thinking). */
@@ -154,6 +201,26 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     dispatch({ type: 'utteranceQueued' }) // still in the outbox (offline / 5xx / not paired)
   }
 
+  /**
+   * Transcript-first: STT alone, with a TRANSCRIBE_TIMEOUT_MS cap. `{ text }` = send the note as text;
+   * 'empty' = nothing was heard (422); null = offline, failed or too slow: send the audio instead.
+   */
+  async function transcriptFirst(wav: Uint8Array, sessionId: string): Promise<{ text: string } | 'empty' | null> {
+    if (!online() || typeof d.api.transcribe !== 'function') return null
+    dispatch({ type: 'sendStarted' })
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new NetworkError('timeout')), TRANSCRIBE_TIMEOUT_MS) })
+    try {
+      const text = (await Promise.race([d.api.transcribe(new Blob([wav as BlobPart], { type: 'audio/wav' }), { sessionId }), timeout])).trim()
+      if (!text) return 'empty'
+      return text.length <= MAX_TEXT ? { text } : null
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 422) return 'empty'
+      console.warn('[transcribe] sending the audio instead:', errText(err))
+      return null
+    } finally { clearTimeout(timer) }
+  }
+
   async function stopAndSend(eff: Extract<Effect, { type: 'stopMicAndSend' }>): Promise<void> {
     stopMicTimers()
     let res: StopResult
@@ -163,7 +230,15 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
       return dispatch({ type: 'utteranceEmpty', reason: res.reason })
     }
     const wav = res.wav
-    const form = { sessionId: eff.sessionId, drillId: eff.drillId, mode: eff.mode, audioB64: toB64(wav), text: null }
+    const base = { sessionId: eff.sessionId, drillId: eff.drillId, mode: eff.mode }
+    const heard = await transcriptFirst(wav, eff.sessionId)
+    if (heard === 'empty') return dispatch({ type: 'utteranceEmpty', reason: 'not_understood' })
+    if (heard) dispatch({ type: 'transcriptReady', transcript: heard.text })
+    // Exactly one outbox item per note: the text when transcribe answered, else the audio.
+    return enqueueAndFlush(heard ? { ...base, audioB64: null, text: heard.text } : { ...base, audioB64: toB64(wav), text: null })
+  }
+
+  async function enqueueAndFlush(form: OutboxForm): Promise<void> {
     let item: OutboxItem
     try { item = await d.outbox.enqueue(form) } catch (err) {
       // Storage failed: try once directly so the note is not silently lost.
@@ -171,7 +246,8 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
       dispatch({ type: 'sendStarted' })
       try { return dispatch({ type: 'utteranceResult', res: await sendItem({ id: 'direct', createdAt: Date.now(), attempts: 0, form }) }) } catch { return dispatch({ type: 'utteranceEmpty', reason: 'not_understood' }) }
     }
-    return flush(item.id)
+    inFlight += 1
+    try { return await flush(item.id) } finally { inFlight -= 1 }
   }
 
   async function loadToday(): Promise<void> {
@@ -215,7 +291,10 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     timers.recordMax.clear(); timers.micFallback.clear(); timers.micMeter.clear()
   }
 
-  const micLevel = () => ({ type: 'micLevel' as const, tick: Math.round((Date.now() - recStartedAt) / MIC_METER_MS), audio: recorder.bytes > 0, source: recorder.source })
+  /** Which mic the line names: dual mode says "(phone)" once only the phone has heard anything for MIC_FALLBACK_MS. */
+  const liveSource = (): MicSource => (recorder.dual && recorder.bytesFrom('glasses') === 0 && recorder.bytesFrom('phone') > 0
+    && Date.now() - recStartedAt >= MIC_FALLBACK_MS ? 'phone' : recorder.source)
+  const micLevel = () => ({ type: 'micLevel' as const, tick: Math.round((Date.now() - recStartedAt) / MIC_METER_MS), audio: recorder.bytes > 0, source: liveSource() })
 
   /**
    * Refresh the "hearing you" line every MIC_METER_MS while recording — the only lens update while the
@@ -268,7 +347,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
           timers.recordMax.set(MAX_RECORD_MS, () => {
             if (state.screen === 'recording' || state.screen === 'attendance') dispatch({ type: 'tap', now: Date.now() })
           })
-          timers.micFallback.set(MIC_FALLBACK_MS, () => { void fallbackToPhone() })
+          if (!recorder.dual) timers.micFallback.set(MIC_FALLBACK_MS, () => { void fallbackToPhone() })
           meter()
         } catch (err) { console.error('[mic] start failed', err); stopMicTimers(); dispatch({ type: 'micFailed' }) }
         return
@@ -306,7 +385,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
         }
         return
       case 'expireStatus': return timers.status.set(eff.ms, () => dispatch({ type: 'statusExpired' }))
-      case 'flushOutbox': return flush(null)
+      case 'flushOutbox': return backgroundFlush()
       case 'exit':
         exited = true
         await setImu(false)
@@ -325,7 +404,12 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
       if (nod) dispatch({ type: 'nod' })
       return
     }
-    if (e.sysEvent && HOST_EXITS.has(e.sysEvent.eventType)) { void setImu(false); return } // backgrounded / closed by the host
+    if (e.sysEvent && HOST_EXITS.has(e.sysEvent.eventType)) { // backgrounded / closed by the host
+      void setImu(false)
+      suspended = true
+      timers.keepWarm.clear()
+      return
+    }
     const le = toLensEvent(e)
     if (!le) return
     // A stop tap right after recording started is a double-trigger: keep recording.
@@ -333,6 +417,8 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     if (le.type === 'resumed') {
       // The host may close sensors while we're in the background: re-arm what was on.
       if (!exited) void setImu(true, true)
+      suspended = false
+      keepWarm()
       if (recorder.recording) void recorder.rearm().catch(err => console.warn('[mic] re-arm failed', err))
     }
     dispatch(le)
@@ -347,6 +433,11 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
   const offStart = bus.on('startClass', () => dispatch({ type: 'startRequested' }))
   const offClass = bus.on('classChanged', () => { void run({ type: 'loadToday' }) })
   const offDeck = bus.on('deckChanged', () => { void run({ type: 'loadToday' }) }) // phone edited/accepted a plan: the lens reloads it
+  const offOutbox = bus.on('outboxChanged', count => { dispatch({ type: 'outboxChanged', count }); armRetry(count) })
+  const offRetry = bus.on('outboxRetry', () => { void backgroundFlush() }) // phone "Retry now"
+  const onOnline = () => { void backgroundFlush() }
+  const win = typeof window !== 'undefined' ? window : null
+  win?.addEventListener('online', onOnline)
   // Ticks land just after whole seconds of the running drill, so the clock text changes on every tick.
   let tick: ReturnType<typeof setTimeout> | null = null
   const scheduleTick = () => {
@@ -363,11 +454,13 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
   if (state.screen !== 'firstRun') { void run({ type: 'loadToday' }); void run({ type: 'loadClasses' }) }
   void syncImu() // IMU on from lens start (nod works on home too); off on exit
   void run({ type: 'flushOutbox' })
+  void d.outbox.count().then(n => bus.emit('outboxChanged', n), err => console.warn('[outbox] count failed', err)) // lens + phone start from the real count
 
   return {
     dispatch,
     stop() {
-      unsubscribe(); offPaired(); offStart(); offClass(); offDeck(); if (tick) clearTimeout(tick)
+      unsubscribe(); offPaired(); offStart(); offClass(); offDeck(); offOutbox(); offRetry(); if (tick) clearTimeout(tick)
+      win?.removeEventListener('online', onOnline)
       exited = true
       void setImu(false)
       runsPoll?.stop()

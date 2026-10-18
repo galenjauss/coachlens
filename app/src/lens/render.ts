@@ -1,3 +1,4 @@
+import { QUEUED_GLYPH } from '../config'
 import { progressLines } from './agentRuns'
 import { SAID_COLS, clip, clipWithSuffix, classHeader, colsFor, paginate, rowsFor, transcriptPages, wrap } from './text'
 
@@ -74,6 +75,26 @@ function listPage(name: string, header: string, rawItems: string[]): PageSpec {
     list: { id: 2, name: 'list', x: 0, y: 44, w: W, h: H - 44, items } }
 }
 
+/** Agent line on a transcript-first card while the note is still on its way. */
+export const SORTING_LINE = '… sorting'
+
+/** Compact status-row suffix while notes wait in the outbox: ` ⟳ 2 queued` ('' when none). */
+export const queuedSuffix = (n: number): string => (n > 0 ? ` ${QUEUED_GLYPH} ${n} queued` : '')
+
+/**
+ * Status-row lines with the queued suffix: appended to the last line when it fits, else on a spare
+ * row when `rows` allows one, else the last line is cut at a word boundary to make room.
+ */
+function withQueued(lines: string[], n: number, rows = 1, cols = FULL): string[] {
+  const suffix = queuedSuffix(n)
+  if (!suffix) return lines
+  const last = lines.at(-1)
+  if (!last) return [...lines.slice(0, -1), suffix.trim()]
+  if (last.length + suffix.length <= cols) return [...lines.slice(0, -1), `${last}${suffix}`]
+  if (lines.length < rows) return [...lines, suffix.trim()]
+  return [...lines.slice(0, -1), clipWithSuffix(last, suffix, cols)]
+}
+
 const DARK: PageSpec = { key: 'dark', list: null, texts: [t(1, 'dark', 0, 0, W, H, '', { capture: true })] }
 
 function context(s: LensState, now: number) {
@@ -92,7 +113,7 @@ function home(s: LensState): PageSpec {
   const shownId = s.selectedClassId ?? td?.classId
   const shown = s.classes.find(c => c.id === shownId)
   const pos = n > 1 && shown ? ` (${s.classes.indexOf(shown) + 1}/${n})` : ''
-  const footer = s.status ?? (n > 1 ? 'swipe: change class · 2×: exit' : '2×: exit')
+  const footer = withQueued([s.status ?? (n > 1 ? 'swipe: change class · 2×: exit' : '2×: exit')], s.queued)[0]!
   if (s.selectedClassId && shown && td?.classId !== s.selectedClassId) {
     return panel(`COACHLENS${pos}`, `${shown.name}\n${shown.modeLabel}\n\n${s.loadError ? `${s.loadError} · tap to retry` : 'Loading class…'}`, footer)
   }
@@ -157,7 +178,7 @@ function peek(s: LensState, now: number): PageSpec {
     t(3, 'timer', PEEK.sideX, 44, PEEK.sideW, 36, a ? clock(a.drill.minutes, a.startedAt, now) : ''),
     t(4, 'cov', PEEK.sideX, 80, PEEK.sideW, 36, c.cov),
     t(5, 'box', 0, PEEK.boxY, W, nextY - 4 - PEEK.boxY, box, { border: true, capture: true }),
-    t(6, 'next', 0, nextY, W, H - nextY, wrap(nextText, FULL, fit.nextRows).join('\n')),
+    t(6, 'next', 0, nextY, W, H - nextY, withQueued(wrap(nextText, FULL, fit.nextRows), s.queued, fit.nextRows).join('\n')),
   ] }
 }
 
@@ -171,8 +192,8 @@ function card(s: LensState, now: number): PageSpec {
   const pages = transcriptPages(cd?.transcript ?? '')
   const page = Math.min(cd?.page ?? 0, pages.length - 1)
   const pageTag = pages.length > 1 ? `${page + 1}/${pages.length} swipe · ` : ''
-  const progress = cd ? wrap(progressLines(cd).join(' · '), SAID_COLS, 2) : []
-  const bottom = [...progress, 'tap: close · 2×: undo'].slice(0, 2)
+  const progress = cd ? wrap((cd.provisional ? [SORTING_LINE] : progressLines(cd)).join(' · '), SAID_COLS, 2) : []
+  const bottom = [...progress, cd?.provisional ? 'tap: close' : 'tap: close · 2×: undo'].slice(0, 2)
   return { key: 'card', list: null, texts: [
     t(1, 'hdr', 0, 0, W, 40, clip(`${pageTag}${cd?.lines[0] ?? c.drillHeader}`, FULL)),
     t(2, 'said', 0, 44, W, 164, pages[page]!.join('\n'), { border: true, capture: true }),

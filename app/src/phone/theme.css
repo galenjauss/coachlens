@@ -47,6 +47,9 @@ input:focus-visible, textarea:focus-visible { outline: none; border-color: var(-
 .drill > span:first-child { min-width: 0; overflow-wrap: anywhere; } /* full plan names wrap; never ellipsized */
 .drill > span:last-child { flex: none; }
 .error { color: var(--danger); }
+/* Notes waiting in the outbox (offline): a quiet warn strip with one retry action. */
+.queued { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 6px 6px 6px 12px; border-radius: var(--radius); border: 1px solid var(--warn); color: var(--warn); font-size: 13px; }
+.queued button { flex: none; min-height: 36px; padding: 6px 12px; font-size: 13px; font-weight: 600; background: transparent; color: var(--warn); border: 1px solid var(--warn); }
 /*
  * Class picker: horizontal-only scroller. overflow-x:auto alone makes overflow-y compute to auto too,
  * so WKWebView treated the strip as a 2-axis scroller and latched vertical pans that started on it

@@ -18,6 +18,8 @@ export interface Card {
   runsFinal: boolean
   /** Transcript page shown (swipe pages through a long transcript). */
   page: number
+  /** Transcript-first: the transcript is back, the note itself is still on its way ("… sorting"). */
+  provisional?: boolean
 }
 
 export interface LensState {
@@ -51,6 +53,8 @@ export interface LensState {
   status: string | null
   loadError: string | null
   starting: boolean
+  /** Notes waiting in the outbox (peek and home show `⟳ N queued`). */
+  queued: number
 }
 
 export type LensEvent =
@@ -67,6 +71,9 @@ export type LensEvent =
   | { type: 'utteranceQueued' } | { type: 'utteranceDelivered' } | { type: 'utteranceEmpty'; reason: EmptyReason } | { type: 'micFailed' }
   | { type: 'micLevel'; tick: number; audio: boolean; source: MicSource }
   | { type: 'sendStarted' } | { type: 'thinkingTick' }
+  /** Transcript-first: /v1/transcribe answered; the text note is about to be sent. */
+  | { type: 'transcriptReady'; transcript: string }
+  | { type: 'outboxChanged'; count: number }
   | { type: 'remindResult'; ok: boolean; names: string[] }
   | { type: 'coverageUpdated'; coverage: Coverage; nextStudent: NextStudent | null }
   | { type: 'runsLoaded'; utteranceId: string; runs: UtteranceRun[] | null; final: boolean }

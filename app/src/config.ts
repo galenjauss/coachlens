@@ -19,3 +19,11 @@ export const NOD: NodConfig = { enabled: true, axis: 'x', threshold: -0.22, wind
  */
 export const IMU_PACE: ImuReportPace = ImuReportPace.P100
 export const IMU_LOG: boolean = import.meta.env.VITE_IMU_LOG === '1'
+/**
+ * Open the glasses mic and the phone mic together when recording starts; on stop, keep the glasses
+ * audio when it has ≥ 0.4 s, else the phone audio (see `selectMic`). Off = the older sequential
+ * fallback (phone mic only after MIC_FALLBACK_MS without glasses audio).
+ */
+export const MIC_DUAL_START: boolean = true
+/** Lens suffix for notes waiting in the outbox (`⟳ 2 queued`). Verify the glyph on G2 hardware; swap if it doesn't render. */
+export const QUEUED_GLYPH: string = '⟳'

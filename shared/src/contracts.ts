@@ -128,6 +128,15 @@ export const UtteranceForm = z.object({
 })
 export type UtteranceForm = z.infer<typeof UtteranceForm>
 
+/** POST /v1/transcribe: multipart `audio` plus optional `sessionId` or `classId` (roster name hints). */
+export const TranscribeForm = z.object({
+  sessionId: z.string().min(1).max(64).nullable(),
+  classId: z.string().min(1).max(64).nullable(),
+})
+export type TranscribeForm = z.infer<typeof TranscribeForm>
+export const TranscribeResponse = z.object({ transcript: z.string() })
+export type TranscribeResponse = z.infer<typeof TranscribeResponse>
+
 export const StartSessionResponse = z.object({ sessionId: z.string(), startedAt: z.string(), coverage: Coverage, nextStudent: NextStudent.nullable() })
 export type StartSessionResponse = z.infer<typeof StartSessionResponse>
 

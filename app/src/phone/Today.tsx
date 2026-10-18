@@ -9,11 +9,13 @@ import { CLASS_ID_KEY, MODE_EMOJI } from './classPref'
 import { RosterCheckIn } from './RosterCheckIn'
 import { SetupEntry } from './onboarding/SetupEntry'
 import { usePoll } from './usePoll'
+import { queuedBanner, useOutboxCount } from './outboxLogic'
 
 export function Today({ api, kv, onOpenDeck, onSetup }: { api: Api; kv: KV; onOpenDeck(deckId: string): void; onSetup(): void }) {
   const [classId, setClassId] = useState<string | null | undefined>(undefined) // undefined = KV not read yet
   const [checkIn, setCheckIn] = useState(false)
   const [actionErr, setActionErr] = useState<string | null>(null)
+  const queuedText = queuedBanner(useOutboxCount())
   const classRef = useRef<string | null | undefined>(undefined)
   classRef.current = classId
   useEffect(() => {
@@ -48,7 +50,10 @@ export function Today({ api, kv, onOpenDeck, onSetup }: { api: Api; kv: KV; onOp
     bus.emit('classChanged', id)
   }
   const picker = <ClassPicker api={api} value={classId ?? t?.classId ?? null} loading={loading} onChange={pick} />
-  const banner = error && <p className="error" role="alert">Couldn’t load today: {error}</p>
+  const banner = <>
+    {queuedText && <div className="queued" role="status"><span className="grow">{queuedText} ·</span><button type="button" onClick={() => bus.emit('outboxRetry', undefined)}>Retry now</button></div>}
+    {error && <p className="error" role="alert">Couldn’t load today: {error}</p>}
+  </>
 
   if (!t) return (
     <main className="screen">
