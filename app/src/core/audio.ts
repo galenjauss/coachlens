@@ -45,15 +45,25 @@ export class Recorder {
     }
   }
 
-  /** No glasses audio arrived: record from the phone mic instead. Returns false if it could not switch. */
+  /**
+   * No glasses audio arrived: close the glasses mic, then record from the phone mic with a fresh
+   * buffer (the two sources never mix in one WAV). Returns false, and re-opens the glasses mic,
+   * if the phone mic could not be opened.
+   */
   async switchToPhone(): Promise<boolean> {
     if (!this.recording || this.source === 'phone') return false
     try {
+      await this.bridge.audioControl(false)
       const ok = await this.bridge.audioControl(true, AudioInputSource.Phone)
-      if (ok) this.source = 'phone'
-      return ok
+      if (!ok) throw new Error('phone mic refused')
+      this.source = 'phone'
+      this.chunks = []
+      this.bytes = 0
+      this.level = 0
+      return true
     } catch (e) {
-      console.warn('[mic] phone mic unavailable', e)
+      console.warn('[mic] phone mic unavailable; staying on the glasses mic', e)
+      await this.bridge.audioControl(true, AudioInputSource.Glasses).catch(err => console.warn('[mic] glasses re-open failed', err))
       return false
     }
   }
@@ -63,8 +73,10 @@ export class Recorder {
     return this.bridge.audioControl(true, this.source === 'phone' ? AudioInputSource.Phone : AudioInputSource.Glasses)
   }
 
-  push(pcm: Uint8Array) {
+  /** Add PCM from the current source; chunks tagged with the other source (e.g. late glasses audio after the switch) are dropped. */
+  push(pcm: Uint8Array, source?: string) {
     if (!this.recording) return
+    if (source && source !== this.source) return
     this.chunks.push(pcm)
     this.bytes += pcm.length
     this.level = Math.max(rms(pcm), this.level * 0.6) // decays between chunks

@@ -177,6 +177,30 @@ describe('recorder', () => {
     const res = await r.stop()
     expect([...res.wav!.slice(44, 48)]).toEqual([1, 2, 3, 4])
   })
+  it('after the switch: fresh buffer, late glasses chunks dropped, phone chunks kept (sources never mix)', async () => {
+    const r = new Recorder({ audioControl: async () => true })
+    await r.start()
+    r.push(new Uint8Array([9, 9]), 'glasses')
+    r.push(new Uint8Array([8, 8]), 'phone') // wrong source before the switch: dropped
+    expect(r.bytes).toBe(2)
+    await r.switchToPhone()
+    expect(r.bytes).toBe(0)
+    r.push(new Uint8Array(100), 'glasses') // late glasses chunk: ignored
+    expect(r.bytes).toBe(0)
+    const phone = new Uint8Array(16000 * 2); phone[0] = 7
+    r.push(phone, 'phone')
+    const res = await r.stop()
+    expect(res.bytes).toBe(32000)
+    expect(res.wav![44]).toBe(7) // the WAV starts with phone audio, no glasses bytes
+  })
+  it('if the phone mic is refused, the glasses mic is re-opened and nothing is switched', async () => {
+    const calls: unknown[][] = []
+    const r = new Recorder({ audioControl: async (...a: unknown[]) => { calls.push(a); return a[1] !== 'phone' } })
+    await r.start()
+    expect(await r.switchToPhone()).toBe(false)
+    expect(r.source).toBe('glasses')
+    expect(calls).toEqual([[true, 'glasses'], [false], [true, 'phone'], [true, 'glasses']])
+  })
   it('stop says why nothing is sent: no_audio (0 bytes) vs too_short (< 0.4 s)', async () => {
     const r = new Recorder({ audioControl: async () => true })
     await r.start()
@@ -193,7 +217,7 @@ describe('recorder', () => {
     expect(await r.switchToPhone()).toBe(true)
     expect(await r.switchToPhone()).toBe(false)
     expect(r.source).toBe('phone')
-    expect(calls).toEqual([[true, 'glasses'], [true, 'phone']])
+    expect(calls).toEqual([[true, 'glasses'], [false], [true, 'phone']]) // glasses mic closed BEFORE the phone mic opens
     const loud = new Uint8Array(3200); const v = new DataView(loud.buffer)
     for (let i = 0; i < 1600; i++) v.setInt16(i * 2, i % 2 ? 4000 : -4000, true)
     r.push(loud)

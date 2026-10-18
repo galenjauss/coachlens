@@ -282,7 +282,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
   }
 
   const unsubscribe = d.bridge.onEvenHubEvent(e => {
-    if (e.audioEvent?.audioPcm) recorder.push(e.audioEvent.audioPcm)
+    if (e.audioEvent?.audioPcm) recorder.push(e.audioEvent.audioPcm, e.audioEvent.source)
     const imu = imuSample(e)
     if (imu) {
       if (d.logImu) console.info('[imu]', imu.x, imu.y, imu.z)

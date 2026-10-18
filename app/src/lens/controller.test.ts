@@ -433,6 +433,20 @@ describe('lens controller', () => {
       expect(b.sent.at(-1)).toContain('Using phone mic')
     })
 
+    it('the switch closes the glasses mic first; a late glasses chunk after it is ignored, phone audio counts', async () => {
+      const b = await toPeek()
+      b.emit(tap); await flush()
+      b.raw.audioControl.mockClear()
+      await vi.advanceTimersByTimeAsync(MIC_FALLBACK_MS + 100)
+      expect(b.raw.audioControl.mock.calls).toEqual([[false], [true, AudioInputSource.Phone]])
+      b.emit({ audioEvent: { audioPcm: new Uint8Array(3200).fill(200), source: AudioInputSource.Glasses } }) // late glasses audio
+      await vi.advanceTimersByTimeAsync(MIC_METER_MS)
+      expect(b.sent.at(-1)).toMatch(/^upgrade:mic=○○○○○ waiting for audio… \ds · Using phone mic$/)
+      b.emit({ audioEvent: { audioPcm: new Uint8Array(3200).fill(200), source: AudioInputSource.Phone } })
+      await vi.advanceTimersByTimeAsync(MIC_METER_MS)
+      expect(b.sent.at(-1)).toMatch(/^upgrade:mic=●+○* \ds · Using phone mic$/)
+    })
+
     it('glasses audio arriving in time → no phone fallback', async () => {
       const b = await toPeek()
       b.emit(tap); await flush()
