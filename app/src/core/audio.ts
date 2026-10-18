@@ -138,6 +138,19 @@ export class Recorder {
     await this.bridge.audioControl(false)
   }
 
+  /**
+   * Long recordings (planning listen): take the audio buffered since the last cut as one WAV and keep
+   * the mic open. Dual mode picks the mic per cut (`selectMic`); a later `stop()` returns the remainder.
+   */
+  cut(): StopResult {
+    const src = this.dual ? selectMic(this.buf.glasses.bytes, this.buf.phone.bytes) : this.source
+    const { chunks, bytes } = this.buf[src]
+    this.buf = emptyBuffers()
+    if (bytes === 0) return { wav: null, bytes, reason: 'no_audio' }
+    if (bytes < MIN_BYTES) return { wav: null, bytes, reason: 'too_short' }
+    return { wav: pcmToWav(chunks), bytes }
+  }
+
   async stop(): Promise<StopResult> {
     this.recording = false
     await this.release()

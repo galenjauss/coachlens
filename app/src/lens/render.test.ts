@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Today } from '@matside/shared'
-import { render, minutesLeft, bar, clock, wrap, micLine, stageLine, peekFit, type PageSpec } from './render'
+import { render, minutesLeft, bar, clock, wrap, micLine, stageLine, peekFit, heardTail, LOBBY_HINT, type PageSpec } from './render'
 import { SAID_COLS, classHeader, clip, colsFor, rowsFor, transcriptPages } from './text'
 import { initialState } from './reducer'
 import type { LensState, Screen } from './state'
@@ -16,7 +16,7 @@ const s: LensState = {
   session: { id: 's', startedAt: 0 }, active: { drillId: 'd1', startedAt: 0 },
   coverage: { covered: 3, present: 12 }, nextStudent: { id: 'p', name: 'Priya', reason: 'guard' },
 }
-const ALL: Screen[] = ['firstRun', 'home', 'attendance', 'attendanceDone', 'dark', 'peek', 'deck', 'drillDetail', 'recording', 'sending', 'card', 'disambiguation', 'confirmEnd', 'wrapup']
+const ALL: Screen[] = ['firstRun', 'home', 'attendance', 'attendanceDone', 'dark', 'peek', 'deck', 'drillDetail', 'recording', 'sending', 'card', 'disambiguation', 'confirmEnd', 'wrapup', 'lobby', 'planning', 'planApplying', 'planResult']
 
 describe('minutesLeft', () => {
   it('whole minutes left, <1m, and minutes over', () => {
@@ -391,5 +391,51 @@ describe('queued suffix + provisional card', () => {
     const p = render({ ...s, screen: 'card', card }, 0)
     expect(p.texts.find(t => t.name === 'said')?.content).toContain('Priya guard up')
     expect(p.texts.find(t => t.name === 'agents')?.content).toBe('… sorting\ntap: close')
+  })
+})
+
+describe('lobby and planning screens', () => {
+  const pre = { ...s, session: null, active: null }
+  const txt = (p: PageSpec, name: string) => p.texts.find(t => t.name === name)?.content
+  const drills = ['Tag', 'Holds', 'Sprawls', 'Kata'].map((name, i) => ({ ...drill, id: `d${i}`, name, minutes: 5 }))
+  const t4 = { ...today, deck: { ...today.deck, drills } } as Today
+
+  it('lobby: class · start · plan length, the first 3 items, an empty insight slot, the hint', () => {
+    const p = render({ ...pre, screen: 'lobby', today: t4 }, 0)
+    expect(txt(p, 'hdr')).toBe('Kids · Tue · 17:00 · 20m')
+    expect(txt(p, 'body')).toBe('1 Tag · 5m\n2 Holds · 5m\n3 Sprawls · 5m\n+1 more')
+    expect(txt(p, 'insight')).toBe('')
+    expect(txt(p, 'foot')).toBe('tap start · 2× plan · swipe back')
+    expect(LOBBY_HINT.length).toBeLessThanOrEqual(colsFor(576))
+    expect(p.texts.filter(t => t.capture)).toHaveLength(1)
+  })
+
+  it('lobby: a status replaces the hint; starting and errors show in the body; no plan says how to make one', () => {
+    expect(txt(render({ ...pre, screen: 'lobby', status: 'Plan change undone' }, 0), 'foot')).toBe('Plan change undone')
+    expect(txt(render({ ...pre, screen: 'lobby', starting: true }, 0), 'body')).toContain('Starting class…')
+    expect(txt(render({ ...pre, screen: 'lobby', loadError: 'Offline' }, 0), 'body')).toContain('Offline · tap to retry')
+    const empty = { ...today, deck: { ...today.deck, drills: [] } } as Today
+    expect(txt(render({ ...pre, screen: 'lobby', today: empty }, 0), 'body')).toContain('No plan yet')
+  })
+
+  it('planning: "● Planning · m:ss" and the last ~60 chars heard, starting on a whole word', () => {
+    const heard = 'okay so today I want to swap the warmup for sprawls and add five minutes of kata at the end'
+    const p = render({ ...pre, screen: 'planning', planning: { stage: 'listening', sec: 75, heard } }, 0)
+    expect(txt(p, 'hdr')).toBe('● Planning · 1:15')
+    const tail = heardTail(heard)
+    expect(tail.startsWith('…')).toBe(true)
+    expect(tail.length).toBeLessThanOrEqual(61)
+    expect(heard.endsWith(tail.slice(1))).toBe(true)
+    expect(heard.split(' ')).toContain(tail.slice(1).split(' ')[0])
+    expect(txt(p, 'body')!.replace(/\n/g, ' ')).toBe(tail)
+    expect(heardTail('short')).toBe('short')
+  })
+
+  it('applying shows a thinking line; the result lists the lines with undo only when something changed', () => {
+    expect(txt(render({ ...pre, screen: 'planApplying', planning: { stage: 'applying', sec: 0, heard: '' } }, 0), 'body')).toContain('Thinking')
+    const r = render({ ...pre, screen: 'planResult', planResult: { diffId: 'd', lines: ['+ Sprawls · 5m', '- Tag'] } }, 0)
+    expect(txt(r, 'body')).toBe('+ Sprawls · 5m\n- Tag')
+    expect(txt(r, 'foot')).toBe('tap: ok · 2×: undo')
+    expect(txt(render({ ...pre, screen: 'planResult', planResult: { diffId: null, lines: [] } }, 0), 'foot')).toBe('tap: ok')
   })
 })

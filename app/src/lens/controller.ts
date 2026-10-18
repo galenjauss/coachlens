@@ -11,6 +11,7 @@ import { RUNS_MAX_MS, RUNS_POLL_MS, runsDone } from './agentRuns'
 import { imuSample, toLensEvent } from './events'
 import { Glasses, type GlassesBridge } from './glasses'
 import { NodDetector, type NodConfig } from './nod'
+import { createPlanListen } from './planListen'
 import { initialState, reduce } from './reducer'
 import { MIC_TICK_MS, render } from './render'
 import type { Effect, LensEvent, LensState } from './state'
@@ -93,6 +94,8 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
   let exited = false
   let todaySeq = 0 // only the latest today request may land (swiping classes fires several)
   let runsPoll: { utteranceId: string; stop(): void } | null = null
+
+  const plan = createPlanListen({ recorder, api: d.api, dispatch: e => dispatch(e), screen: () => state.screen, errText })
 
   const paint = (background = false) => glasses.show(render(state, Date.now()), { background })
 
@@ -402,6 +405,20 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
         return
       case 'expireStatus': return timers.status.set(eff.ms, () => dispatch({ type: 'statusExpired' }))
       case 'flushOutbox': return backgroundFlush()
+      case 'startPlan':
+        recStartedAt = Date.now()
+        return plan.start(eff.classId)
+      case 'stopPlan': return plan.stop()
+      case 'cancelPlan': return plan.cancel()
+      case 'undoPlan':
+        try {
+          await d.api.undoDiff(eff.diffId)
+          dispatch({ type: 'planUndone', ok: true })
+        } catch (e) {
+          // 409 "plan changed since": the server's own words are the status line.
+          dispatch({ type: 'planUndone', ok: false, message: e instanceof ApiError && e.status === 409 ? e.message : `Undo failed · ${errText(e)}` })
+        }
+        return
       case 'exit':
         exited = true
         timers.keepWarm.clear(); timers.outboxRetry.clear()
@@ -431,7 +448,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     const le = toLensEvent(e)
     if (!le) return
     // A stop tap right after recording started is a double-trigger: keep recording.
-    if (le.type === 'tap' && (state.screen === 'recording' || state.screen === 'attendance') && Date.now() - recStartedAt < STOP_DEBOUNCE_MS) return
+    if (le.type === 'tap' && (state.screen === 'recording' || state.screen === 'attendance' || state.screen === 'planning') && Date.now() - recStartedAt < STOP_DEBOUNCE_MS) return
     if (le.type === 'resumed') {
       // The host may close sensors while we're in the background: re-arm what was on.
       if (!exited) void setImu(true, true)
@@ -483,6 +500,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
       exited = true
       void setImu(false)
       runsPoll?.stop()
+      if (plan.active) void plan.cancel()
       glasses.dispose()
       for (const t of Object.values(timers)) t.clear()
     },

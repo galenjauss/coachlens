@@ -22,6 +22,9 @@ describe('lens reducer', () => {
     expect(r.state.screen).toBe('home')
     expect(r.effects).toContainEqual({ type: 'markFirstRunSeen' })
     r = run(r.state, { type: 'todayLoaded', today }, { type: 'tap' })
+    expect(r.state.screen).toBe('lobby') // home tap opens the class lobby
+    expect(r.effects.some(x => (x as { type: string }).type === 'startSession')).toBe(false)
+    r = run(r.state, { type: 'tap' })
     expect(r.effects).toContainEqual({ type: 'startSession', classId: 'c1' })
     r = run(r.state, { type: 'sessionStarted', res: { sessionId: 's1', startedAt: '2026-10-20T00:00:00Z', coverage: cov, nextStudent: null }, resumed: false, now: 1000 })
     expect(r.state.screen).toBe('attendance')
@@ -48,7 +51,7 @@ describe('lens reducer', () => {
     expect(r.effects).toEqual([{ type: 'exit' }])
   })
 
-  const inPeek = () => run(initialState(true), { type: 'todayLoaded', today }, { type: 'tap' },
+  const inPeek = () => run(initialState(true), { type: 'todayLoaded', today }, { type: 'tap' }, { type: 'tap' },
     { type: 'sessionStarted', res: { sessionId: 's1', startedAt: '2026-10-20T00:00:00Z', coverage: cov, nextStudent: { id: 'p', name: 'Priya', reason: 'guard' } }, resumed: true, now: 1000 }).state
   const inDark = () => run(inPeek(), { type: 'nod' }).state
   const note = (cardLines: string[], utteranceId = 'u1') => ({ type: 'utteranceResult' as const, res: { utteranceId, transcript: 'Priya keep your guard up', cardLines, coverage: { covered: 1, present: 12 }, nextStudent: null, disambiguation: null } })
@@ -319,8 +322,8 @@ describe('lens reducer', () => {
     expect(run(wrapEnd().state, { type: 'doubleTap' }).state.screen).toBe('peek')
   })
 
-  it('home tap twice starts the session once; duplicate sessionStarted is ignored', () => {
-    const r = run(initialState(true), { type: 'todayLoaded', today }, { type: 'tap' }, { type: 'tap' })
+  it('lobby tap twice starts the session once; duplicate sessionStarted is ignored', () => {
+    const r = run(initialState(true), { type: 'todayLoaded', today }, { type: 'tap' }, { type: 'tap' }, { type: 'tap' })
     expect(r.effects.filter(x => (x as { type: string }).type === 'startSession')).toHaveLength(1)
     const cur = inPeek()
     const dup = reduce(cur, { type: 'sessionStarted', res: resumeRes, resumed: false, now: 9 })
@@ -387,7 +390,7 @@ describe('lens reducer', () => {
       expect(r.effects.some(x => (x as { type: string }).type === 'startSession')).toBe(false)
       r = run(r.state, { type: 'todayLoaded', today: { ...today, classId: 'c2', className: 'PT · Sam' } })
       expect(r.state.selectedClassId).toBeNull()
-      r = run(r.state, { type: 'tap' })
+      r = run(r.state, { type: 'tap' }, { type: 'tap' }) // lobby, then start
       expect(r.effects).toContainEqual({ type: 'startSession', classId: 'c2' })
     })
 
@@ -398,8 +401,9 @@ describe('lens reducer', () => {
     })
 
     it('swipe is ignored while a class is starting', () => {
-      const starting = run(home(), { type: 'tap' }).state
-      expect(run(starting, { type: 'swipeDown' }).effects).toEqual([])
+      const starting = run(home(), { type: 'tap' }, { type: 'tap' }).state
+      expect(starting.starting).toBe(true)
+      expect(run(starting, { type: 'swipeDown' }).state).toBe(starting) // the lobby stays up while starting
     })
 
     it('a load failure keeps the pending pick; tap retries that class and never starts the previous one', () => {
@@ -494,5 +498,126 @@ describe('late outcomes never take over an open capture', () => {
     expect(r.state.card).toBeNull()
     expect(r.state.coverage).toEqual({ covered: 2, present: 3 })
     expect(r.effects).toEqual([])
+  })
+
+  describe('class lobby and planning listen', () => {
+    const home = () => run(initialState(true), { type: 'todayLoaded', today }).state
+    const inLobby = () => run(home(), { type: 'tap' }).state
+    const listening = () => run(inLobby(), { type: 'doubleTap' }).state
+    const applying = () => run(listening(), { type: 'tap' }).state
+    const res = (diffId: string | null, lines = ['+ Sprawl drill · 5m']) => ({ type: 'planResult' as const, res: { diffId, deckId: 'k1', lines } })
+    const types = (effects: unknown[]) => effects.map(x => (x as { type: string }).type)
+
+    it('home tap enters the lobby (no session yet); home swipe still cycles classes; home 2× still exits', () => {
+      const r = run(home(), { type: 'tap' })
+      expect(r.state.screen).toBe('lobby')
+      expect(r.effects).toEqual([])
+      expect(run(home(), { type: 'doubleTap' }).effects).toEqual([{ type: 'exit' }])
+    })
+
+    it('home tap before today loads asks for it instead of opening the lobby', () => {
+      const r = run(initialState(true), { type: 'tap' })
+      expect(r.state.screen).toBe('home')
+      expect(types(r.effects)).toEqual(['loadToday', 'loadClasses'])
+    })
+
+    it('lobby tap runs the start flow (roll call follows)', () => {
+      let r = run(inLobby(), { type: 'tap' })
+      expect(r.effects).toEqual([{ type: 'startSession', classId: 'c1' }])
+      r = run(r.state, { type: 'sessionStarted', res: { sessionId: 's1', startedAt: '2026-10-20T00:00:00Z', coverage: cov, nextStudent: null }, resumed: false, now: 1 })
+      expect(r.state.screen).toBe('attendance')
+    })
+
+    it('a failed start shows on the lobby so tap can retry', () => {
+      const r = run(inLobby(), { type: 'tap' }, { type: 'actionFailed', message: 'Offline' })
+      expect(r.state).toMatchObject({ screen: 'lobby', starting: false, loadError: 'Offline' })
+      expect(run(r.state, { type: 'tap' }).effects).toEqual([{ type: 'startSession', classId: 'c1' }])
+    })
+
+    it('lobby swipe (either way) goes back to home', () => {
+      expect(run(inLobby(), { type: 'swipeDown' }).state.screen).toBe('home')
+      expect(run(inLobby(), { type: 'swipeUp' }).state.screen).toBe('home')
+    })
+
+    it('phone Start from the lobby or home starts the class directly', () => {
+      expect(run(inLobby(), { type: 'startRequested' }).effects).toEqual([{ type: 'startSession', classId: 'c1' }])
+      expect(run(home(), { type: 'startRequested' }).effects).toEqual([{ type: 'startSession', classId: 'c1' }])
+    })
+
+    it('nod toggles dark from the lobby and wakes back to it', () => {
+      const r = run(inLobby(), { type: 'nod' })
+      expect(r.state).toMatchObject({ screen: 'dark', darkFrom: 'lobby' })
+      expect(run(r.state, { type: 'nod' }).state.screen).toBe('lobby')
+      expect(run(r.state, { type: 'tap' }).state.screen).toBe('lobby')
+    })
+
+    it('lobby double-tap starts planning listen for the class', () => {
+      const r = run(inLobby(), { type: 'doubleTap' })
+      expect(r.state).toMatchObject({ screen: 'planning', planning: { stage: 'listening', sec: 0, heard: '' } })
+      expect(r.effects).toEqual([{ type: 'startPlan', classId: 'c1' }])
+    })
+
+    it('planning: ticks and heard text update; nod, swipe and long-press do nothing', () => {
+      let s = run(listening(), { type: 'planTick', sec: 7 }, { type: 'planHeard', text: 'swap tag for sprawls' }).state
+      expect(s.planning).toMatchObject({ sec: 7, heard: 'swap tag for sprawls' })
+      for (const e of [{ type: 'nod' }, { type: 'swipeDown' }, { type: 'swipeUp' }, { type: 'longPress' }] as const) expect(reduce(s, e).state).toBe(s)
+      s = run(inLobby(), { type: 'planTick', sec: 3 }).state // not planning: ignored
+      expect(s.planning).toBeNull()
+    })
+
+    it('planning tap stops and applies (thinking line), double-tap cancels back to the lobby', () => {
+      let r = run(listening(), { type: 'tap' })
+      expect(r.state).toMatchObject({ screen: 'planApplying', planning: { stage: 'transcribing' } })
+      expect(r.effects).toEqual([{ type: 'stopPlan' }])
+      expect(run(r.state, { type: 'planApplying' }).state.planning?.stage).toBe('applying')
+      r = run(listening(), { type: 'doubleTap' })
+      expect(r.state).toMatchObject({ screen: 'lobby', planning: null, status: 'Planning cancelled' })
+      expect(types(r.effects)).toEqual(['cancelPlan', 'expireStatus'])
+    })
+
+    it('while applying, gestures are ignored (the result with its undo must be seen)', () => {
+      const s = applying()
+      for (const e of [{ type: 'tap' }, { type: 'doubleTap' }, { type: 'swipeDown' }, { type: 'nod' }] as const) expect(reduce(s, e).state).toBe(s)
+    })
+
+    it('the plan result shows its lines and reloads today; tap = OK back to the lobby', () => {
+      let r = run(applying(), res('d9'))
+      expect(r.state).toMatchObject({ screen: 'planResult', planning: null, planResult: { diffId: 'd9', lines: ['+ Sprawl drill · 5m'] } })
+      expect(r.effects).toEqual([{ type: 'loadToday' }])
+      r = run(r.state, { type: 'tap' })
+      expect(r.state).toMatchObject({ screen: 'lobby', planResult: null })
+      expect(r.effects).toEqual([])
+    })
+
+    it('plan result swipe goes back to the lobby', () => {
+      expect(run(applying(), res('d9'), { type: 'swipeDown' }).state.screen).toBe('lobby')
+      expect(run(applying(), res('d9'), { type: 'swipeUp' }).state.screen).toBe('lobby')
+    })
+
+    it('plan result double-tap undoes the diff and returns to the lobby; the outcome is the status line', () => {
+      let r = run(applying(), res('d9'), { type: 'doubleTap' })
+      expect(r.state).toMatchObject({ screen: 'lobby', planResult: null })
+      expect(r.effects).toContainEqual({ type: 'undoPlan', diffId: 'd9' })
+      const ok = run(r.state, { type: 'planUndone', ok: true })
+      expect(ok.state.status).toBe('Plan change undone')
+      expect(types(ok.effects)).toEqual(['expireStatus', 'loadToday'])
+      r = run(r.state, { type: 'planUndone', ok: false, message: 'plan changed since' })
+      expect(r.state.status).toBe('plan changed since')
+    })
+
+    it('a result with no change has no undo: double-tap just goes back', () => {
+      const r = run(applying(), res(null, []), { type: 'doubleTap' })
+      expect(r.state.screen).toBe('lobby')
+      expect(types(r.effects)).not.toContain('undoPlan')
+    })
+
+    it('a failed plan (mic, nothing heard, server) returns to the lobby with the reason', () => {
+      for (const s of [listening(), applying()]) {
+        const r = run(s, { type: 'planFailed', message: 'Mic unavailable · check permission' })
+        expect(r.state).toMatchObject({ screen: 'lobby', planning: null, status: 'Mic unavailable · check permission' })
+      }
+      const h = home()
+      expect(reduce(h, { type: 'planFailed', message: 'x' }).state).toBe(h)
+    })
   })
 })

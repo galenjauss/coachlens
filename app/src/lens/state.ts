@@ -1,11 +1,15 @@
-import type { Coverage, Disambiguation, NextStudent, StartSessionResponse, Today, UtteranceResponse, WrapUp } from '@matside/shared'
+import type { Coverage, Disambiguation, NextStudent, StartSessionResponse, Today, UtteranceResponse, VoicePlanResponse, WrapUp } from '@matside/shared'
 import type { UtteranceRun } from '../core/api'
 import type { EmptyReason, MicSource } from '../core/audio'
 
-export type Screen = 'firstRun' | 'home' | 'attendance' | 'attendanceDone' | 'dark' | 'peek' | 'deck' | 'recording' | 'sending' | 'card' | 'disambiguation' | 'confirmEnd' | 'wrapup' | 'drillDetail'
+export type Screen = 'firstRun' | 'home' | 'lobby' | 'planning' | 'planApplying' | 'planResult' | 'attendance' | 'attendanceDone' | 'dark' | 'peek' | 'deck' | 'recording' | 'sending' | 'card' | 'disambiguation' | 'confirmEnd' | 'wrapup' | 'drillDetail'
 export type Mode = 'note' | 'attendance'
 /** heard = recording stopped · sending = request in flight · thinking = still pending after THINK_AFTER_TICKS. */
 export type ThinkStage = 'heard' | 'sending' | 'thinking'
+/** Planning listen: listening (mic open) → transcribing (the last chunks) → applying (POST /v1/plan/voice). */
+export type PlanStage = 'listening' | 'transcribing' | 'applying'
+/** A screen a nod may turn dark (and wake back to). */
+export type DarkFrom = 'home' | 'lobby' | 'peek' | 'deck'
 export type ClassOption = { id: string; name: string; modeLabel: string }
 
 /** The agent card: what the coach said (left) and live agent progress (right). `runs` null = not loaded yet. */
@@ -39,7 +43,7 @@ export interface LensState {
   /** A capture in progress; `at` = when it started (the recording header shows a static time from it). */
   pending: { mode: Mode; returnTo: Screen; viaLongPress: boolean; at: number } | null
   /** The idle screen a nod turned dark (a nod or tap brings it back). */
-  darkFrom: 'home' | 'peek' | 'deck' | null
+  darkFrom: DarkFrom | null
   /**
    * Live "hearing you" indicator while recording: `tick` = MIC_METER_MS steps since the mic opened
    * (drives the ●/○ pulse and the m:ss count), `audio` = bytes have arrived, `source` = which mic.
@@ -55,6 +59,12 @@ export interface LensState {
   starting: boolean
   /** Notes waiting in the outbox (peek and home show `⟳ N queued`). */
   queued: number
+  /** Planning listen in progress: `sec` = seconds since the mic opened, `heard` = the transcript so far. */
+  planning: { stage: PlanStage; sec: number; heard: string } | null
+  /** The voice plan's summary (plan result screen); `diffId` null = nothing changed, no undo. */
+  planResult: { diffId: string | null; lines: string[] } | null
+  /** Lobby insight banner (Task 32 fills it; nothing is rendered while null). */
+  lobbyInsight: string | null
 }
 
 export type LensEvent =
@@ -82,6 +92,16 @@ export type LensEvent =
   | { type: 'timerEnded' }
   | { type: 'statusExpired' }
   | { type: 'actionFailed'; message: string }
+  /** Planning listen: a second of recording passed. */
+  | { type: 'planTick'; sec: number }
+  /** Planning listen: the transcript so far (chunks joined in order). */
+  | { type: 'planHeard'; text: string }
+  /** Planning listen: every chunk is transcribed; the plan edit request is going out. */
+  | { type: 'planApplying' }
+  | { type: 'planResult'; res: VoicePlanResponse }
+  /** Planning listen ended without a plan edit (mic failed, nothing heard, request failed). */
+  | { type: 'planFailed'; message: string }
+  | { type: 'planUndone'; ok: boolean; message?: string }
 
 export type Effect =
   | { type: 'markFirstRunSeen' }
@@ -101,3 +121,7 @@ export type Effect =
   | { type: 'expireStatus'; ms: number }
   | { type: 'flushOutbox' }
   | { type: 'exit' }
+  | { type: 'startPlan'; classId: string }
+  | { type: 'stopPlan' }
+  | { type: 'cancelPlan' }
+  | { type: 'undoPlan'; diffId: string }

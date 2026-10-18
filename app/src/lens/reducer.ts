@@ -1,5 +1,5 @@
 import type { EmptyReason } from '../core/audio'
-import type { Effect, LensEvent, LensState, Mode, Screen } from './state'
+import type { DarkFrom, Effect, LensEvent, LensState, Mode, Screen } from './state'
 import { detailPages } from './render'
 import { colsFor, transcriptPages } from './text'
 
@@ -17,6 +17,7 @@ export function initialState(firstRunSeen: boolean): LensState {
     screen: firstRunSeen ? 'home' : 'firstRun', today: null, classes: [], selectedClassId: null, session: null, active: null,
     coverage: { covered: 0, present: 0 }, nextStudent: null, card: null, disambiguation: null, wrapup: null,
     pending: null, mic: null, thinking: null, detail: null, darkFrom: null, attendanceLines: [], status: null, loadError: null, starting: false, queued: 0,
+    planning: null, planResult: null, lobbyInsight: null,
   }
 }
 
@@ -28,7 +29,7 @@ function peek(s: LensState, status: string | null = null, ...effects: Effect[]):
 }
 
 /** Screens a nod may turn dark: idle ones only (never while recording, sending, or with the card up). */
-const NOD_IDLE = new Set<Screen>(['home', 'peek', 'deck'])
+const NOD_IDLE = new Set<Screen>(['home', 'lobby', 'peek', 'deck'])
 
 /** Light the lens again on the idle screen it was on before going dark. */
 function wake(s: LensState): R {
@@ -89,12 +90,60 @@ function cycleClass(s: LensState, step: 1 | -1): R {
   return done({ ...s, selectedClassId: next.id, loadError: null }, { type: 'selectClass', classId: next.id })
 }
 
-function homeTap(s: LensState): R {
+/** Home tap enters the shown class's lobby; `start` (the phone's Start) starts it at once. */
+function homeTap(s: LensState, start = false): R {
   if (s.selectedClassId && s.today?.classId !== s.selectedClassId) {
-    // The shown class is not loaded: retry its day after a failure (KV already holds it); never start the old class.
+    // The shown class is not loaded: retry its day after a failure (KV already holds it); never open the old class.
     return s.loadError ? done({ ...s, loadError: null }, { type: 'loadToday' }) : done(s)
   }
-  return s.today ? startClass(s, s.today.classId) : done(s, { type: 'loadToday' }, { type: 'loadClasses' })
+  if (!s.today) return done(s, { type: 'loadToday' }, { type: 'loadClasses' })
+  return start ? startClass(s, s.today.classId) : done({ ...s, screen: 'lobby', status: null })
+}
+
+/** Back to the lobby (plan refreshed by the caller), optionally with a status line. */
+function lobby(s: LensState, status: string | null = null, ...effects: Effect[]): R {
+  return done({ ...s, screen: 'lobby', planning: null, planResult: null, status, darkFrom: null }, ...effects, ...(status ? [expire] : []))
+}
+
+/** Lobby: tap starts the class, double-tap starts planning listen, swipe goes back to home. */
+function lobbyGesture(s: LensState, e: LensEvent): R {
+  if (!s.today) return done({ ...s, screen: 'home' })
+  if (e.type === 'tap') return startClass(s, s.today.classId)
+  if ((e.type === 'swipeUp' || e.type === 'swipeDown') && !s.starting) return done({ ...s, screen: 'home', status: null })
+  if (e.type === 'doubleTap' && !s.starting) {
+    return done({ ...s, screen: 'planning', status: null, planning: { stage: 'listening', sec: 0, heard: '' } }, { type: 'startPlan', classId: s.today.classId })
+  }
+  return done(s)
+}
+
+/** Planning listen data events (ticks, transcript, the result). Null = not one of them. */
+function planEvent(s: LensState, e: LensEvent): R | null {
+  const p = s.planning
+  switch (e.type) {
+    case 'planTick': return s.screen === 'planning' && p && p.sec !== e.sec ? done({ ...s, planning: { ...p, sec: e.sec } }) : done(s)
+    case 'planHeard': return p && p.heard !== e.text ? done({ ...s, planning: { ...p, heard: e.text } }) : done(s)
+    case 'planApplying': return s.screen === 'planApplying' && p ? done({ ...s, planning: { ...p, stage: 'applying' } }) : done(s)
+    case 'planResult': {
+      // The plan changed on the server either way: reload today so the lobby shows it.
+      if (s.screen !== 'planApplying') return done(s, { type: 'loadToday' })
+      return done({ ...s, screen: 'planResult', planning: null, planResult: { diffId: e.res.diffId, lines: e.res.lines } }, { type: 'loadToday' })
+    }
+    case 'planFailed':
+      return s.screen === 'planning' || s.screen === 'planApplying' ? lobby(s, e.message) : done(s)
+    case 'planUndone': {
+      const status = e.ok ? 'Plan change undone' : e.message || 'Undo failed'
+      return done({ ...s, status }, expire, ...(e.ok ? [{ type: 'loadToday' } as const] : []))
+    }
+  }
+  return null
+}
+
+/** Plan result: tap = OK, double-tap = undo, swipe = back to the lobby. */
+function planResultGesture(s: LensState, e: LensEvent): R {
+  const diffId = s.planResult?.diffId
+  if (e.type === 'doubleTap' && diffId) return done({ ...s, screen: 'lobby', planResult: null, status: 'Undoing plan change…' }, { type: 'undoPlan', diffId })
+  if (e.type === 'tap' || e.type === 'doubleTap' || e.type === 'swipeUp' || e.type === 'swipeDown') return lobby(s)
+  return done(s)
 }
 
 /** A capture (note or roll call) is open: late events for an earlier note must not change the screen. */
@@ -125,11 +174,11 @@ function dataEvent(s: LensState, e: LensEvent, now: number): R | null {
     case 'coverageUpdated': return done({ ...s, coverage: e.coverage, nextStudent: e.nextStudent })
     case 'resumed': return done(s, { type: 'loadToday' }, { type: 'loadClasses' }, { type: 'flushOutbox' })
     case 'startRequested':
-      if (s.screen === 'dark' && !s.session) return homeTap({ ...s, screen: 'home', darkFrom: null }) // phone "Start" while the lens was off
-      return s.screen === 'home' ? homeTap(s) : done(s)
+      if (s.screen === 'dark' && !s.session) return homeTap({ ...s, screen: 'home', darkFrom: null }, true) // phone "Start" while the lens was off
+      return s.screen === 'home' || s.screen === 'lobby' ? homeTap(s, true) : done(s)
     case 'actionFailed': {
       if (s.screen === 'wrapup' && !s.wrapup) return peek(s, `Couldn't end class · ${e.message}`)
-      return done({ ...s, starting: false, loadError: s.screen === 'home' ? e.message : s.loadError })
+      return done({ ...s, starting: false, loadError: s.screen === 'home' || s.screen === 'lobby' ? e.message : s.loadError })
     }
     case 'sessionStarted': {
       if (s.session?.id === e.res.sessionId) return done(s)
@@ -186,7 +235,7 @@ function dataEvent(s: LensState, e: LensEvent, now: number): R | null {
     case 'wrapupLoaded': return done({ ...s, screen: 'wrapup', wrapup: e.wrapup })
     case 'statusExpired': return s.status ? done({ ...s, status: null }) : done(s)
     case 'nod':
-      if (NOD_IDLE.has(s.screen)) return done({ ...s, screen: 'dark', status: null, darkFrom: s.screen as 'home' | 'peek' | 'deck' })
+      if (NOD_IDLE.has(s.screen)) return done({ ...s, screen: 'dark', status: null, darkFrom: s.screen as DarkFrom })
       return s.screen === 'dark' ? wake(s) : done(s)
     case 'timerEnded': {
       if (!s.session || !s.active || (s.screen !== 'dark' && s.screen !== 'peek')) return done(s)
@@ -196,7 +245,7 @@ function dataEvent(s: LensState, e: LensEvent, now: number): R | null {
       return peek(s, `Time · next: ${next}`)
     }
   }
-  return null
+  return planEvent(s, e)
 }
 
 export function reduce(s: LensState, e: LensEvent): R {
@@ -215,6 +264,13 @@ export function reduce(s: LensState, e: LensEvent): R {
       if (e.type === 'swipeDown') return cycleClass(s, 1)
       if (e.type === 'swipeUp') return cycleClass(s, -1)
       return done(s)
+    case 'lobby': return lobbyGesture(s, e)
+    case 'planning':
+      if (e.type === 'tap') return done({ ...s, screen: 'planApplying', planning: s.planning && { ...s.planning, stage: 'transcribing' } }, { type: 'stopPlan' })
+      if (e.type === 'doubleTap') { const r = lobby(s, 'Planning cancelled'); return { state: r.state, effects: [{ type: 'cancelPlan' }, ...r.effects] } }
+      return done(s)
+    case 'planApplying': return done(s) // the plan edit is on its way: its result (with undo) must be seen
+    case 'planResult': return planResultGesture(s, e)
     case 'attendance':
       if (e.type === 'tap') return send(s)
       if (e.type === 'doubleTap') {

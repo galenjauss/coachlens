@@ -257,6 +257,61 @@ function wrapup(s: LensState): PageSpec {
   ] }
 }
 
+/**
+ * Lobby footer. The full hint (`tap start · 2×tap plan by voice · swipe back`, 44 chars) is over the
+ * 39-char line, so the short form is used.
+ */
+export const LOBBY_HINT = 'tap start · 2× plan · swipe back'
+/** Plan items listed in the lobby. */
+const LOBBY_ITEMS = 3
+
+/** Lobby: class · start time · plan length, the first plan items, the insight slot (Task 32), the hint. */
+function lobby(s: LensState): PageSpec {
+  const td = s.today
+  const drills = td?.deck.drills ?? []
+  const mins = drills.reduce((n, d) => n + d.minutes, 0)
+  const header = td ? clipWithSuffix(td.className, ` · ${td.startTime} · ${mins}m`, FULL) : 'CLASS'
+  const items = drills.slice(0, LOBBY_ITEMS).map((d, i) => clipWithSuffix(`${i + 1} ${d.name}`, ` · ${d.minutes}m`, BOXC))
+  const more = drills.length > LOBBY_ITEMS ? [`+${drills.length - LOBBY_ITEMS} more`] : []
+  const action = s.starting ? 'Starting class…' : s.loadError ? `${s.loadError} · tap to retry` : null
+  const body = [...(items.length ? [...items, ...more] : ['No plan yet · 2× to plan by voice']), ...(action ? [action] : [])]
+  return { key: 'lobby', list: null, texts: [
+    t(1, 'hdr', 0, 0, W, 40, header),
+    t(2, 'body', 0, 44, W, 160, body.join('\n'), { border: true, capture: true }),
+    t(3, 'insight', 0, 208, W, 36, s.lobbyInsight ? clip(s.lobbyInsight, FULL) : ''),
+    t(4, 'foot', 0, 248, W, 40, clip(s.status ?? LOBBY_HINT, FULL)),
+  ] }
+}
+
+/** How much of the planning transcript the lens shows: its last ~60 chars, starting on a whole word. */
+export const PLAN_HEARD_CHARS = 60
+export function heardTail(text: string, n = PLAN_HEARD_CHARS): string {
+  const t = text.trim()
+  if (t.length <= n) return t
+  const cut = t.slice(-n)
+  const sp = cut.indexOf(' ')
+  return `…${sp >= 0 && sp < cut.length - 1 ? cut.slice(sp + 1) : cut}`
+}
+
+/** Planning listen: `● Planning · m:ss`, the tail of what was heard, the hint. Only the header ticks. */
+function planning(s: LensState): PageSpec {
+  const p = s.planning
+  const heard = p?.heard ? heardTail(p.heard) : 'Listening… talk the plan through'
+  return { key: 'plan', list: null, texts: [
+    t(1, 'hdr', 0, 0, W, 40, `● Planning · ${mmss(p?.sec ?? 0)}`),
+    t(2, 'body', 0, 44, W, 196, boxed(heard), { border: true, capture: true }),
+    t(3, 'foot', 0, 246, W, 40, 'tap: apply · 2×: cancel'),
+  ] }
+}
+
+const PLAN_STAGE_LINE = { listening: 'Transcribing…', transcribing: 'Transcribing…', applying: 'Thinking · updating the plan…' } as const
+
+function planResult(s: LensState): PageSpec {
+  const r = s.planResult
+  const lines = r?.lines.length ? r.lines : ['No plan changes']
+  return panel(r?.diffId ? 'PLAN UPDATED' : 'PLAN', lines.join('\n'), r?.diffId ? 'tap: ok · 2×: undo' : 'tap: ok')
+}
+
 const DETAIL_ROWS = rowsFor(196, true)
 
 /** Deck item detail: the full drill name and every cue, wrapped (never cut), paged when long. */
@@ -285,6 +340,10 @@ export function render(s: LensState, now: number): PageSpec {
     case 'dark': return DARK
     case 'peek': return peek(s, now)
     case 'home': return home(s)
+    case 'lobby': return lobby(s)
+    case 'planning': return planning(s)
+    case 'planApplying': return panel('PLANNING', PLAN_STAGE_LINE[s.planning?.stage ?? 'transcribing'], '')
+    case 'planResult': return planResult(s)
     case 'wrapup': return wrapup(s)
     case 'firstRun':
       return panel('WELCOME TO COACHLENS', 'Your drill and timer stay on the lens.\ntap: talk · nod: lens off/on\nswipe: deck · 2×: end class / undo\n\n> Pair on your phone, then tap here.', '')

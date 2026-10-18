@@ -10,7 +10,8 @@ import { RUNS_MAX_MS, RUNS_POLL_MS } from './agentRuns'
 import { AudioInputSource } from '@evenrealities/even_hub_sdk'
 import { KEEP_WARM_MS, MIC_FALLBACK_MS, MIC_METER_MS, OUTBOX_RETRY_MS, startLens, STOP_DEBOUNCE_MS, TICK_MS, type LensBridge, type LensHandle } from './controller'
 import { NetworkError, TRANSCRIBE_TIMEOUT_MS } from '../core/api'
-import { QUEUED_GLYPH } from '../config'
+import { PLAN_CHUNK_MS, PLAN_MAX_MS, QUEUED_GLYPH } from '../config'
+import { PLAN_TRANSCRIBE_TIMEOUT_MS } from './planListen'
 import { STATUS_MS } from './reducer'
 
 const today = {
@@ -114,6 +115,7 @@ describe('lens controller', () => {
   it('startSession failure dispatches actionFailed so a retry is possible', async () => {
     const startSession = vi.fn(async () => { throw new ApiError(500, 'boom') })
     const b = await boot(fakeApi({ startSession }))
+    b.emit(tap); await flush() // lobby
     b.emit(tap); await flush()
     b.emit(tap); await flush()
     expect(startSession).toHaveBeenCalledTimes(2)
@@ -123,6 +125,7 @@ describe('lens controller', () => {
   /** Start class and skip roll call: the persistent peek. */
   async function toPeek(api = fakeApi(), opts: Parameters<typeof boot>[2] = {}) {
     const b = await boot(api, true, opts)
+    b.emit(tap); await flush() // home → lobby
     b.emit(tap); await flush() // start class → attendance (mic)
     b.emit(dbl); await flush() // skip roll call → peek
     return b
@@ -448,6 +451,7 @@ describe('lens controller', () => {
         expect(changed).toEqual(['c2'])
         expect(todayFor).toHaveBeenLastCalledWith('c2')
         expect(b.sent.join('\n')).toContain('PT · Sam')
+        b.emit(tap); await flush() // lobby
         b.emit(tap); await flush()
         expect(startSession).toHaveBeenCalledWith('c2')
       } finally { off() }
@@ -780,6 +784,7 @@ describe('lens controller', () => {
       const b = await boot(fakeApi({ health }))
       await vi.advanceTimersByTimeAsync(KEEP_WARM_MS)
       expect(health).not.toHaveBeenCalled() // no session yet
+      b.emit(tap); await flush() // lobby
       b.emit(tap); await flush() // start class
       b.emit(dbl); await flush() // skip roll call
       await vi.advanceTimersByTimeAsync(KEEP_WARM_MS * 2)
@@ -795,6 +800,123 @@ describe('lens controller', () => {
       b.emit(tap); await flush() // done → home (session over)
       await vi.advanceTimersByTimeAsync(KEEP_WARM_MS * 2)
       expect(health).toHaveBeenCalledTimes(3)
+    })
+  })
+
+  describe('planning listen (lobby 2×)', () => {
+    type Deferred = { blob: Blob; resolve(t: string): void; reject(e: unknown): void }
+    /** transcribe() whose calls the test settles one by one, in any order. */
+    function controlledTranscribe() {
+      const calls: Deferred[] = []
+      const fn = vi.fn((blob: Blob) => new Promise<string>((resolve, reject) => { calls.push({ blob, resolve, reject }) }))
+      return { fn, calls }
+    }
+    const planRes = (diffId: string | null = 'd9') => ({ diffId, deckId: 'k1', lines: ['+ Sprawls · 5m'] })
+    const speak = (b: { emit(e: Record<string, unknown>): void }, chunks: number) => { for (let i = 0; i < chunks; i++) b.emit(pcm(1000)) }
+    async function toPlanning(over: Partial<Record<keyof Api, unknown>>) {
+      const api = fakeApi({ voicePlan: vi.fn(async () => planRes()), undoDiff: vi.fn(async () => ({ ok: true })), ...over })
+      const b = await boot(api, true, { micDualStart: false })
+      b.emit(tap); await flush() // lobby
+      b.emit(dbl); await flush() // planning listen
+      return b
+    }
+
+    it('cuts a chunk every 20 s (only new audio), joins transcripts in order (even when they finish out of order), includes the remainder, then applies', async () => {
+      const t = controlledTranscribe()
+      const voicePlan = vi.fn(async () => planRes())
+      const b = await toPlanning({ transcribe: t.fn, voicePlan })
+      expect(b.sent.at(-1)).toContain('● Planning · 0:00')
+      speak(b, 20); await vi.advanceTimersByTimeAsync(PLAN_CHUNK_MS)
+      speak(b, 30); await vi.advanceTimersByTimeAsync(PLAN_CHUNK_MS)
+      expect(t.fn).toHaveBeenCalledTimes(2)
+      expect(t.calls.map(c => c.blob.size)).toEqual([44 + 20000, 44 + 30000])
+      expect(t.fn).toHaveBeenCalledWith(expect.any(Blob), { classId: 'c1' }, PLAN_TRANSCRIBE_TIMEOUT_MS)
+      t.calls[1]!.resolve('add sprawls'); await flush() // the second chunk lands first
+      t.calls[0]!.resolve('swap tag'); await flush()
+      expect(b.sent.join('\n')).toContain('swap tag add sprawls')
+      speak(b, 15)
+      b.emit(tap); await flush() // stop and apply
+      expect(t.calls).toHaveLength(3)
+      expect(t.calls[2]!.blob.size).toBe(44 + 15000) // the remainder since the last cut
+      expect(voicePlan).not.toHaveBeenCalled() // waits for every chunk
+      t.calls[2]!.resolve('then kata'); await flush()
+      expect(voicePlan).toHaveBeenCalledWith('c1', 'swap tag add sprawls then kata')
+      expect(b.sent.slice(-3).join('\n')).toContain('PLAN UPDATED')
+    })
+
+    it('a failed chunk is retried once; a chunk failing twice is dropped and the rest still applies', async () => {
+      let n = 0
+      const transcribe = vi.fn(async () => {
+        n += 1
+        if (n === 1) throw new ApiError(500, 'boom') // chunk 1, first try
+        if (n === 2) return 'one' // chunk 1, retry
+        if (n === 3 || n === 4) throw new NetworkError('x') // chunk 2, both tries
+        return 'three' // the remainder
+      })
+      const voicePlan = vi.fn(async () => planRes())
+      const b = await toPlanning({ transcribe, voicePlan })
+      speak(b, 20); await vi.advanceTimersByTimeAsync(PLAN_CHUNK_MS)
+      speak(b, 20); await vi.advanceTimersByTimeAsync(PLAN_CHUNK_MS)
+      speak(b, 20); b.emit(tap); await flush()
+      expect(transcribe).toHaveBeenCalledTimes(5)
+      expect(voicePlan).toHaveBeenCalledWith('c1', 'one three')
+    })
+
+    it('stops and applies on its own at the 3-minute cap, releasing the mic and reloading today', async () => {
+      const transcribe = vi.fn(async () => 'warmup longer')
+      const voicePlan = vi.fn(async () => planRes())
+      const b = await toPlanning({ transcribe, voicePlan })
+      const todayCalls = vi.mocked(b.api.today).mock.calls.length
+      speak(b, 20)
+      await vi.advanceTimersByTimeAsync(PLAN_MAX_MS)
+      expect(voicePlan).toHaveBeenCalledTimes(1)
+      expect(voicePlan).toHaveBeenCalledWith('c1', 'warmup longer')
+      expect(b.raw.audioControl).toHaveBeenLastCalledWith(false)
+      expect(vi.mocked(b.api.today).mock.calls.length).toBeGreaterThan(todayCalls)
+      expect(b.sent.slice(-3).join('\n')).toContain('PLAN UPDATED')
+      await vi.advanceTimersByTimeAsync(PLAN_MAX_MS) // nothing keeps cutting or ticking
+      expect(transcribe).toHaveBeenCalledTimes(1)
+    })
+
+    it('cancel (2×) releases the mic, drops late transcripts and never applies', async () => {
+      const t = controlledTranscribe()
+      const voicePlan = vi.fn(async () => planRes())
+      const b = await toPlanning({ transcribe: t.fn, voicePlan })
+      speak(b, 20); await vi.advanceTimersByTimeAsync(PLAN_CHUNK_MS)
+      b.emit(dbl); await flush()
+      expect(b.raw.audioControl).toHaveBeenLastCalledWith(false)
+      expect(b.sent.at(-1)).toContain('Planning cancelled')
+      t.calls[0]!.resolve('late words'); await flush()
+      await vi.advanceTimersByTimeAsync(PLAN_MAX_MS)
+      expect(voicePlan).not.toHaveBeenCalled()
+      expect(b.sent.join('\n')).not.toContain('late words')
+    })
+
+    it('nothing heard returns to the lobby without calling the plan API', async () => {
+      const voicePlan = vi.fn(async () => planRes())
+      const b = await toPlanning({ transcribe: vi.fn(async () => { throw new ApiError(422, 'empty_transcript') }), voicePlan })
+      speak(b, 20); await vi.advanceTimersByTimeAsync(PLAN_CHUNK_MS)
+      b.emit(tap); await flush()
+      expect(voicePlan).not.toHaveBeenCalled()
+      expect(b.sent.at(-1)).toContain("Didn't catch that")
+    })
+
+    it('undo on the result calls diff undo; a 409 shows the server message', async () => {
+      const undoDiff = vi.fn(async () => { throw new ApiError(409, 'plan changed since') })
+      const b = await toPlanning({ transcribe: vi.fn(async () => 'add kata'), undoDiff })
+      speak(b, 20); await vi.advanceTimersByTimeAsync(PLAN_CHUNK_MS)
+      b.emit(tap); await flush()
+      b.emit(dbl); await flush()
+      expect(undoDiff).toHaveBeenCalledWith('d9')
+      expect(b.sent.at(-1)).toContain('plan changed since')
+    })
+
+    it('a successful undo says "Plan change undone" on the lobby', async () => {
+      const b = await toPlanning({ transcribe: vi.fn(async () => 'add kata') })
+      speak(b, 20); await vi.advanceTimersByTimeAsync(PLAN_CHUNK_MS)
+      b.emit(tap); await flush()
+      b.emit(dbl); await flush()
+      expect(b.sent.at(-1)).toContain('Plan change undone')
     })
   })
 })
