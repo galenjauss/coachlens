@@ -3,7 +3,8 @@ import { MODE_EMOJI } from './classPref'
 import { usePoll } from './usePoll'
 
 export function ClassPicker({ api, value, loading, onChange }: { api: Api; value: string | null; loading?: boolean; onChange(classId: string): void }) {
-  const { data } = usePoll(() => api.classes(), null)
+  const { data, error, reload } = usePoll(() => api.classes(), null)
+  if (!data && error) return <div className="picker-wrap"><button type="button" className="picker-retry" onClick={reload}>Classes unavailable · Retry</button></div>
   if (!data || data.length < 2) return null
   return (
     <div className="picker-wrap">

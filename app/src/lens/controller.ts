@@ -128,7 +128,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     switch (eff.type) {
       case 'markFirstRunSeen': return d.kv.set(KEYS.firstRunSeen, '1')
       case 'loadToday':
-        try { dispatch({ type: 'todayLoaded', today: await d.api.today((await d.kv.get(CLASS_ID_KEY)) ?? undefined) }) } catch (e) { dispatch({ type: 'loadFailed', message: errText(e) }) }
+        try { dispatch({ type: 'todayLoaded', today: await d.api.today((await d.kv.get(CLASS_ID_KEY)) || undefined) }) } catch (e) { dispatch({ type: 'loadFailed', message: errText(e) }) }
         return
       case 'startSession': {
         const resumed = Boolean(state.today?.sessionId)

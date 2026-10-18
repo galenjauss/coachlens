@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ApiError, type Api } from '../core/api'
 import { bus } from '../core/bus'
 import type { KV } from '../core/storage'
@@ -11,6 +11,8 @@ export function Today({ api, kv, onOpenDeck }: { api: Api; kv: KV; onOpenDeck(de
   const [classId, setClassId] = useState<string | null | undefined>(undefined) // undefined = KV not read yet
   const [checkIn, setCheckIn] = useState(false)
   const [actionErr, setActionErr] = useState<string | null>(null)
+  const classRef = useRef<string | null | undefined>(undefined)
+  classRef.current = classId
   useEffect(() => { void kv.get(CLASS_ID_KEY).then(v => setClassId(v || null), () => setClassId(null)) }, [kv])
 
   function clearStoredClass() {
@@ -20,7 +22,7 @@ export function Today({ api, kv, onOpenDeck }: { api: Api; kv: KV; onOpenDeck(de
   const { data: t, error, loading, reload } = usePoll(
     async () => {
       try { return await api.today(classId ?? undefined) } catch (e) {
-        if (e instanceof ApiError && e.status === 404 && classId) clearStoredClass() // stale class: fall back to default (effect reloads)
+        if (e instanceof ApiError && e.status === 404 && classId && classRef.current === classId) clearStoredClass() // stale class: fall back to default (effect reloads)
         throw e
       }
     },
@@ -42,6 +44,7 @@ export function Today({ api, kv, onOpenDeck }: { api: Api; kv: KV; onOpenDeck(de
   if (!t) return (
     <main className="screen">
       {picker}{banner}
+      {actionErr && <p className="error" role="alert">{actionErr}</p>}
       {error ? <div className="btns"><button type="button" onClick={reload}>Retry</button></div> : <p className="muted" role="status">Loading…</p>}
     </main>
   )

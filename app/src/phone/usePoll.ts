@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createSeqGuard } from './pollGuard'
 
 /** Polls `fn` every `ms` (paused while the page is hidden). Stale responses never overwrite newer ones. */
 export function usePoll<T>(fn: () => Promise<T>, ms: number | null, deps: unknown[] = [], enabled = true) {
@@ -8,16 +9,16 @@ export function usePoll<T>(fn: () => Promise<T>, ms: number | null, deps: unknow
   const [tick, setTick] = useState(0)
   const fnRef = useRef(fn)
   fnRef.current = fn
-  const seq = useRef(0)
+  const guard = useRef(createSeqGuard())
   const reload = useCallback(() => setTick(t => t + 1), [])
   useEffect(() => {
     if (!enabled) return
     let alive = true
     const load = () => {
-      const mine = ++seq.current
+      const mine = guard.current.next()
       return fnRef.current().then(
-        d => { if (alive && mine === seq.current) { setData(d); setError(null); setLoading(false) } },
-        e => { if (alive && mine === seq.current) { setError(e instanceof Error ? e.message : 'Failed'); setLoading(false) } },
+        d => { if (alive && guard.current.accept(mine)) { setData(d); setError(null); setLoading(false) } },
+        e => { if (alive && guard.current.accept(mine)) { setError(e instanceof Error ? e.message : 'Failed'); setLoading(false) } },
       )
     }
     setLoading(true)

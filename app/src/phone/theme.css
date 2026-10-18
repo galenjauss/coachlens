@@ -48,3 +48,4 @@ input:focus-visible, textarea:focus-visible { outline: none; border-color: var(-
 .pairing input { font-size: 22px; letter-spacing: .3em; text-align: center; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 .picker-status { margin: -8px 0 10px; }
+.picker-retry { flex: none; min-height: 36px; font-size: 13px; margin-bottom: 14px; }
