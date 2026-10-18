@@ -9,7 +9,7 @@ Designed by Galen (instructor) on 2026-10-17, following Even's guidance: show as
    - **drill timer ends**: `Time · next: Kata 2`;
    - **after you speak**: the agent card showing what the agents did.
 2. **One gesture to talk: tap, then just explain in plain language.** There are no code words or lead words. "Priya needs to keep her hands up, her guard keeps dropping" and "Leo's dad still owes for gear, kind of urgent" work as-is. The router agent works out what you meant and who you meant.
-3. **The confirmation is the safety net, not a grammar.** Every utterance ends in a one-glance card that says what happened (`✓ Priya · guard (3rd time) → parent note drafting`). Double-tap undoes it. Names the AI isn't sure about show a two-choice pick on the lens.
+3. **The confirmation is the safety net, not a grammar.** Every utterance ends in a one-glance card that says what happened (`√ Priya · guard (3rd time) → parent note drafting`). Double-tap undoes it. Names the AI isn't sure about show a two-choice pick on the lens.
 4. **No always-listening wake word in the plugin.** "Hey Even" is a system-level wake word handled by Even's own app and firmware. The public Even Hub SDK gives plugins no wake-word or keyword-spotting API. A plugin only hears audio after it opens the mic, and the web view pauses in the background on Android. A custom "Hey Dojo" would mean streaming and transcribing the whole class. **Confirmed with the Even team (2026-10-17):** "Hey Even" cannot interact with third-party apps, so tap is the trigger.
 
 ## Gesture map

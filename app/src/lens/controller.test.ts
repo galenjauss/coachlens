@@ -413,7 +413,7 @@ describe('lens controller', () => {
   })
 
   describe('agent card', () => {
-    const okRes = { utteranceId: 'u1', transcript: 'Priya keep your guard up', cardLines: ['✓ Priya · guard', '→ parent note for Priya drafting'], coverage: { covered: 1, present: 12 }, nextStudent: null, disambiguation: null }
+    const okRes = { utteranceId: 'u1', transcript: 'Priya keep your guard up', cardLines: ['√ Priya · guard', '→ parent note for Priya drafting'], coverage: { covered: 1, present: 12 }, nextStudent: null, disambiguation: null }
     const r = (agent: string) => ({ agent, summary: '', status: 'ok', createdAt: '2026-10-20T17:00:00Z' })
     async function toCard(utteranceRuns: ReturnType<typeof vi.fn>) {
       const b = await toPeek(fakeApi({ utterance: vi.fn(async () => okRes), utteranceRuns }))
@@ -457,7 +457,7 @@ describe('lens controller', () => {
       const b = await toCard(utteranceRuns)
       await vi.advanceTimersByTimeAsync(RUNS_POLL_MS * 5)
       expect(utteranceRuns).toHaveBeenCalledTimes(1)
-      expect(b.sent.join('\n').replace(/\n/g, ' ')).toContain('✓ Priya · guard · → parent note for Priya drafting')
+      expect(b.sent.join('\n').replace(/\n/g, ' ')).toContain('√ Priya · guard · → parent note for Priya drafting')
     })
 
     it('stops polling once the card is tapped away', async () => {
@@ -525,7 +525,7 @@ describe('lens controller', () => {
 
     it('thinking stage line: heard → sending (request out) → thinking after 1.5 s, dots cycle per 500 ms; then the card', async () => {
       let answer: (v: unknown) => void = () => {}
-      const okRes = { utteranceId: 'u1', transcript: 'Priya guard up', cardLines: ['✓ Priya · guard'], coverage: { covered: 1, present: 12 }, nextStudent: null, disambiguation: null }
+      const okRes = { utteranceId: 'u1', transcript: 'Priya guard up', cardLines: ['√ Priya · guard'], coverage: { covered: 1, present: 12 }, nextStudent: null, disambiguation: null }
       const utterance = vi.fn(() => new Promise(r => { answer = r }))
       const b = await toPeek(fakeApi({ utterance }))
       b.emit(tap); await flush()
@@ -619,7 +619,7 @@ describe('lens controller', () => {
   const twenty = (e: Record<string, unknown>) => Array.from({ length: 20 }, () => e)
   /** First PCM byte of the WAV sent as an utterance (after the 44-byte header). */
   const sentFill = async (utterance: ReturnType<typeof vi.fn>) => new Uint8Array(await (utterance.mock.calls[0]![0] as { audio: Blob }).audio.arrayBuffer())[44]
-  const okRes = { utteranceId: 'u1', transcript: 'Priya guard up', cardLines: ['✓ Priya · guard'], coverage: { covered: 1, present: 12 }, nextStudent: null, disambiguation: null }
+  const okRes = { utteranceId: 'u1', transcript: 'Priya guard up', cardLines: ['√ Priya · guard'], coverage: { covered: 1, present: 12 }, nextStudent: null, disambiguation: null }
   /** The payload of the first utterance call. */
   const firstPayload = (fn: { mock: { calls: unknown[][] } }) => fn.mock.calls[0]![0] as { text: string | null; audio: Blob | null }
 
@@ -679,7 +679,7 @@ describe('lens controller', () => {
       expect(shown).toContain('… sorting')
       const m = b.sent.length
       answer(okRes); await flush()
-      expect(b.sent.slice(m).join('\n')).toContain('✓ Priya · guard')
+      expect(b.sent.slice(m).join('\n')).toContain('√ Priya · guard')
       lens!.dispatch({ type: 'resumed' }); await flush() // flushes again: nothing left to send
       expect(utterance).toHaveBeenCalledTimes(1)
     })
@@ -728,7 +728,7 @@ describe('lens controller', () => {
       const p = firstPayload(utterance)
       expect(p.text).toBeNull()
       expect(p.audio).toBeInstanceOf(Blob)
-      expect(b.sent.slice(-3).join('\n')).toContain('✓ Priya · guard')
+      expect(b.sent.slice(-3).join('\n')).toContain('√ Priya · guard')
     })
 
     it('a transcribe slower than 5 s falls back to the audio', async () => {
@@ -1028,7 +1028,7 @@ describe('lens controller · insights', () => {
     expect(b.sent.join('\n')).toContain(`${INSIGHT_GLYPH} Mia is close to her next belt`)
   })
 
-  it('polls every INSIGHT_POLL_MS during class: a new high item banners for 8 s, then becomes the 💡1 suffix', async () => {
+  it('polls every INSIGHT_POLL_MS during class: a new high item banners for 8 s, then becomes the ★1 suffix', async () => {
     const insights = vi.fn(async (p: { sessionId?: string }) => ({ insights: p.sessionId ? [insight('a')] : [] }))
     const b = await toPeek(fakeApi({ insights }))
     expect(sessionCalls(insights)).toHaveLength(0)
@@ -1092,7 +1092,7 @@ describe('lens controller · insight poll right after attendance changes', () =>
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-20T17:00:00Z')) })
   afterEach(() => { lens?.stop(); lens = null; vi.useRealTimers() })
   const back = { id: 'back', kind: 'returning_student', studentId: 'j', studentName: 'Jake', classId: 'c1', title: "Jake's back after 2 missed", detail: 'd', urgency: 'high', status: 'new', createdAt: '2026-10-20T17:00:10Z', actionLabel: null }
-  const res = (o: Record<string, unknown>) => ({ utteranceId: 'u1', transcript: 'x', cardLines: ['✓ Priya · guard'], coverage: cov, nextStudent: null, disambiguation: null, ...o })
+  const res = (o: Record<string, unknown>) => ({ utteranceId: 'u1', transcript: 'x', cardLines: ['√ Priya · guard'], coverage: cov, nextStudent: null, disambiguation: null, ...o })
   async function toPeek(api: Api) {
     const kv = memoryKV(); await kv.set(KEYS.firstRunSeen, '1')
     const b = fakeBridge()
@@ -1114,7 +1114,7 @@ describe('lens controller · insight poll right after attendance changes', () =>
     let calls = 0
     // The detector is slow: its row is not there at the first early poll, only at the second.
     const insights = vi.fn(async (p: { sessionId?: string }) => ({ insights: p.sessionId && ++calls > 1 ? [back] : [] }))
-    const utterance = vi.fn(async () => res({ cardLines: ['✓ Jake marked present'], attendanceChanged: true }))
+    const utterance = vi.fn(async () => res({ cardLines: ['√ Jake marked present'], attendanceChanged: true }))
     const b = await toPeek(fakeApi({ insights, utterance }))
     await say(b)
     expect(b.sent.join('\n')).toContain('Jake marked present')
@@ -1148,9 +1148,9 @@ describe('lens controller · insight poll right after attendance changes', () =>
 
   it('attendanceChanged: the api flag wins; an older api is read from roll-call / marked card lines', () => {
     expect(attendanceChanged({ cardLines: ['11 present', 'absent: Mia'] })).toBe(true)
-    expect(attendanceChanged({ cardLines: ['✓ Jake marked present'] })).toBe(true)
-    expect(attendanceChanged({ cardLines: ['✓ Priya · guard', '? Who is here today'] })).toBe(false)
-    expect(attendanceChanged({ cardLines: ['✓ Priya · guard'], attendanceChanged: true })).toBe(true)
+    expect(attendanceChanged({ cardLines: ['√ Jake marked present'] })).toBe(true)
+    expect(attendanceChanged({ cardLines: ['√ Priya · guard', '? Who is here today'] })).toBe(false)
+    expect(attendanceChanged({ cardLines: ['√ Priya · guard'], attendanceChanged: true })).toBe(true)
     expect(attendanceChanged({ cardLines: ['11 present'], attendanceChanged: false })).toBe(false)
   })
 })

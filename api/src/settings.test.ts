@@ -211,7 +211,7 @@ describe('honest card lines and run reasons', () => {
     expect(off.join(' ')).not.toContain('next deck')
   })
   it('urgent parent-note line is dropped when parent emails are off', () => {
-    expect(buildCardLines([fb({ recurring: false, urgent: true, mail: 'review' })])).toContain('⚠ urgent · parent note drafting')
+    expect(buildCardLines([fb({ recurring: false, urgent: true, mail: 'review' })])).toContain('! urgent · parent note drafting')
     expect(buildCardLines([fb({ recurring: false, urgent: true, mail: 'off' })]).join(' ')).not.toContain('parent note')
   })
   it('parent_message with parent_email off adds no parent_note line', async () => {

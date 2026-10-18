@@ -40,7 +40,7 @@ describe('agents v2 http', () => {
   it('GET /v1/utterances/:id/runs lists the runs an utterance started, deferred ones included', async () => {
     const { app, h, deps, say } = await setup(({ name }) => (name === 'router' ? { intents: [intent({ studentNames: ['Leo'], content: 'bumped knee in sparring', skillTags: ['sparring'], urgent: true })] } : email))
     const u = await say('Leo bumped his knee in sparring')
-    expect(u.cardLines).toEqual(['✓ Leo · sparring', '⚠ urgent · parent note drafting'])
+    expect(u.cardLines).toEqual(['√ Leo · sparring', '! urgent · parent note drafting'])
     const before = UtteranceRun.array().parse(await (await app.request(`/v1/utterances/${u.utteranceId}/runs`, { headers: h })).json())
     expect(before.slice(0, 2).map(r => r.agent)).toEqual(['router', 'progress'])
     await deps.flush()
@@ -56,7 +56,7 @@ describe('agents v2 http', () => {
     const [p] = await db.select().from(students).where(eq(students.id, ss[0]!.id))
     expect(p!.aliases).toEqual(['Bree ah'])
     // the next utterance resolves the alias directly
-    expect((await say('Bree ah good kicks')).cardLines).toEqual(['✓ Priya · kicks (2nd time)'])
+    expect((await say('Bree ah good kicks')).cardLines).toEqual(['√ Priya · kicks (2nd time)'])
     const patched = await app.request(`/v1/students/${ss[0]!.id}`, { method: 'PATCH', headers: h, body: JSON.stringify({ aliases: ['Preeya', 'preeya', 'Pree'] }) })
     expect(await patched.json()).toEqual({ id: ss[0]!.id, aliases: ['Preeya', 'Pree'] })
     expect((await app.request('/v1/students/nope', { method: 'PATCH', headers: h, body: JSON.stringify({ aliases: [] }) })).status).toBe(404)
@@ -81,7 +81,7 @@ describe('agents v2 http', () => {
       ? { intents: [intent({ type: 'billing', studentNames: ['Jake'], content: 'owes', urgency: 'low' }), intent({ type: 'billing', studentNames: ['Leo'], content: 'owes', urgency: 'low' }), intent({ type: 'billing', studentNames: ['Priya'], content: 'owes', urgency: 'low' }), intent({ studentNames: ['Zed'], content: 'fell and hit his head', skillTags: ['focus'], urgent: true })] }
       : email))
     const u = await say('three billing notes and Zed fell and hit his head')
-    expect(u.cardLines[0]).toBe('⚠ urgent · pick student')
+    expect(u.cardLines[0]).toBe('! urgent · pick student')
     expect(u.cardLines).toHaveLength(4)
     await deps.flush()
     expect(await db.select().from(outbox)).toHaveLength(0)

@@ -74,13 +74,13 @@ function listPage(name: string, header: string, rawItems: string[]): PageSpec {
 /** Agent line on a transcript-first card while the note is still on its way. */
 export const SORTING_LINE = '… sorting'
 
-/** Compact status-row suffix while notes wait in the outbox: ` ⟳ 2 queued` ('' when none). */
+/** Compact status-row suffix while notes wait in the outbox: ` ↑ 2 queued` ('' when none). */
 export const queuedSuffix = (n: number): string => (n > 0 ? ` ${QUEUED_GLYPH} ${n} queued` : '')
 
-/** Compact status-row suffix for insights surfaced but not seen yet: ` 💡1` ('' when none). */
+/** Compact status-row suffix for insights surfaced but not seen yet: ` ★1` ('' when none). */
 export const insightSuffix = (n: number): string => (n > 0 ? ` ${INSIGHT_GLYPH}${n}` : '')
 
-/** The insight banner's two rows: `💡 title`, then the detail cut at a word boundary. */
+/** The insight banner's two rows: `★ title`, then the detail cut at a word boundary. */
 export function insightRows(i: Pick<Insight, 'title' | 'detail'>, cols = FULL, detailRows = 1): string[] {
   return [clip(`${INSIGHT_GLYPH} ${i.title}`, cols), ...wrap(i.detail, cols, detailRows)]
 }
@@ -187,7 +187,7 @@ function peek(s: LensState, now: number): PageSpec {
   const short = s.nextStudent ? `> Next: ${s.nextStudent.name}` : c.nextLine
   const nextText = s.status ?? (fit.more ? 'swipe: full drill in the deck' : fit.nextRows === 2 ? c.nextLine : short)
   const td = s.today
-  // A new insight banner takes the header (💡 title) and the drill-name rows (detail) for INSIGHT_BANNER_MS:
+  // A new insight banner takes the header (★ title) and the drill-name rows (detail) for INSIGHT_BANNER_MS:
   // two container updates in, two out; the clock, box and status row keep running.
   const b = s.insightBanner
   const header = b ? clip(`${INSIGHT_GLYPH} ${b.title}`, FULL) : td ? classHeader(td.theme, td.className, td.modeLabel, FULL) : ''
@@ -329,7 +329,7 @@ const LOBBY_ITEMS = 3
 
 /**
  * Lobby: class · start time · plan length, the first plan items, the hint. With an insight, the body
- * gives up a row so the two-row banner (`💡 title`, detail) fits above the hint (its own layout key).
+ * gives up a row so the two-row banner (`★ title`, detail) fits above the hint (its own layout key).
  */
 function lobby(s: LensState): PageSpec {
   const td = s.today

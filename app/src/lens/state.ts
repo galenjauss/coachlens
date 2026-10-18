@@ -59,7 +59,7 @@ export interface LensState {
   status: string | null
   loadError: string | null
   starting: boolean
-  /** Notes waiting in the outbox (peek and home show `⟳ N queued`). */
+  /** Notes waiting in the outbox (peek and home show `↑ N queued`). */
   queued: number
   /** Planning listen in progress: `sec` = seconds since the mic opened, `heard` = the transcript so far. */
   planning: { stage: PlanStage; sec: number; heard: string } | null
@@ -69,7 +69,7 @@ export interface LensState {
   lobbyInsight: Insight | null
   /** A new high-urgency insight shown atop peek for INSIGHT_BANNER_MS; then it collapses into `insightUnseen`. */
   insightBanner: Insight | null
-  /** Surfaced but not seen yet: the peek status row shows a `💡N` suffix; swipe opens the newest. */
+  /** Surfaced but not seen yet: the peek status row shows a `★N` suffix; swipe opens the newest. */
   insightUnseen: Insight[]
   /** Insight ids already surfaced this session, so a poll never shows one twice. */
   insightKnown: string[]

@@ -77,11 +77,11 @@ export function fixtureState(name: FixtureName, now: number): LensState {
     case 'home': return { ...base, screen: 'home' }
     case 'lobby': return { ...base, screen: 'lobby', lobbyInsight: GUS_READY }
     case 'planning': return { ...base, screen: 'planning', planning: { stage: 'listening', sec: 45, heard: 'swap Kata 2 for partner pad work, and cut the warm-up to six' } }
-    case 'planResult': return { ...base, screen: 'planResult', planResult: { diffId: 'diff-demo', lines: ['+ Partner pad drill 6m', '− Kata 2', '~ Warm-up 10→6m'], missed: 0 } }
+    case 'planResult': return { ...base, screen: 'planResult', planResult: { diffId: 'diff-demo', lines: ['+ Partner pad drill 6m', '- Kata 2', '~ Warm-up 10→6m'], missed: 0 } }
     case 'peek': return { ...inClass, screen: 'peek' }
     case 'banner': return { ...inClass, screen: 'peek', insightBanner: JAKE_BACK, insightKnown: [JAKE_BACK.id] }
     case 'card': return card({
-      lines: ['✓ Priya · guard (3rd time)', '→ added to report card', '→ next deck change to review'],
+      lines: ['√ Priya · guard (3rd time)', '→ added to report card', '→ next deck change to review'],
       transcript: 'Priya keeps dropping her guard on the jab',
     })
     case 'answer': return card({ lines: ['Answer'], transcript: 'who is forgetting to keep their guard up?', brief: GUARD_ANSWER, runs: null })

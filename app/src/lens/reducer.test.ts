@@ -85,7 +85,7 @@ describe('lens reducer', () => {
     const sending = run(rec, { type: 'tap', now: Date.now() + 1000 }).state
     expect(sending.screen).toBe('sending')
     expect(reduce(sending, { type: 'nod' }).state).toBe(sending)
-    const card = run(inPeek(), { type: 'tap' }, { type: 'tap' }, { type: 'utteranceResult', res: { utteranceId: 'u', transcript: 't', cardLines: ['✓ x'], coverage: cov, nextStudent: null, disambiguation: null } }).state
+    const card = run(inPeek(), { type: 'tap' }, { type: 'tap' }, { type: 'utteranceResult', res: { utteranceId: 'u', transcript: 't', cardLines: ['√ x'], coverage: cov, nextStudent: null, disambiguation: null } }).state
     expect(card.screen).toBe('card')
     expect(reduce(card, { type: 'nod' }).state).toBe(card)
     const first = initialState(false)
@@ -131,7 +131,7 @@ describe('lens reducer', () => {
     expect(r.state.screen).toBe('recording')
     r = run(r.state, { type: 'tap' })
     expect(r.effects).toContainEqual({ type: 'stopMicAndSend', mode: 'note', sessionId: 's1', drillId: 'd1' })
-    r = run(r.state, note(['✓ Priya · guard (3rd time)']))
+    r = run(r.state, note(['√ Priya · guard (3rd time)']))
     expect(r.state.screen).toBe('card')
     expect(r.state.card).toMatchObject({ transcript: 'Priya keep your guard up', utteranceId: 'u1', runs: null, runsFinal: false, page: 0 })
     expect(r.state.coverage.covered).toBe(1)
@@ -145,7 +145,7 @@ describe('lens reducer', () => {
 
   it('swipe pages through a long transcript on the card (clamped); a short one ignores swipes', () => {
     const long = 'word '.repeat(90).trim()
-    let c = run(inPeek(), { type: 'tap' }, { type: 'tap' }, { ...note(['✓ x']), res: { ...note(['✓ x']).res, transcript: long } }).state
+    let c = run(inPeek(), { type: 'tap' }, { type: 'tap' }, { ...note(['√ x']), res: { ...note(['√ x']).res, transcript: long } }).state
     expect(c.card?.page).toBe(0)
     c = run(c, { type: 'swipeUp' }).state
     expect(c.card?.page).toBe(0)
@@ -155,7 +155,7 @@ describe('lens reducer', () => {
     expect(c.card?.page).toBe(2) // 90 words → 13 lines → 3 pages
     expect(run(c, { type: 'swipeUp' }).state.card?.page).toBe(1)
     expect(c.screen).toBe('card')
-    const short = run(inPeek(), { type: 'tap' }, { type: 'tap' }, note(['✓ x'])).state
+    const short = run(inPeek(), { type: 'tap' }, { type: 'tap' }, note(['√ x'])).state
     expect(reduce(short, { type: 'swipeDown' }).state).toBe(short)
   })
 
@@ -204,7 +204,7 @@ describe('lens reducer', () => {
   })
 
   it('runsLoaded updates only the matching card', () => {
-    const c = run(inPeek(), { type: 'tap' }, { type: 'tap' }, note(['✓ x'])).state
+    const c = run(inPeek(), { type: 'tap' }, { type: 'tap' }, note(['√ x'])).state
     const runs = [{ agent: 'router', summary: 's', status: 'ok', createdAt: 'x' }]
     expect(reduce(c, { type: 'runsLoaded', utteranceId: 'other', runs, final: false }).state).toBe(c)
     const r = reduce(c, { type: 'runsLoaded', utteranceId: 'u1', runs, final: true })
@@ -213,7 +213,7 @@ describe('lens reducer', () => {
   })
 
   it('double-tap on a card undoes', () => {
-    let r = run(inPeek(), { type: 'tap' }, { type: 'tap' }, note(['✓ x']))
+    let r = run(inPeek(), { type: 'tap' }, { type: 'tap' }, note(['√ x']))
     r = run(r.state, { type: 'doubleTap' })
     expect(r.effects).toContainEqual({ type: 'undo', utteranceId: 'u1' })
     expect(r.state).toMatchObject({ screen: 'peek', status: 'Undone' })
@@ -426,7 +426,7 @@ describe('transcript-first + offline queue', () => {
     ...initialState(true), screen: 'sending', session: { id: 's1', startedAt: 0 },
     pending: { mode, returnTo: 'peek', viaLongPress: false, at: 0 }, thinking: { stage: 'sending', tick: 0, since: 0 },
   })
-  const res = { utteranceId: 'u1', transcript: 'Priya guard up', cardLines: ['✓ Priya · guard'], coverage: { covered: 1, present: 3 }, nextStudent: null, disambiguation: null }
+  const res = { utteranceId: 'u1', transcript: 'Priya guard up', cardLines: ['√ Priya · guard'], coverage: { covered: 1, present: 3 }, nextStudent: null, disambiguation: null }
 
   it('transcriptReady shows a provisional card at once; the reply then fills it', () => {
     const r = reduce(sending('note'), { type: 'transcriptReady', transcript: 'Priya guard up' })
@@ -434,7 +434,7 @@ describe('transcript-first + offline queue', () => {
     expect(r.state.card).toMatchObject({ transcript: 'Priya guard up', utteranceId: null, provisional: true, lines: [] })
     expect(r.effects).toEqual([])
     const done = reduce(r.state, { type: 'utteranceResult', res })
-    expect(done.state.card).toMatchObject({ utteranceId: 'u1', lines: ['✓ Priya · guard'] })
+    expect(done.state.card).toMatchObject({ utteranceId: 'u1', lines: ['√ Priya · guard'] })
     expect(done.state.card?.provisional).toBeUndefined()
     expect(done.effects).toEqual([{ type: 'pollRuns', utteranceId: 'u1' }])
   })
@@ -492,7 +492,7 @@ describe('late outcomes never take over an open capture', () => {
     const card = reduce(sendingNote, { type: 'transcriptReady', transcript: 'x' }).state
     const closed = reduce(card, { type: 'tap' }).state
     expect(closed.screen).toBe('peek')
-    const res = { utteranceId: 'u1', transcript: 'x', cardLines: ['✓ x'], coverage: { covered: 2, present: 3 }, nextStudent: null, disambiguation: null }
+    const res = { utteranceId: 'u1', transcript: 'x', cardLines: ['√ x'], coverage: { covered: 2, present: 3 }, nextStudent: null, disambiguation: null }
     const r = reduce(closed, { type: 'utteranceResult', res })
     expect(r.state.screen).toBe('peek')
     expect(r.state.card).toBeNull()

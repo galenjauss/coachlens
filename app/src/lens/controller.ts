@@ -84,7 +84,7 @@ async function readFirstRunSeen(kv: KV): Promise<boolean> {
 
 /** The reply changed attendance: the api's flag, or (older api) a roll-call / "marked present" card line. */
 export function attendanceChanged(res: Pick<UtteranceResponse, 'cardLines' | 'attendanceChanged'>): boolean {
-  return res.attendanceChanged ?? res.cardLines.some(l => /^\d+ present$|^✓ .+ marked (present|absent)$/.test(l))
+  return res.attendanceChanged ?? res.cardLines.some(l => /^\d+ present$|^√ .+ marked (present|absent)$/.test(l))
 }
 
 export async function startLens(d: LensDeps): Promise<LensHandle> {
@@ -243,7 +243,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
   function onResult(res: UtteranceResponse): void {
     dispatch({ type: 'utteranceResult', res })
     // A spoken "add drill" changes today's deck: refresh it.
-    if (res.cardLines.some(l => l.startsWith('✓ Added'))) void run({ type: 'loadToday' })
+    if (res.cardLines.some(l => l.startsWith('√ Added'))) void run({ type: 'loadToday' })
     if (attendanceChanged(res)) insightPollSoon()
   }
 

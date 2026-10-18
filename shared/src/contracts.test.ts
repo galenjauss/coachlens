@@ -23,7 +23,7 @@ describe('contracts', () => {
 
   it('parses a deck diff and an utterance response', () => {
     DeckDiff.parse({ added: [], changed: [], removed: [{ drillId: 'd1', reason: 'too wild' }], rememberSuggestion: null })
-    UtteranceResponse.parse({ utteranceId: 'u1', transcript: 't', cardLines: ['✓ Priya · guard'], coverage: { covered: 1, present: 12 }, nextStudent: null, disambiguation: null })
+    UtteranceResponse.parse({ utteranceId: 'u1', transcript: 't', cardLines: ['√ Priya · guard'], coverage: { covered: 1, present: 12 }, nextStudent: null, disambiguation: null })
   })
 
   it('discriminates review items by kind', () => {

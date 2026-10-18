@@ -42,7 +42,7 @@ describe('http', () => {
     form.set('sessionId', start.sessionId); form.set('drillId', drillId); form.set('mode', 'note'); form.set('text', 'Priya great stance')
     const u = await app.request('/v1/utterance', { method: 'POST', headers: { Authorization: h.Authorization }, body: form })
     expect(u.status).toBe(200)
-    expect(((await u.json()) as { cardLines: string[] }).cardLines[0]).toBe('✓ Priya · stance')
+    expect(((await u.json()) as { cardLines: string[] }).cardLines[0]).toBe('√ Priya · stance')
     const wrap = await (await app.request(`/v1/sessions/${start.sessionId}/end`, { method: 'POST', headers: h })).json() as { coverage: { covered: number; present: number }; missed: { name: string }[]; drillsRun: number }
     expect(wrap.coverage).toEqual({ covered: 1, present: 3 })
     expect(wrap.missed.map(m => m.name).sort()).toEqual(['Jake', 'Leo'])

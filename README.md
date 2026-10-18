@@ -20,7 +20,7 @@ The live class. The coach notices something ("Priya's guard keeps dropping", "De
 
 - Hands are busy and eyes must stay on the students. A phone on the mat is unsafe and breaks flow.
 - A temple tap, a short sentence and a two-second glance are exactly the interaction budget a live class allows.
-- The G2 sits in the line of sight, so a 💡 insight ("Jake's back after 3 missed") or the next kid who needs feedback can land without looking away from the room.
+- The G2 sits in the line of sight, so a ★ insight ("Jake's back after 3 missed") or the next kid who needs feedback can land without looking away from the room.
 - The glasses keep working while the phone is locked in a bag, which is where it lives during class.
 
 ## Can the judge try it right now?
@@ -48,8 +48,8 @@ The challenge page notes that judges "see a lot of teleprompters, translators, a
 | **Plan result** (diff summary) | OK | Undo | Back to lobby | |
 | **In class** | Talk in plain language | End class | Drill deck | Long-press: hold to talk; nod: lens dark/on |
 
-- **Planning listen.** In the lobby, double-tap and talk the plan through with your assistant instructor. The planner agent reshapes the drills and the lens shows a diff summary (`+ Partner sparring 6m`, `− Kata 2`, `~ Warm-up 10→5m`). Double-tap undoes it.
-- **Agent card.** After you speak, the card shows what you said and live agent progress, for example `✓ Maria · deadlift 225 lb (PR +10)`. For a question, it shows the student's brief instead: rank and time in rank, attendance dots (`●●○●●●`), last notes, latest metric.
+- **Planning listen.** In the lobby, double-tap and talk the plan through with your assistant instructor. The planner agent reshapes the drills and the lens shows a diff summary (`+ Partner sparring 6m`, `- Kata 2`, `~ Warm-up 10→5m`). Double-tap undoes it.
+- **Agent card.** After you speak, the card shows what you said and live agent progress, for example `√ Maria · deadlift 225 lb (PR +10)`. For a question, it shows the student's brief instead: rank and time in rank, attendance dots (`●●○●●●`), last notes, latest metric.
 - **Voice roll call.** "Everyone except Jake and Mia" or "Present: Priya, Leo, Maya".
 - **End-of-class summary.** Minutes, drills, feedback coverage and who got none, agent actions, items to review, and the top insight. Tap puts the missed kids first in the next class.
 
@@ -69,7 +69,7 @@ Agents also act without being asked. Deterministic detectors (no LLM) run on ses
 | Detector | Fires when | One-tap action |
 |---|---|---|
 | Attendance decline | Absent in 2 of the last 3 sessions, or attendance halved | Draft email |
-| Returning student | Present today after 2+ consecutive absences | Shown mid-class: `💡 Jake's back after 3 missed` |
+| Returning student | Present today after 2+ consecutive absences | Shown mid-class: `★ Jake's back after 3 missed` |
 | No feedback | Present 3 sessions running with no notes | Put first next class |
 | Ready to test | Martial arts: 90+ days in rank, no open issues | Draft email |
 | New PR | Personal training: a PR in the last 7 days | Draft praise email |
@@ -77,7 +77,7 @@ Agents also act without being asked. Deterministic detectors (no LLM) run on ses
 | Issue resolved | No new notes on an open issue for 21 days | Mark resolved, positive note |
 | Repeated billing | 2+ open billing flags for one student | Draft email |
 
-**Quiet by design:** insights appear in the lobby and the end-of-class summary. Mid-class, only high-urgency items (a returning student, a kid still without feedback late in class) show, as a 💡 banner in the style of Even's Conversate AI insights. A banner never interrupts recording or the agent card.
+**Quiet by design:** insights appear in the lobby and the end-of-class summary. Mid-class, only high-urgency items (a returning student, a kid still without feedback late in class) show, as a ★ banner in the style of Even's Conversate AI insights. A banner never interrupts recording or the agent card.
 
 ## Agents and autonomy
 
@@ -99,7 +99,7 @@ Every agent has an **Auto / Review / Off** setting on the phone. Emails default 
 - **Transcript first:** what you said appears on the lens before the agents finish.
 - **Dual-mic start:** glasses and phone mics open together; the glasses audio is used when it has sound, otherwise the phone's.
 - **Keep-warm:** the API is pinged during a session so there are no cold starts mid-class.
-- **Offline queue:** notes are saved locally first and sync later. The lens shows `⟳ 2 queued`, and the phone offers Retry now.
+- **Offline queue:** notes are saved locally first and sync later. The lens shows `↑ 2 queued`, and the phone offers Retry now.
 
 ## Three modes and onboarding
 
@@ -178,7 +178,7 @@ Internal package names keep the original `@matside/*` prefix. Design docs: [`doc
 
 ### Made for G2
 *"Does the experience make thoughtful use of G2 and its place in the wearer's line of sight?"*
-Every screen fits about three glanceable rows within the SDK's container limits. Gestures map to the coach's real needs: tap to talk, swipe for the drill deck, double-tap to end, nod to go dark. The IMU, the glasses mic and partial text updates are all in use. The line of sight carries only what helps right now: the drill, the clock, the next kid to coach, a 💡 returning student, or the answer to a question about the class (`Guard: Priya (3), Leo (2)`).
+Every screen fits about three glanceable rows within the SDK's container limits. Gestures map to the coach's real needs: tap to talk, swipe for the drill deck, double-tap to end, nod to go dark. The IMU, the glasses mic and partial text updates are all in use. The line of sight carries only what helps right now: the drill, the clock, the next kid to coach, a ★ returning student, or the answer to a question about the class (`Guard: Priya (3), Leo (2)`).
 
 ### Quiet by Design
 *"Does the technology appear when it is useful and stay out of the way when it isn't?"*

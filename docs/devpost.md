@@ -16,11 +16,11 @@ Even's judging doc puts it plainly: "Technology should feel natural. Intelligenc
 
 CoachLens turns the G2 into an instructor's assistant during class.
 
-- **Home and lobby.** Swipe through your classes and tap one to open its lobby: the plan and the top insight. Tap starts class. Double-tap starts a **planning listen**: talk the plan through with your assistant, and the AI reshapes the drills, showing a diff on the lens (`+ Partner sparring 6m`, `− Kata 2`) with undo.
+- **Home and lobby.** Swipe through your classes and tap one to open its lobby: the plan and the top insight. Tap starts class. Double-tap starts a **planning listen**: talk the plan through with your assistant, and the AI reshapes the drills, showing a diff on the lens (`+ Partner sparring 6m`, `- Kata 2`) with undo.
 - **In class.** Tap and talk in plain language. Swipe opens the drill deck, double-tap ends class, long-press is hold-to-talk, a nod turns the lens dark or on. Roll call is one sentence: "everyone except Jake and Mia".
-- **Agent card.** What you said appears first, then live agent progress. "Dee rolled her ankle and sat out the last drill" is urgent, so a parent email draft is created. Recurring issues roll into the report card and the next plan. "Maria hit 225 on deadlift" logs a PR (`✓ Maria · deadlift 225 lb (PR +10)`). "How's Priya doing?" shows her brief: rank and time in rank, attendance dots (`●●○●●●`), last notes, metrics.
+- **Agent card.** What you said appears first, then live agent progress. "Dee rolled her ankle and sat out the last drill" is urgent, so a parent email draft is created. Recurring issues roll into the report card and the next plan. "Maria hit 225 on deadlift" logs a PR (`√ Maria · deadlift 225 lb (PR +10)`). "How's Priya doing?" shows her brief: rank and time in rank, attendance dots (`●●○●●●`), last notes, metrics.
 - **Class questions.** Tap and ask "who is forgetting to keep their guard up?" and the lens shows an ANSWER card such as `Guard: Priya (3), Leo (2)`. Also "who hasn't gotten feedback today?", "how many are here?" (instant, no AI call) and "what should I focus on next drill?" (fast model, grounded only in class data; says "Not enough notes yet" when thin).
-- **Opportunistic insights.** Deterministic detectors find attendance decline, returning students, kids with no feedback, students ready to test, new PRs, grade drops, resolved issues and repeated billing flags. Each has a one-tap action: draft an email, put the student first next class, or mark the issue resolved. A returning student shows mid-class as `💡 Jake's back after 3 missed`, the way Even's Conversate shows AI insights.
+- **Opportunistic insights.** Deterministic detectors find attendance decline, returning students, kids with no feedback, students ready to test, new PRs, grade drops, resolved issues and repeated billing flags. Each has a one-tap action: draft an email, put the student first next class, or mark the issue resolved. A returning student shows mid-class as `★ Jake's back after 3 missed`, the way Even's Conversate shows AI insights.
 - **End-of-class summary.** Minutes, drills, feedback coverage (who got none), agent actions, items to review, top insight. Tap puts the missed kids first next class.
 - **Phone companion** (in the Even app): Review queue for drafts, Insights with Do it / Dismiss, an Agents tab with per-agent **Auto / Review / Off**, student profiles with metrics, a plan editor that works with or without AI (repeat last class, copy another class, blank, AI draft, manual edits), custom vocabulary for speech-to-text, and an AI onboarding quiz that reads pasted text, CSV or photos of rosters, schedules and curriculum.
 
@@ -31,7 +31,7 @@ Three modes run on one engine: martial arts, personal training and tutoring.
 ## How we built it
 
 - **Lens:** Even Hub SDK 0.0.16. A pure state-machine reducer drives text containers on the 576x288 display (at most 8 text containers, about three glanceable rows). The per-second timer uses partial container updates. Gestures come from SDK events; the nod uses the IMU; the glasses mic comes through `audioControl`.
-- **Phone:** React and Vite inside the Even app WebView, with an offline outbox: notes are saved locally first, sync later, and show `⟳ queued` on the lens.
+- **Phone:** React and Vite inside the Even app WebView, with an offline outbox: notes are saved locally first, sync later, and show `↑ queued` on the lens.
 - **API:** Hono on Vercel Fluid Compute, Neon Postgres via Drizzle. OpenAI gpt-4o-transcribe with roster names and custom vocabulary as hints. A Claude Haiku 5.5 router turns the transcript into typed intents; Claude Sonnet 5.5 writes emails, report cards and plans through the AI SDK. Insights, briefs, metrics and the summary are deterministic code with no LLM. Resend sends email. A daily AI budget cap fails soft.
 - **Speed:** transcript-first display, dual-mic start (glasses and phone together), keep-warm pings during a session.
 - **Safety:** per-agent autonomy (emails default to Review), billing is flags only, injuries are observations, demo email goes to one owned inbox.
@@ -86,7 +86,7 @@ Every screen fits about three rows within the SDK's container limits, including 
 
 ### Quiet by Design
 *"Does the technology appear when it is useful and stay out of the way when it isn't?"*
-The lens is dark until triggered. One gesture to talk. Insights appear in the lobby and the end-of-class summary; mid-class only high urgency (a returning student) shows as a 💡 banner, and it never covers recording or the card. Emails default to Review.
+The lens is dark until triggered. One gesture to talk. Insights appear in the lobby and the end-of-class summary; mid-class only high urgency (a returning student) shows as a ★ banner, and it never covers recording or the card. Emails default to Review.
 
 ### Originality
 *"Does the idea open up a new moment or use case for Even Hub?"*

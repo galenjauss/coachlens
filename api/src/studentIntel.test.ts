@@ -59,7 +59,7 @@ describe('metric intent', () => {
     const maria = w.ss[0]!
     await w.db.insert(studentMetrics).values({ studentId: maria.id, key: 'deadlift', value: '215 lb', num: 215, unit: 'lb', source: 'seed' })
     const r = await w.say(intent({ studentNames: ['Priya'], metricKey: 'Deadlift', metricValue: '225 lb', metricNum: 225, metricUnit: 'lb' }), 'Priya hit 225 on deadlift')
-    expect(r.cardLines).toEqual(['✓ Priya · deadlift 225 lb (PR +10)'])
+    expect(r.cardLines).toEqual(['√ Priya · deadlift 225 lb (PR +10)'])
     const rows = await metricsOf(w.db, maria.id)
     expect(rows).toHaveLength(2)
     expect(rows.find(x => x.source === 'voice')).toMatchObject({ key: 'deadlift', num: 225, unit: 'lb' })
@@ -71,22 +71,22 @@ describe('metric intent', () => {
   it('a lower or first lift is saved without a PR tag', async () => {
     const w = await world('personal_training')
     const r1 = await w.say(intent({ studentNames: ['Priya'], metricKey: 'squat', metricNum: 185, metricUnit: 'lb' }))
-    expect(r1.cardLines).toEqual(['✓ Priya · squat 185 lb'])
+    expect(r1.cardLines).toEqual(['√ Priya · squat 185 lb'])
     const r2 = await w.say(intent({ studentNames: ['Priya'], metricKey: 'squat', metricNum: 175, metricUnit: 'lb' }))
-    expect(r2.cardLines).toEqual(['✓ Priya · squat 175 lb'])
+    expect(r2.cardLines).toEqual(['√ Priya · squat 175 lb'])
   })
 
   it('grades show the delta against the last value', async () => {
     const w = await world('tutoring')
     await w.say(intent({ studentNames: ['Leo'], metricKey: 'test', metricValue: 'Unit 2 test', metricNum: 82, metricUnit: '%' }))
     const r = await w.say(intent({ studentNames: ['Leo'], metricKey: 'test', metricValue: 'Unit 3 test', metricNum: 76, metricUnit: '%' }))
-    expect(r.cardLines).toEqual(['✓ Leo · test 76% (-6)'])
+    expect(r.cardLines).toEqual(['√ Leo · test 76% (-6)'])
   })
 
   it('a rank with a date sets rank_since and the belt', async () => {
     const w = await world()
     const r = await w.say(intent({ studentNames: ['Leo'], metricKey: 'rank', metricValue: 'green', metricSince: '2026-03-01' }))
-    expect(r.cardLines).toEqual(['✓ Leo · rank green (since Mar 1)'])
+    expect(r.cardLines).toEqual(['√ Leo · rank green (since Mar 1)'])
     const [leo] = await w.db.select().from(students).where(eq(students.id, w.ss[1]!.id))
     expect(leo).toMatchObject({ belt: 'green', rankSince: '2026-03-01' })
   })
@@ -123,14 +123,14 @@ describe('review fixes', () => {
     const w = await world('personal_training')
     await w.say(intent({ studentNames: ['Priya'], metricKey: 'deadlift', metricValue: '215 lb' }))
     const r = await w.say(intent({ studentNames: ['Priya'], metricKey: 'deadlift', metricValue: '225 lb' }))
-    expect(r.cardLines).toEqual(['✓ Priya · deadlift 225 lb (PR +10)'])
+    expect(r.cardLines).toEqual(['√ Priya · deadlift 225 lb (PR +10)'])
     expect((await metricsOf(w.db, w.ss[0]!.id)).map(x => [x.num, x.unit])).toEqual(expect.arrayContaining([[225, 'lb'], [215, 'lb']]))
   })
   it('a different unit is not a PR', async () => {
     const w = await world('personal_training')
     await w.say(intent({ studentNames: ['Priya'], metricKey: 'squat', metricNum: 100, metricUnit: 'lb' }))
     const r = await w.say(intent({ studentNames: ['Priya'], metricKey: 'squat', metricNum: 120, metricUnit: 'kg' }))
-    expect(r.cardLines).toEqual(['✓ Priya · squat 120 kg'])
+    expect(r.cardLines).toEqual(['√ Priya · squat 120 kg'])
   })
   it('an unreal rank date is ignored, never half-applied', async () => {
     const w = await world()

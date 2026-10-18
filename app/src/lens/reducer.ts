@@ -413,7 +413,7 @@ function promoteBanner(r: R): R {
   return done({ ...r.state, insightBanner: u, insightUnseen: rest }, ...r.effects, { type: 'expireBanner', ms: INSIGHT_BANNER_MS })
 }
 
-/** The banner's time is up (or the coach moved on): it waits behind the `💡N` suffix until seen. */
+/** The banner's time is up (or the coach moved on): it waits behind the `★N` suffix until seen. */
 function collapseBanner(s: LensState): LensState {
   return s.insightBanner ? { ...s, insightBanner: null, insightUnseen: [s.insightBanner, ...s.insightUnseen] } : s
 }

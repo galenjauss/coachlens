@@ -34,7 +34,7 @@ export function diffSummary(before: readonly SummaryDrill[], after: readonly Sum
   const now = new Map(after.map(d => [d.id, d]))
   const lines: string[] = []
   for (const d of after) if (!was.has(d.id)) lines.push(fit('+ ', d.name, ` ${d.minutes}m`))
-  for (const d of before) if (!now.has(d.id)) lines.push(fit('− ', d.name))
+  for (const d of before) if (!now.has(d.id)) lines.push(fit('- ', d.name))
   for (const d of after) {
     const o = was.get(d.id)
     if (!o) continue

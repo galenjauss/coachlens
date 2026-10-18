@@ -47,7 +47,7 @@ describe('handleUtterance', () => {
       }),
     })
     const r = await handleUtterance(deps, { sessionId: w.sessionId, drillId: w.drillId, mode: 'note', transcript: 'Priya, guard drops on the jab again' })
-    expect(r.cardLines).toEqual(['✓ Priya · guard (3rd time)', '→ progress logged', '→ added to report card', '→ next deck change to review'])
+    expect(r.cardLines).toEqual(['√ Priya · guard (3rd time)', '→ progress logged', '→ added to report card', '→ next deck change to review'])
     expect(r.coverage.covered).toBe(1)
     expect(await w.db.select().from(issues)).toHaveLength(1)
     await deps.flush()
@@ -74,7 +74,7 @@ describe('handleUtterance', () => {
       }),
     })
     const r = await handleUtterance(deps, { sessionId: w.sessionId, drillId: null, mode: 'note', transcript: 'Leo hit his head on the mat' })
-    expect(r.cardLines).toEqual(['✓ Leo · focus', '⚠ urgent · parent note drafting'])
+    expect(r.cardLines).toEqual(['√ Leo · focus', '! urgent · parent note drafting'])
     await deps.flush()
     const mail = await w.db.select().from(outbox).where(eq(outbox.trigger, 'urgent'))
     expect(mail).toHaveLength(1)
@@ -113,7 +113,7 @@ describe('handleUtterance', () => {
     let routerPrompt = ''
     const deps = makeDeps(w.db, { llm: fakeLlm(({ prompt }) => { routerPrompt = prompt; return { intents: [intent({ studentNames: ['Bree ah'], content: 'sharp kicks', skillTags: ['kicks'] })] } }) })
     const r = await handleUtterance(deps, { sessionId: w.sessionId, drillId: null, mode: 'note', transcript: 'Bree ah sharp kicks' })
-    expect(r.cardLines).toEqual(['✓ Priya · kicks'])
+    expect(r.cardLines).toEqual(['√ Priya · kicks'])
     expect(routerPrompt).toContain('Priya Rao ("Bree ah")')
   })
 
@@ -126,7 +126,7 @@ describe('handleUtterance', () => {
       ] })),
     })
     const r = await handleUtterance(deps, { sessionId: w.sessionId, drillId: null, mode: 'note', transcript: 'Leo owes for gear urgent, Mya kicks higher' })
-    expect(r.cardLines[0]).toBe('✓ Billing flag · Leo · HIGH')
+    expect(r.cardLines[0]).toBe('√ Billing flag · Leo · HIGH')
     expect(r.disambiguation?.options.map(o => o.name).sort()).toEqual(['Maya Chen', 'Mia Lopez'])
     const [flag] = await w.db.select().from(billingFlags)
     expect(flag).toBeTruthy()
@@ -139,7 +139,7 @@ describe('handleUtterance', () => {
     const long = 'a very long sparring round name that goes well past forty characters'
     const deps = makeDeps(w.db, { llm: fakeLlm(() => ({ intents: [intent({ type: 'add_drill', content: long, minutes: 45 })] })) })
     const r = await handleUtterance(deps, { sessionId: w.sessionId, drillId: null, mode: 'note', transcript: 'add a 45-minute sparring round' })
-    expect(r.cardLines[0]).toMatch(/^✓ Added:/)
+    expect(r.cardLines[0]).toMatch(/^√ Added:/)
     const [d] = await w.db.select().from(drills).where(eq(drills.rationale, 'added live by instructor'))
     expect(d!.minutes).toBe(30)
     expect(d!.name.length).toBeLessThanOrEqual(80)

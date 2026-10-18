@@ -124,20 +124,20 @@ describe('deckDiff', () => {
 describe('cardLines', () => {
   it('builds the recurring feedback card', () => {
     expect(buildCardLines([{ kind: 'feedback', name: 'Priya', tag: 'guard', count: 3, recurring: true }]))
-      .toEqual(['✓ Priya · guard (3rd time)', '→ progress logged', '→ added to report card', '→ added to next deck'])
+      .toEqual(['√ Priya · guard (3rd time)', '→ progress logged', '→ added to report card', '→ added to next deck'])
   })
   it('urgent notes say so; urgent + recurring still fits 4 lines', () => {
     expect(buildCardLines([{ kind: 'feedback', name: 'Leo', tag: 'focus', count: 1, recurring: false, urgent: true }]))
-      .toEqual(['✓ Leo · focus', '⚠ urgent · parent note drafting'])
+      .toEqual(['√ Leo · focus', '! urgent · parent note drafting'])
     expect(buildCardLines([{ kind: 'feedback', name: 'Leo', tag: 'focus', count: 3, recurring: true, urgent: true }]))
-      .toEqual(['✓ Leo · focus (3rd time)', '⚠ urgent · parent note drafting', '→ added to report card', '→ added to next deck'])
+      .toEqual(['√ Leo · focus (3rd time)', '! urgent · parent note drafting', '→ added to report card', '→ added to next deck'])
   })
   it('urgent lines go first so overflow never cuts them', () => {
     expect(buildCardLines([
       { kind: 'feedback', name: 'Sam', tag: 'forms', count: 3, recurring: true },
       { kind: 'billing', name: 'Leo', urgency: 'high' },
       { kind: 'urgent_unassigned' },
-    ])).toEqual(['⚠ urgent · pick student', '+2 more'])
+    ])).toEqual(['! urgent · pick student', '+2 more'])
   })
   it('combines feedback and billing and caps at 4 lines', () => {
     const lines = buildCardLines([
@@ -146,7 +146,7 @@ describe('cardLines', () => {
       { kind: 'feedback', name: 'Ava', tag: 'forms', count: 1, recurring: false },
       { kind: 'feedback', name: 'Ben', tag: 'kicks', count: 3, recurring: true },
     ])
-    expect(lines).toEqual(['✓ Sam · forms', '✓ Billing flag · Leo · HIGH', '✓ Ava · forms', '+1 more'])
+    expect(lines).toEqual(['√ Sam · forms', '√ Billing flag · Leo · HIGH', '√ Ava · forms', '+1 more'])
   })
   it('formats attendance', () => {
     expect(buildCardLines([{ kind: 'attendance', present: 12, absentNames: ['Jake', 'Mia'] }])).toEqual(['12 present', 'absent: Jake, Mia'])
@@ -190,7 +190,7 @@ describe('review regressions', () => {
     expect(buildCardLines([
       { kind: 'feedback', name: 'Priya', tag: 'guard', count: 3, recurring: true },
       { kind: 'billing', name: 'Leo', urgency: 'high' },
-    ])).toEqual(['✓ Priya · guard (3rd time)', '→ progress logged', '→ added to report card', '+1 more'])
+    ])).toEqual(['√ Priya · guard (3rd time)', '→ progress logged', '→ added to report card', '+1 more'])
   })
   it('attendance ignores feedback sentences', () => {
     expect(parseAttendance('Everyone but Priya needs to work on guard')).toBeNull()

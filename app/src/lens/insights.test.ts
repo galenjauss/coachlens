@@ -30,7 +30,7 @@ const polled = (...insights: Insight[]): LensEvent => ({ type: 'insightsLoaded',
 const txt = (p: PageSpec, name: string) => p.texts.find(t => t.name === name)?.content
 
 describe('mid-class insight banner', () => {
-  it('a new high item shows atop peek for INSIGHT_BANNER_MS, then collapses to a 💡1 suffix', () => {
+  it('a new high item shows atop peek for INSIGHT_BANNER_MS, then collapses to a ★1 suffix', () => {
     let r = run(peekState, polled(ins('a')))
     expect(r.state.insightBanner?.id).toBe('a')
     expect(r.effects).toEqual([{ type: 'expireBanner', ms: INSIGHT_BANNER_MS }])
@@ -99,7 +99,7 @@ describe('mid-class insight banner', () => {
   })
 
   it('never interrupts recording, the card, planning or a dark lens: it waits behind the suffix', () => {
-    const card: Card = { lines: ['✓ Jake · guard'], transcript: 'Jake guard up', utteranceId: 'u', runs: null, runsFinal: false, page: 0 }
+    const card: Card = { lines: ['√ Jake · guard'], transcript: 'Jake guard up', utteranceId: 'u', runs: null, runsFinal: false, page: 0 }
     const screens: Array<Partial<LensState>> = [
       { screen: 'recording', pending: { mode: 'note', returnTo: 'peek', viaLongPress: false, at: 0 }, mic: { tick: 0, audio: true, source: 'glasses' } },
       { screen: 'card', card },
@@ -137,7 +137,7 @@ describe('mid-class insight banner', () => {
   })
 
   it('dismissing the card to peek promotes a pending high insight; with none pending it is a plain peek', () => {
-    const card: Card = { lines: ['✓ Jake · present'], transcript: 'mark Jake present', utteranceId: 'u', runs: null, runsFinal: false, page: 0 }
+    const card: Card = { lines: ['√ Jake · present'], transcript: 'mark Jake present', utteranceId: 'u', runs: null, runsFinal: false, page: 0 }
     const onCard = run({ ...peekState, screen: 'card', card }, polled(ins('a'))).state
     const r = reduce(onCard, { type: 'tap' })
     expect(r.state).toMatchObject({ screen: 'peek', card: null, insightUnseen: [] })
@@ -286,7 +286,7 @@ describe('class-question answer on the agent card', () => {
 
 describe('insight surfaces stay within the G2 limits', () => {
   const long = ins('L', { title: 'Priyanka Venkataraman has not had feedback in four classes', detail: 'x '.repeat(5) + 'Her last note was about sign errors moving terms across the equals sign; a quick check-in today would close the loop before report cards go out'.slice(0, 140), studentName: 'Priyanka Venkataraman', actionLabel: 'Draft parent email' })
-  const card: Card = { lines: ['✓ x'], transcript: 'how is Priyanka doing', utteranceId: 'u', runs: null, runsFinal: false, page: 0, brief: { name: 'Priyanka Venkataraman · algebra', lines: ['a'.repeat(38), 'b', 'c', 'd', 'e'] } }
+  const card: Card = { lines: ['√ x'], transcript: 'how is Priyanka doing', utteranceId: 'u', runs: null, runsFinal: false, page: 0, brief: { name: 'Priyanka Venkataraman · algebra', lines: ['a'.repeat(38), 'b', 'c', 'd', 'e'] } }
   const states: LensState[] = [
     { ...peekState, insightBanner: long, insightUnseen: [long, long], queued: 3 },
     { ...peekState, screen: 'insight', insightDetail: long },

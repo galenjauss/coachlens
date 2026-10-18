@@ -112,12 +112,12 @@ describe('render', () => {
     expect(p.texts.find(t => t.name === 'drill')?.content).toBe('No drill running')
   })
   const longSaid = 'Priya keep your guard up when you throw the round kick, reset your stance after every kick, and Jake needs to work on his horse stance because his knees keep collapsing inward during holds today'
-  const mkCard = (transcript: string, page = 0) => ({ lines: ['✓ Priya · guard (3rd time)', '→ added to report card'], transcript, utteranceId: 'u', runs: null, runsFinal: false, page })
+  const mkCard = (transcript: string, page = 0) => ({ lines: ['√ Priya · guard (3rd time)', '→ added to report card'], transcript, utteranceId: 'u', runs: null, runsFinal: false, page })
 
   it('agent card: result header, FULL-WIDTH transcript (capture), one compact agent line + hints at the bottom', () => {
     let p = render({ ...s, screen: 'card', card: mkCard('Priya keep your guard up') }, 0)
     expect(p.key).toBe('card')
-    expect(p.texts.find(t => t.name === 'hdr')?.content).toBe('✓ Priya · guard (3rd time)')
+    expect(p.texts.find(t => t.name === 'hdr')?.content).toBe('√ Priya · guard (3rd time)')
     const said = p.texts.find(t => t.name === 'said')!
     expect(said).toMatchObject({ capture: true, x: 0, w: 576, content: '"Priya keep your guard up"' })
     const agents = p.texts.find(t => t.name === 'agents')!
@@ -125,7 +125,7 @@ describe('render', () => {
     expect(agents.y).toBeGreaterThanOrEqual(said.y + said.h)
     expect(agents.content).toBe('… working\ntap: close · 2×: undo')
     const runs = [{ agent: 'router', summary: '', status: 'ok', createdAt: '' }, { agent: 'progress', summary: '', status: 'ok', createdAt: '' }]
-    p = render({ ...s, screen: 'card', card: { ...mkCard('x'), lines: ['✓ x', '→ parent note drafting'], runs } }, 0)
+    p = render({ ...s, screen: 'card', card: { ...mkCard('x'), lines: ['√ x', '→ parent note drafting'], runs } }, 0)
     expect(p.texts.find(t => t.name === 'agents')?.content).toBe('ok sorted · ok logged · .. email\ntap: close · 2×: undo')
     const many = ['router', 'progress', 'billing', 'attendance', 'parent_email', 'planner'].map(agent => ({ agent, summary: '', status: 'ok', createdAt: '' }))
     const lines = p.texts.length && render({ ...s, screen: 'card', card: { ...mkCard('x'), runs: many } }, 0).texts.find(t => t.name === 'agents')!.content.split('\n')
@@ -145,7 +145,7 @@ describe('render', () => {
     expect(p.flat().join(' ')).toBe(`"${longSaid}"`)
     expect(p.flat().join('')).not.toContain('…')
     const hdr = (page: number) => render({ ...s, screen: 'card', card: mkCard(longSaid, page) }, 0).texts.find(t => t.name === 'hdr')!.content
-    expect(hdr(1)).toBe('2/2 swipe · ✓ Priya · guard (3rd time)')
+    expect(hdr(1)).toBe('2/2 swipe · √ Priya · guard (3rd time)')
     expect(said(longSaid, 9)).toBe(said(longSaid, 1)) // clamped
   })
 
@@ -201,7 +201,7 @@ describe('render', () => {
     expect(micLine({ tick: 10, audio: true, source: 'glasses' })).toBe('● LISTENING  0:05')
     expect(micLine({ tick: 8, audio: true, source: 'phone' })).toBe('● LISTENING (phone)  0:04')
     expect(micLine({ tick: 150, audio: true, source: 'glasses' })).toBe('● LISTENING  1:15')
-    for (const tick of [0, 1, 2, 3]) expect(micLine({ tick, audio: true, source: 'glasses' })).not.toMatch(/[▁▂▃▄▅▆▇█✓]/) // no waveform, no ✓
+    for (const tick of [0, 1, 2, 3]) expect(micLine({ tick, audio: true, source: 'glasses' })).not.toMatch(/[▁▂▃▄▅▆▇█√]/) // no waveform, no √
   })
   it('thinking stage line: current stage in caps with a 1–3 dot cycle; fits the box', () => {
     expect(stageLine({ stage: 'heard', tick: 0, since: 0 })).toBe('HEARD· > sending > thinking > agents')
@@ -292,7 +292,7 @@ describe('render', () => {
     const wrapup = { sessionId: 's', minutes: 45, drillsRun: 5, coverage: { covered: 10, present: 12 }, missed: [{ id: 'j', name: 'Jake' }], agentActions: 4, pendingReview: 2 }
     for (const screen of ALL) {
       for (const st of [s, { ...initialState(true), screen }]) {
-        const p = render({ ...st, screen, card: { lines: ['✓ x'], transcript: 't', utteranceId: 'u', runs: null, runsFinal: false, page: 0 }, disambiguation: dis, wrapup } as LensState, 0)
+        const p = render({ ...st, screen, card: { lines: ['√ x'], transcript: 't', utteranceId: 'u', runs: null, runsFinal: false, page: 0 }, disambiguation: dis, wrapup } as LensState, 0)
         expect(p.texts.length).toBeLessThanOrEqual(8)
         expect(p.texts.filter(t => t.capture).length + (p.list ? 1 : 0)).toBe(1)
         for (const t of p.texts) expect(t.name.length).toBeLessThanOrEqual(16)
@@ -322,7 +322,7 @@ describe('layout budget', () => {
   const base: LensState = { ...s, today: tut, nextStudent: { id: 'p', name: 'Priyanka Venkataraman', reason: 'sign errors moving terms' },
     pending: { mode: 'note', returnTo: 'peek', viaLongPress: false, at: 0 }, mic: { tick: 9, audio: true, source: 'phone' },
     thinking: { stage: 'thinking', tick: 5, since: 3 }, detail: { index: 1, page: 0 },
-    card: { lines: ['✓ Priyanka · sign errors moving terms across'], transcript: 'Priyanka keeps flipping the sign when she moves the constant to the other side of the equation', utteranceId: 'u', runs: null, runsFinal: false, page: 0 },
+    card: { lines: ['√ Priyanka · sign errors moving terms across'], transcript: 'Priyanka keeps flipping the sign when she moves the constant to the other side of the equation', utteranceId: 'u', runs: null, runsFinal: false, page: 0 },
     disambiguation: { noteId: 'n', heard: 'Priya', options: [{ id: 'a', name: 'Priyanka Venkataraman' }, { id: 'b', name: 'Priya Ramaswamy-Okonkwo' }] },
     wrapup: { sessionId: 's', minutes: 50, drillsRun: 2, coverage: { covered: 10, present: 12 }, agentActions: 7, pendingReview: 3, missed: [{ id: 'j', name: 'Jake' }, { id: 'l', name: 'Leo' }, { id: 'm', name: 'Mia' }] },
     attendanceLines: ['11 present', 'absent: Jake Thompson, Mia Rodriguez-Lopez'],

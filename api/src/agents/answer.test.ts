@@ -168,7 +168,7 @@ describe('class questions', () => {
     expect(rc.attendanceChanged).toBe(true)
     const llm = fakeLlm(() => ({ intents: [{ ...base, type: 'attendance', studentNames: ['Mia'], content: 'Mia walked in', attendanceStatus: 'present' }] }))
     const marked = await handleUtterance(makeDeps(w.db, { llm }), { sessionId: w.sessionId, drillId: null, mode: 'note', transcript: 'Mia just walked in' })
-    expect(marked.cardLines).toEqual(['✓ Mia marked present'])
+    expect(marked.cardLines).toEqual(['√ Mia marked present'])
     expect(marked.attendanceChanged).toBe(true)
   })
 })

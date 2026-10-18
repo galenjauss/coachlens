@@ -15,7 +15,7 @@ const MAX_LINES = 5
  * The agents this utterance should end up with. The router always runs; the deferred ones are
  * announced by the card lines. This matches the wording built in api/src/logic/cardLines.ts
  * (`linesFor`): "parent note … drafting" (urgent / explicit request → parent_email) and
- * "→ added to next deck" / "✓ Planner: next deck suggestion queued" (→ planner). Keep both in sync.
+ * "→ added to next deck" / "√ Planner: next deck suggestion queued" (→ planner). Keep both in sync.
  */
 export function expectedAgents(cardLines: string[]): string[] {
   const text = cardLines.join('\n').toLowerCase()
@@ -32,7 +32,7 @@ export function runsDone(runs: UtteranceRun[], cardLines: string[]): boolean {
 }
 
 /**
- * Right column of the card, ASCII markers (the firmware font may lack ✓/✗): one line per agent
+ * Right column of the card, ASCII markers (the firmware font may lack √/✗): one line per agent
  * (latest run wins), `ok` done, `x` failed, `..` still expected while polling, `?` expected but never
  * reported before polling stopped. Before the first poll: a working line. Without the endpoint: the
  * server's card lines.

@@ -100,7 +100,7 @@ export async function seedTutoring(db: Db, ctx: Ctx) {
   })
   const sam = w.by('Sam').id
   await db.insert(t.notes).values([
-    { studentId: sam, text: 'Forgot to distribute the negative in 2(x − 3)', tags: ['procedure'], createdAt: at(ctx.today, 9) },
+    { studentId: sam, text: 'Forgot to distribute the negative in 2(x - 3)', tags: ['procedure'], createdAt: at(ctx.today, 9) },
     { studentId: sam, text: 'Skipped the distribute step again on homework check', tags: ['procedure'], createdAt: at(ctx.today, 4) },
     { studentId: w.by('Ava').id, text: 'Explained her reasoning clearly at the board', tags: ['reasoning'], createdAt: at(ctx.today, 4) },
   ])

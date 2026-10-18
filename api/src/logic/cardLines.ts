@@ -28,26 +28,26 @@ const clip = (s: string) => (s.length > MAX_CHARS ? `${s.slice(0, MAX_CHARS - 1)
 function linesFor(a: CardAction): string[] {
   switch (a.kind) {
     case 'feedback': {
-      const head = `✓ ${a.name}${a.tag ? ` · ${a.tag}` : ''}${a.count >= 2 ? ` (${ordinal(a.count)} time)` : ''}`
+      const head = `√ ${a.name}${a.tag ? ` · ${a.tag}` : ''}${a.count >= 2 ? ` (${ordinal(a.count)} time)` : ''}`
       const urgentLine = a.urgent && a.mail !== 'off'
-      const urgent = urgentLine ? ['⚠ urgent · parent note drafting'] : []
+      const urgent = urgentLine ? ['! urgent · parent note drafting'] : []
       const deck = a.deck === 'off' ? [] : a.deck === 'review' ? ['→ next deck change to review'] : ['→ added to next deck']
       if (a.recurring) return [head, ...urgent, ...(urgentLine ? [] : ['→ progress logged']), '→ added to report card', ...deck]
       return [head, ...urgent]
     }
-    case 'billing': return [`✓ Billing flag · ${a.name} · ${a.urgency.toUpperCase()}`]
+    case 'billing': return [`√ Billing flag · ${a.name} · ${a.urgency.toUpperCase()}`]
     case 'attendance': return [`${a.present} present`, ...(a.absentNames.length ? [`absent: ${a.absentNames.join(', ')}`] : [])]
-    case 'marked': return [`✓ ${a.name} marked ${a.status}`]
+    case 'marked': return [`√ ${a.name} marked ${a.status}`]
     case 'parent_note': return [`→ parent note for ${a.name} drafting`]
-    case 'plan_request': return ['✓ Planner: next deck suggestion queued']
-    case 'add_drill': return [`✓ Added: ${a.name} · ${a.minutes}m`]
-    case 'metric': return [`✓ ${a.name} · ${a.text}`]
+    case 'plan_request': return ['√ Planner: next deck suggestion queued']
+    case 'add_drill': return [`√ Added: ${a.name} · ${a.minutes}m`]
+    case 'metric': return [`√ ${a.name} · ${a.text}`]
     case 'metric_off': return ['● Progress logging off · not saved']
     case 'student_query': return [`${a.name} · see profile`]
     case 'question': return [clipWords(`? ${a.question}`, MAX_CHARS)]
     case 'answer_failed': return ["● Couldn't answer · try again"]
     case 'unassigned': return ['● Saved · pick student in Review']
-    case 'urgent_unassigned': return ['⚠ urgent · pick student']
+    case 'urgent_unassigned': return ['! urgent · pick student']
     case 'saved_unsorted': return ['● Saved · sorting failed, see Review']
     case 'name_unclear': return [`? Didn't catch "${a.name}" · say again`]
     case 'rollcall_unclear': return [`Didn't catch: ${a.names.join(', ')}`, 'Say it again or use phone roster']

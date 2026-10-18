@@ -156,7 +156,7 @@ describe('POST /v1/plan/voice', () => {
     expect(r.status).toBe(200)
     const body = await r.json() as { diffId: string; deckId: string; lines: string[] }
     expect(body.deckId).toBe(t.cur.id)
-    expect(body.lines).toEqual(['+ Partner sparring 6m', '− Kata 2'])
+    expect(body.lines).toEqual(['+ Partner sparring 6m', '- Kata 2'])
     expect(await t.names(t.cur.id)).toEqual(['Jab', 'Cross', 'Partner sparring'])
     const [row] = await t.db.select().from(deckDiffs).where(eq(deckDiffs.id, body.diffId))
     expect(row!.status).toBe('accepted')
@@ -178,7 +178,7 @@ describe('POST /v1/plan/voice', () => {
       return { added: [], changed: [{ drillId: id, after: raw('Cross', 2), reason: '' }], removed: [{ drillId: /^3\. (\S+) \|/m.exec(prompt)![1], reason: '' }], rememberSuggestion: null }
     })
     const body = await (await t.post('/v1/plan/voice', { classId: t.classId, transcript: convo })).json() as { diffId: string; lines: string[] }
-    expect(body.lines).toEqual(['− Kata 2', '~ Cross 6→2m'])
+    expect(body.lines).toEqual(['- Kata 2', '~ Cross 6→2m'])
     expect(await t.names(t.cur.id)).toEqual(['Jab', 'Cross'])
     expect((await t.post(`/v1/diffs/${body.diffId}/undo`, {})).status).toBe(200)
     const restored = await t.db.select().from(drills).where(eq(drills.deckId, t.cur.id)).orderBy(drills.position)
