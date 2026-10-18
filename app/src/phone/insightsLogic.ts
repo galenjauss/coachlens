@@ -27,14 +27,15 @@ export const statusWord = (status: string): string => STATUS_WORD[status] ?? ''
 export const acceptLabel = (i: Pick<Insight, 'actionLabel'>): string => (i.actionLabel ? 'Do it' : 'Got it')
 
 /** Local outcome of a row on this screen: the accept result stays inline until the screen is left. */
-export type RowOutcome = { kind: 'accepted'; text: string } | { kind: 'dismissed' }
+export type RowOutcome = { kind: 'pending' } | { kind: 'accepted'; text: string } | { kind: 'dismissed' }
 
 /**
- * Today's "From your agents" rows: rows settled on this screen keep their place (the outcome shows
- * inline), then the open insights, up to `max`. Dismissed rows leave. Does not mutate.
+ * Today's "From your agents" rows, up to `max`: the open insights in place (including ones being
+ * accepted right now), plus rows accepted or mid-accept here that the server already shows as settled,
+ * so the "Working…" and the outcome stay visible. Dismissed rows leave. Does not mutate.
  */
 export function todayRows(list: readonly Insight[], settled: Readonly<Record<string, RowOutcome>>, kept: readonly Insight[], max = 3): Insight[] {
-  const accepted = kept.filter(i => settled[i.id]?.kind === 'accepted')
-  const open = openInsights(list).filter(i => !settled[i.id])
-  return [...accepted, ...open].slice(0, max)
+  const open = openInsights(list).filter(i => settled[i.id]?.kind !== 'dismissed')
+  const gone = kept.filter(i => !open.some(o => o.id === i.id) && (settled[i.id]?.kind === 'accepted' || settled[i.id]?.kind === 'pending'))
+  return [...gone, ...open].slice(0, max)
 }

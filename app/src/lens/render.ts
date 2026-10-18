@@ -1,4 +1,4 @@
-import type { Insight } from '@matside/shared'
+import type { Insight, WrapUp } from '@matside/shared'
 import { INSIGHT_GLYPH, QUEUED_GLYPH } from '../config'
 import { progressLines } from './agentRuns'
 import { SAID_COLS, SAID_LINES, clip, clipWithSuffix, classHeader, colsFor, fitNames, paginate, rowsFor, transcriptPages, wrap } from './text'
@@ -279,6 +279,16 @@ export function remindHint(names: readonly string[]): string {
 }
 
 /**
+ * Row 1: `40 min · 6 drills · 9/12 got feedback`; when that is too long, `fed back`; then the time and
+ * drills are cut at a word boundary. The feedback count is never cut.
+ */
+export function summaryRow(w: Pick<WrapUp, 'minutes' | 'drillsRun' | 'coverage'>, cols = BOXC): string {
+  const head = `${w.minutes} min · ${plural(w.drillsRun, 'drill')}`
+  const fb = `${w.coverage.covered}/${w.coverage.present}`
+  return [`${head} · ${fb} got feedback`, `${head} · ${fb} fed back`].find(r => r.length <= cols) ?? clipWithSuffix(head, ` · ${fb} fed back`, cols)
+}
+
+/**
  * End-of-class summary, ≤4 rows: time · drills · feedback; who was missed; agent actions; the top
  * insight. Then the choice: tap puts the missed kids first next class, 2× just finishes.
  */
@@ -287,7 +297,7 @@ function wrapup(s: LensState): PageSpec {
   if (!w) return panel('CLASS DONE', 'Wrapping up…', '2×: back')
   const names = w.missed.map(m => m.name)
   const rows = [
-    `${w.minutes} min · ${plural(w.drillsRun, 'drill')} · ${w.coverage.covered}/${w.coverage.present} got feedback`,
+    summaryRow(w),
     names.length ? `Missed: ${fitNames(names, BOXC - 'Missed: '.length)}` : 'Missed: nobody!',
     `${plural(w.agentActions, 'agent action')} · ${w.pendingReview} to review`,
     ...(s.wrapupInsight ? [`${INSIGHT_GLYPH} ${s.wrapupInsight.title}`] : []),

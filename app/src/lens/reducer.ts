@@ -299,7 +299,8 @@ export function reduce(s: LensState, e: LensEvent): R {
     case 'peek': {
       const b = s.insightBanner
       // The banner owns tap (dismiss) and swipe (details) while it is up; hold-to-talk and end class still work.
-      if (b && e.type === 'tap') return done({ ...s, insightBanner: null })
+      // Say what the tap did: a coach who meant to record a note knows to tap again.
+      if (b && e.type === 'tap') return peek({ ...s, insightBanner: null }, BANNER_HIDDEN)
       if (b && (e.type === 'swipeUp' || e.type === 'swipeDown')) return openInsight({ ...s, insightBanner: null }, b)
       const rest = b && (e.type === 'longPress' || e.type === 'doubleTap') ? collapseBanner(s) : s
       if (e.type === 'tap') return record(rest, 'note', 'peek', false, now)
@@ -385,6 +386,9 @@ function restGesture(s: LensState, e: LensEvent, now: number): R {
   if (e.type === 'doubleTap') return done({ ...s, screen: 'confirmEnd', status: null })
   return done(s)
 }
+
+/** Status after a tap on the insight banner (the tap hid it instead of starting a note). */
+export const BANNER_HIDDEN = 'Insight hidden · tap to record'
 
 const REMIND_SUFFIX = ' first next class'
 /** "ok · Jake, Leo, Mia first next class", with "+N" for names that don't fit one footer line. */

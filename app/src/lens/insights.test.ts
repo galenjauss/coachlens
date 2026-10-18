@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { Insight, Today } from '@matside/shared'
 import { INSIGHT_BANNER_MS, INSIGHT_GLYPH } from '../config'
 import { topInsight } from './insights'
-import { initialState, reduce } from './reducer'
-import { BRIEF_HINT, INSIGHT_HINT, remindHint, render, type PageSpec } from './render'
+import { BANNER_HIDDEN, STATUS_MS, initialState, reduce } from './reducer'
+import { BRIEF_HINT, INSIGHT_HINT, remindHint, render, summaryRow, type PageSpec } from './render'
 import type { Card, LensEvent, LensState } from './state'
 import { colsFor, fitNames, rowsFor } from './text'
 
@@ -63,8 +63,11 @@ describe('mid-class insight banner', () => {
   it('tap on the banner dismisses it (no recording); swipe opens the detail', () => {
     const shown = run(peekState, polled(ins('a'))).state
     const tapped = run(shown, { type: 'tap' })
-    expect(tapped.state).toMatchObject({ screen: 'peek', insightBanner: null, insightUnseen: [] })
-    expect(tapped.effects).toEqual([])
+    expect(tapped.state).toMatchObject({ screen: 'peek', insightBanner: null, insightUnseen: [], status: BANNER_HIDDEN, pending: null })
+    expect(tapped.effects).toEqual([{ type: 'expireStatus', ms: STATUS_MS }]) // no startMic: the tap hid the banner
+    expect(BANNER_HIDDEN).toBe('Insight hidden · tap to record')
+    expect(txt(render(tapped.state, 0), 'next')).toBe(BANNER_HIDDEN)
+    expect(run(tapped.state, { type: 'tap' }).state.screen).toBe('recording') // the next tap records
     const swiped = run(shown, { type: 'swipeDown' })
     expect(swiped.state).toMatchObject({ screen: 'insight', insightBanner: null })
     expect(swiped.state.insightDetail?.id).toBe('a')
@@ -192,6 +195,17 @@ describe('end-of-class summary', () => {
     expect(remindHint(['Maximilianus-Augustin'])).toBe('tap: put 1 kid first next class')
     for (const n of [['A'], ['Jake', 'Mia', 'Leo', 'Ann'], ['Christopher', 'Bo']]) expect(remindHint(n).length).toBeLessThanOrEqual(colsFor(576))
     expect(fitNames(['Jake', 'Mia', 'Leo'], 12)).toBe('Jake, Mia +1')
+  })
+  it('row 1 never cuts the feedback count: "fed back" when "got feedback" does not fit, then the time is cut', () => {
+    const big = { ...wrapup, minutes: 120, drillsRun: 12, coverage: { covered: 10, present: 12 } }
+    expect(`120 min · 12 drills · 10/12 got feedback`.length).toBeGreaterThan(colsFor(576, true))
+    expect(summaryRow(big)).toBe('120 min · 12 drills · 10/12 fed back')
+    expect(txt(render({ ...atWrap, wrapup: big }, 0), 'body')!.split('\n')[0]).toBe('120 min · 12 drills · 10/12 fed back')
+    expect(summaryRow(wrapup)).toBe('40 min · 6 drills · 9/12 got feedback')
+    const huge = { ...wrapup, minutes: 1200, drillsRun: 120, coverage: { covered: 100, present: 120 } }
+    expect(summaryRow(huge, 30)).toBe('1200 min… · 100/120 fed back') // drills cut at a word boundary, count intact
+    expect(summaryRow(huge, 30).endsWith(' · 100/120 fed back')).toBe(true)
+    expect(summaryRow(huge, 30).length).toBeLessThanOrEqual(30)
   })
   it('a late wrap-up insight after the coach left the screen is ignored', () => {
     const home = { ...atWrap, screen: 'home' as const }

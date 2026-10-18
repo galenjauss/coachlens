@@ -1052,3 +1052,46 @@ describe('lens controller · insights', () => {
     expect(b.sent.join('\n')).toContain('Missed: nobody!') // the wrap-up still shows, without an insight row
   })
 })
+
+describe('lens controller · insight poll around class end', () => {
+  let lens: LensHandle | null = null
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-20T17:00:00Z')) })
+  afterEach(() => { lens?.stop(); lens = null; vi.useRealTimers() })
+  const high = { id: 'late', kind: 'no_feedback', studentId: 'j', studentName: 'Jake', classId: 'c1', title: 'Late insight title', detail: 'd', urgency: 'high', status: 'new', createdAt: '2026-10-20T17:00:10Z', actionLabel: null }
+  async function toPeek(api: Api) {
+    const kv = memoryKV(); await kv.set(KEYS.firstRunSeen, '1')
+    const b = fakeBridge()
+    lens = await startLens({ bridge: b.bridge, api, kv, outbox: new Outbox(kv), nod: NOD })
+    await flush()
+    b.emit(tap); await flush(); b.emit(tap); await flush(); b.emit(dbl); await flush()
+    return b
+  }
+  const sessionCalls = (fn: ReturnType<typeof vi.fn>) => fn.mock.calls.filter(c => (c[0] as { sessionId?: string }).sessionId).length
+
+  it('a failed end-class leaves class running, and the poll picks up again 30 s later', async () => {
+    const insights = vi.fn(async () => ({ insights: [] }))
+    const endSession = vi.fn(async () => { throw new ApiError(500, 'boom') })
+    const b = await toPeek(fakeApi({ insights, endSession }))
+    b.emit(dbl); await flush() // confirm end
+    b.emit(tap); await flush() // end fails → back on peek with the session
+    expect(b.sent.join('\n')).toContain("Couldn't end class")
+    expect(sessionCalls(insights)).toBe(0)
+    await vi.advanceTimersByTimeAsync(INSIGHT_POLL_MS)
+    expect(sessionCalls(insights)).toBe(1)
+  })
+
+  it('a poll answer that lands after class ended never reaches the wrap-up', async () => {
+    let answer: (v: { insights: unknown[] }) => void = () => {}
+    const insights = vi.fn((p: { sessionId?: string }) => (p.sessionId ? new Promise(r => { answer = r }) : Promise.resolve({ insights: [] })))
+    const b = await toPeek(fakeApi({ insights }))
+    await vi.advanceTimersByTimeAsync(INSIGHT_POLL_MS) // request out, not answered
+    expect(sessionCalls(insights)).toBe(1)
+    b.emit(dbl); await flush()
+    b.emit(tap); await flush() // wrap-up
+    const n = b.sent.length
+    answer({ insights: [high] }); await flush()
+    expect(b.sent.slice(n).join('\n')).not.toContain('Late insight title')
+    await vi.advanceTimersByTimeAsync(INSIGHT_POLL_MS * 2)
+    expect(sessionCalls(insights)).toBe(1)
+  })
+})

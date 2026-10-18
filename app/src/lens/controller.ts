@@ -119,7 +119,8 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     else if (e.type === 'todayLoaded' && state.active && minutes(state) !== minutes(prev)) armDrillTimer()
     if (state.screen === 'sending' && prev.screen !== 'sending') thinkTicks()
     if (Boolean(state.session) !== Boolean(prev.session)) { keepWarm(); insightPoll() }
-    else if (state.screen === 'wrapup' && prev.screen !== 'wrapup') insightPoll() // class ended: the poll stops
+    // Entering the wrap-up stops the poll; leaving it with the session still on (end class failed) restarts it.
+    else if ((state.screen === 'wrapup') !== (prev.screen === 'wrapup')) insightPoll()
   }
 
   /**
@@ -135,18 +136,21 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     }
   }
 
+  /** Class ended on the server (wrap-up up); the session clears when the coach leaves the wrap-up. */
+  const classOver = () => state.screen === 'wrapup'
+
   /** While class runs (and the app is in front), poll this session's high-urgency insights every INSIGHT_POLL_MS. */
   function insightPoll(): void {
     const sessionId = state.session?.id
-    const over = state.screen === 'wrapup' // ended on the server; the session clears when the coach leaves the wrap-up
-    if (!sessionId || over || suspended || exited || insightsMissingFor === sessionId) return timers.insightPoll.clear()
+    if (!sessionId || classOver() || suspended || exited || insightsMissingFor === sessionId) return timers.insightPoll.clear()
     if (timers.insightPoll.active) return
     timers.insightPoll.set(INSIGHT_POLL_MS, () => { void pollInsightsOnce(sessionId) })
   }
   async function pollInsightsOnce(sessionId: string): Promise<void> {
-    if (state.session?.id !== sessionId || state.screen === 'wrapup' || suspended || exited) return
+    if (state.session?.id !== sessionId || classOver() || suspended || exited) return
     const insights = await fetchInsights({ scope: 'class', classId: state.today?.classId, sessionId })
-    if (insights && state.session?.id === sessionId) dispatch({ type: 'insightsLoaded', scope: 'session', insights })
+    // Class may have ended while the request was out: a stale result must not land on the wrap-up.
+    if (insights && state.session?.id === sessionId && !classOver()) dispatch({ type: 'insightsLoaded', scope: 'session', insights })
     insightPoll()
   }
 

@@ -31,6 +31,13 @@ describe('insights logic', () => {
     const after = [ins('a', { status: 'accepted' }), ins('b', { status: 'dismissed' }), ins('c'), ins('d')]
     expect(todayRows(after, settled, [list[0]!]).map(i => i.id)).toEqual(['a', 'c', 'd'])
   })
+  it('a row being accepted stays in place, and stays visible when a poll already shows it settled', () => {
+    const list = [ins('a'), ins('b'), ins('c'), ins('d')]
+    expect(todayRows(list, { b: { kind: 'pending' } }, [list[1]!]).map(i => i.id)).toEqual(['a', 'b', 'c'])
+    const polled = [ins('a'), ins('b', { status: 'accepted' }), ins('c'), ins('d')]
+    expect(todayRows(polled, { b: { kind: 'pending' } }, [list[1]!]).map(i => i.id)).toEqual(['b', 'a', 'c'])
+    expect(todayRows(polled, {}, [list[1]!]).map(i => i.id)).toEqual(['a', 'c', 'd']) // a failed accept forgets it
+  })
   it('labels: Do it with a next step, Got it for news; status words for settled rows', () => {
     expect(acceptLabel({ actionLabel: 'Draft email' })).toBe('Do it')
     expect(acceptLabel({ actionLabel: null })).toBe('Got it')

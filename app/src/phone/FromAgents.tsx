@@ -19,9 +19,10 @@ export function useInsights(api: Api, ms: number) {
 export function useSettled() {
   const [settled, setSettled] = useState<Record<string, RowOutcome>>({})
   const [kept, setKept] = useState<Insight[]>([])
-  const settle = useCallback((i: Insight) => (id: string, o: RowOutcome) => {
-    setSettled(s => ({ ...s, [id]: o }))
-    if (o.kind === 'accepted') setKept(k => (k.some(x => x.id === id) ? k : [...k, i]))
+  /** null = forget the row's local state (an accept that failed goes back to its buttons). */
+  const settle = useCallback((i: Insight) => (id: string, o: RowOutcome | null) => {
+    setSettled(s => { const { [id]: _drop, ...rest } = s; return o ? { ...rest, [id]: o } : rest })
+    if (o && o.kind !== 'dismissed') setKept(k => (k.some(x => x.id === id) ? k : [...k, i]))
   }, [])
   return { settled, kept, settle }
 }
@@ -33,7 +34,7 @@ export function FromAgents({ api, onOpenAll }: { api: Api; onOpenAll(): void }) 
   if (!data) return null // loading, failed, or the insights API is not there yet
   const rows = todayRows(data, settled, kept)
   if (!rows.length) return null
-  const fresh = openInsights(data).filter(i => !settled[i.id]).length
+  const fresh = openInsights(data).filter(i => !settled[i.id]).length // being accepted doesn't count as new
   return (
     <section className="card ideas-card" aria-labelledby="from-agents">
       <header className="ideas-head">
