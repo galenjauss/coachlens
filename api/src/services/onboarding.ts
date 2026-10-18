@@ -1,7 +1,8 @@
 import { and, eq, sql } from 'drizzle-orm'
 import type { OnboardingCommit, OnboardingCommitResponse, OnboardingStatus } from '@matside/shared'
 import type { Deps } from '../deps'
-import { classes, curriculum, drills, enrollments, guardians, instructors, students } from '../db/schema'
+import { classes, drills, enrollments, guardians, instructorCurriculum, instructors, students } from '../db/schema'
+import { studentOwnedBy } from './ownership'
 import { addVocab, specificDrillNames } from './vocab'
 import { draftDeck } from '../agents/planner'
 import { localDate, upcomingClassDate } from '../logic/dates'
@@ -15,8 +16,8 @@ export class OnboardingError extends Error {}
 
 export async function onboardingStatus(deps: Deps, instructorId: string): Promise<OnboardingStatus> {
   const { db } = deps
-  const [cls] = await db.select({ n: sql<number>`count(*)::int` }).from(classes)
-  const [st] = await db.select({ n: sql<number>`count(*)::int` }).from(students)
+  const [cls] = await db.select({ n: sql<number>`count(*)::int` }).from(classes).where(eq(classes.instructorId, instructorId))
+  const [st] = await db.select({ n: sql<number>`count(*)::int` }).from(students).where(studentOwnedBy(instructorId))
   const [ins] = await db.select().from(instructors).where(eq(instructors.id, instructorId))
   const classCount = Number(cls?.n ?? 0)
   return {
@@ -39,7 +40,7 @@ export async function commitOnboarding(deps: Deps, instructorId: string, p: Onbo
   const year = Number(localDate(deps.now(), p.basics.timeZone).slice(0, 4))
 
   // Every student class reference must resolve before anything is written.
-  const existingClasses = await db.select().from(classes)
+  const existingClasses = await db.select().from(classes).where(eq(classes.instructorId, instructorId))
   const byClassKey = new Map(existingClasses.map(c => [nameKey(c.name), c]))
   const commitKeys = new Set(p.classes.map(c => nameKey(c.name)))
   const unknown = [...new Set(p.students.flatMap(s => s.classNames).filter(n => !commitKeys.has(nameKey(n)) && !byClassKey.has(nameKey(n))))]
@@ -60,7 +61,7 @@ export async function commitOnboarding(deps: Deps, instructorId: string, p: Onbo
     committedClasses.push(row!)
   }
 
-  const existingStudents = await db.select().from(students)
+  const existingStudents = await db.select().from(students).where(studentOwnedBy(instructorId))
   const byStudentKey = new Map(existingStudents.map(s => [nameKey(s.name), s]))
   let createdStudents = 0
   let createdGuardians = 0
@@ -77,7 +78,7 @@ export async function commitOnboarding(deps: Deps, instructorId: string, p: Onbo
       studentId = found.id
     } else {
       // birthYear is required; unknown age stores the current year until the coach fills it in.
-      const [row] = await db.insert(students).values({ name: s.name, nickname: s.nickname, belt: s.level ?? DEFAULT_LEVEL, birthYear: year - (s.age ?? 0) }).returning()
+      const [row] = await db.insert(students).values({ instructorId, name: s.name, nickname: s.nickname, belt: s.level ?? DEFAULT_LEVEL, birthYear: year - (s.age ?? 0) }).returning()
       studentId = row!.id
       byStudentKey.set(nameKey(s.name), row!)
       createdStudents++
@@ -95,9 +96,10 @@ export async function commitOnboarding(deps: Deps, instructorId: string, p: Onbo
     if (classIds.length) await db.insert(enrollments).values(classIds.map(classId => ({ classId, studentId }))).onConflictDoNothing()
   }
 
+  // The coach's own weeks (C4): never the shared demo catalog, which other instructors read.
   for (const w of p.curriculum) {
-    await db.insert(curriculum).values({ weekStart: w.weekStart, mode: p.mode, theme: w.theme, formsDue: w.itemsDue })
-      .onConflictDoUpdate({ target: [curriculum.weekStart, curriculum.mode], set: { theme: w.theme, formsDue: w.itemsDue } })
+    await db.insert(instructorCurriculum).values({ instructorId, weekStart: w.weekStart, mode: p.mode, theme: w.theme, formsDue: w.itemsDue })
+      .onConflictDoUpdate({ target: [instructorCurriculum.instructorId, instructorCurriculum.weekStart, instructorCurriculum.mode], set: { theme: w.theme, formsDue: w.itemsDue } })
   }
 
   // Curriculum items and drill-like terms become custom vocabulary (best effort, deduped).

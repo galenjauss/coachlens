@@ -10,7 +10,14 @@ export const instructors = pgTable('instructors', {
   tokenHashes: jsonb('token_hashes').$type<string[]>().notNull().default([]),
   // Set by onboarding (Task 24); null until the coach finishes the quiz.
   schoolName: text('school_name'), timeZone: text('time_zone'),
-})
+  // SHA-256 of the instructor's reusable pairing code (C4). Null until set by the seed, rotation or the env bootstrap.
+  pairingCodeHash: text('pairing_code_hash'),
+}, t => [uniqueIndex('instructors_pairing_code_hash').on(t.pairingCodeHash)])
+// One row per paired phone (C4): tokens expire after 90 days and can be revoked by POST /v1/unpair.
+export const apiTokens = pgTable('api_tokens', {
+  id: id(), instructorId: text('instructor_id').notNull(), tokenHash: text('token_hash').notNull(),
+  createdAt: createdAt(), expiresAt: ts('expires_at').notNull(), revokedAt: ts('revoked_at'),
+}, t => [uniqueIndex('api_tokens_hash').on(t.tokenHash), index('api_tokens_instructor').on(t.instructorId, t.createdAt)])
 export const classes = pgTable('classes', {
   id: id(), instructorId: text('instructor_id').notNull(), name: text('name').notNull(),
   weekday: integer('weekday').notNull(), // 0 = Sunday
@@ -22,7 +29,9 @@ export const students = pgTable('students', {
   id: id(), name: text('name').notNull(), nickname: text('nickname'), belt: text('belt').notNull(), birthYear: integer('birth_year').notNull(),
   aliases: jsonb('aliases').$type<string[]>().notNull().default([]), // learned STT spellings, max 10
   rankSince: date('rank_since', { mode: 'string' }), // YYYY-MM-DD; time in rank is derived from it
-})
+  // Owner (C4). Legacy rows may be null: those are owned through an enrollment in the instructor's class.
+  instructorId: text('instructor_id'),
+}, t => [index('students_instructor').on(t.instructorId)])
 export const guardians = pgTable('guardians', {
   id: id(), studentId: text('student_id').notNull(), name: text('name').notNull(), email: text('email').notNull(),
 })
@@ -108,7 +117,8 @@ export const agentRuns = pgTable('agent_runs', {
   summary: text('summary').notNull(), reason: text('reason').notNull(), output: jsonb('output'),
   status: text('status').$type<'ok' | 'error'>().notNull(), ms: integer('ms').notNull(), createdAt: createdAt(),
   utteranceId: text('utterance_id'), links: jsonb('links').$type<AgentRunLinks>(),
-}, t => [index('agent_runs_utterance').on(t.utteranceId), index('agent_runs_agent_created').on(t.agent, t.createdAt)])
+  instructorId: text('instructor_id'), // set from the request scope (C4)
+}, t => [index('agent_runs_utterance').on(t.utteranceId), index('agent_runs_agent_created').on(t.agent, t.createdAt), index('agent_runs_instructor_created').on(t.instructorId, t.createdAt)])
 export const preferences = pgTable('preferences', {
   id: id(), classId: text('class_id').notNull(), text: text('text').notNull(), createdAt: createdAt(),
 })
@@ -120,6 +130,19 @@ export const llmUsage = pgTable('llm_usage', {
 export const agentSettings = pgTable('agent_settings', {
   task: text('task').primaryKey(), autonomy: text('autonomy').notNull(),
 })
+// Per-instructor autonomy (C4). agent_settings above is the legacy deployment-wide table, read only outside a request scope.
+export const instructorSettings = pgTable('instructor_settings', {
+  instructorId: text('instructor_id').notNull(), task: text('task').notNull(), autonomy: text('autonomy').notNull(),
+}, t => [primaryKey({ columns: [t.instructorId, t.task] })])
+// Per-instructor vocabulary (C4); school_vocab below is the legacy deployment-wide table.
+export const instructorVocab = pgTable('instructor_vocab', {
+  instructorId: text('instructor_id').notNull(), term: text('term').notNull(), createdAt: createdAt(),
+}, t => [primaryKey({ columns: [t.instructorId, t.term] })])
+// Per-instructor weekly themes (C4). The shared curriculum table is the demo catalog used when an instructor has none.
+export const instructorCurriculum = pgTable('instructor_curriculum', {
+  instructorId: text('instructor_id').notNull(), weekStart: text('week_start').notNull(),
+  mode: text('mode').$type<ModeId>().notNull(), theme: text('theme').notNull(), formsDue: jsonb('forms_due').$type<string[]>().notNull(),
+}, t => [primaryKey({ columns: [t.instructorId, t.weekStart, t.mode] })])
 // Instructor's custom words (names of moves, studio jargon) fed to speech-to-text and the router.
 export const schoolVocab = pgTable('school_vocab', {
   term: text('term').primaryKey(), createdAt: createdAt(),

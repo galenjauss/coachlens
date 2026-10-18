@@ -112,3 +112,18 @@ describe('seed', () => {
     expect((await db.select().from(kv)).map(k => k.key)).toEqual(['other'])
   })
 })
+
+describe('seed: demo instructor (C4)', () => {
+  it('owns every seeded student and pairs with the configured code only', async () => {
+    const { instructorForCode } = await import('../services/pairing')
+    const { ownedStudentIds } = await import('../services/ownership')
+    const db = await makeTestDb()
+    const r = await seed(db, { ...opts, pairingCode: 'demo-pair-77' })
+    const all = await db.select({ id: students.id, owner: students.instructorId }).from(students)
+    expect(all.every(s => s.owner === r.instructorId)).toBe(true)
+    expect((await ownedStudentIds(db, r.instructorId)).length).toBe(all.length)
+    expect(await instructorForCode(db, 'demo-pair-77', '')).toBe(r.instructorId)
+    expect(await instructorForCode(db, 'wrong-code', 'demo-pair-77')).toBeNull()
+    expect((await db.select().from(classes)).every(c => c.instructorId === r.instructorId)).toBe(true)
+  })
+})

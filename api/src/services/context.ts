@@ -1,7 +1,8 @@
 import { and, asc, eq, inArray, max } from 'drizzle-orm'
 import { modeConfig, type Coverage, type ModeConfig, type NextStudent, type RosterStudent } from '@matside/shared'
 import type { Db } from '../db/client'
-import { attendance, classes, curriculum, drills, enrollments, issues, notes, sessions, students } from '../db/schema'
+import { attendance, classes, curriculum, drills, enrollments, instructorCurriculum, issues, notes, sessions, students } from '../db/schema'
+import { currentInstructorId } from '../http/context'
 import { weekStart } from '../logic/dates'
 import { rankNextStudent } from '../logic/ranking'
 
@@ -32,9 +33,24 @@ export async function modeForStudent(db: Db, studentId: string, sessionId: strin
   return modeConfig(c?.mode)
 }
 
-export async function curriculumFor(db: Db, mode: ModeConfig, forDate: string) {
-  const [cur] = await db.select().from(curriculum).where(and(eq(curriculum.weekStart, weekStart(forDate)), eq(curriculum.mode, mode.id)))
+/**
+ * The week's theme for a class's owner (C4): the instructor's own curriculum first (written by onboarding), else
+ * the shared demo catalog. `instructorId` defaults to the request scope.
+ */
+export async function curriculumFor(db: Db, mode: ModeConfig, forDate: string, instructorId: string | null = currentInstructorId()) {
+  const week = weekStart(forDate)
+  if (instructorId) {
+    const [own] = await db.select().from(instructorCurriculum)
+      .where(and(eq(instructorCurriculum.instructorId, instructorId), eq(instructorCurriculum.weekStart, week), eq(instructorCurriculum.mode, mode.id)))
+    if (own) return own
+  }
+  const [cur] = await db.select().from(curriculum).where(and(eq(curriculum.weekStart, week), eq(curriculum.mode, mode.id)))
   return cur ?? null
+}
+
+async function classOwnerId(db: Db, classId: string): Promise<string | null> {
+  const [c] = await db.select({ ins: classes.instructorId }).from(classes).where(eq(classes.id, classId))
+  return c?.ins ?? null
 }
 
 export async function loadSessionContext(db: Db, sessionId: string, drillId: string | null): Promise<SessionContext> {
@@ -45,7 +61,7 @@ export async function loadSessionContext(db: Db, sessionId: string, drillId: str
     db.select({ id: students.id, name: students.name, nickname: students.nickname, belt: students.belt, aliases: students.aliases })
       .from(enrollments).innerJoin(students, eq(students.id, enrollments.studentId)).where(eq(enrollments.classId, s.classId)),
     db.select().from(attendance).where(eq(attendance.sessionId, sessionId)),
-    curriculumFor(db, mode, s.forDate),
+    classOwnerId(db, s.classId).then(ins => curriculumFor(db, mode, s.forDate, ins)),
     drillId ? db.select().from(drills).where(eq(drills.id, drillId)) : Promise.resolve([] as (typeof drills.$inferSelect)[]),
   ])
   return {

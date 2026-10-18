@@ -35,7 +35,7 @@ async function seedClass(db: Db, ctx: Ctx, a: {
   guardianName: (name: string) => string; weekly: string; due: string[]
 }) {
   const [cls] = await db.insert(t.classes).values({ instructorId: ctx.instructorId, name: a.name, weekday: a.weekday, startTime: a.startTime, mode: a.mode }).returning()
-  const people = await db.insert(t.students).values(a.people.map(([name, belt, birthYear]) => ({ name, belt, birthYear }))).returning()
+  const people = await db.insert(t.students).values(a.people.map(([name, belt, birthYear]) => ({ instructorId: ctx.instructorId, name, belt, birthYear }))).returning()
   await db.insert(t.guardians).values(people.map((p, i) => ({ studentId: p.id, name: a.guardianName(p.name), email: ctx.guardianEmail(ctx.emailOffset + i) })))
   await db.insert(t.enrollments).values(people.map(p => ({ classId: cls!.id, studentId: p.id })))
   const thisWeek = weekStart(ctx.today)

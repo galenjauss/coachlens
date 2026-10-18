@@ -4,15 +4,19 @@ import type { Db } from '../db/client'
 import type { Deps } from '../deps'
 import { billingFlags, deckDiffs, notes, outbox, students } from '../db/schema'
 import { withRun } from '../agents/runs'
+import { billingOwnedBy, deckIdOwnedBy, noteOwnedBy, studentIdOwnedBy } from './ownership'
 
 const iso = (d: Date) => d.toISOString()
 const first = (n: string | null) => (n ? n.split(' ')[0]! : 'Unknown')
 
-export async function listReview(db: Db): Promise<ReviewItem[]> {
-  const mail = await db.select({ o: outbox, name: students.name }).from(outbox).leftJoin(students, eq(students.id, outbox.studentId)).where(eq(outbox.status, 'pending_review'))
-  const bills = await db.select({ b: billingFlags, name: students.name }).from(billingFlags).leftJoin(students, eq(students.id, billingFlags.studentId)).where(eq(billingFlags.status, 'open'))
-  const loose = await db.select().from(notes).where(isNull(notes.studentId)).orderBy(desc(notes.createdAt)).limit(20)
-  const diffs = await db.select().from(deckDiffs).where(eq(deckDiffs.status, 'pending'))
+/** The review queue. `instructorId` null = unscoped (direct service use only; the route passes the caller). */
+export async function listReview(db: Db, instructorId: string | null): Promise<ReviewItem[]> {
+  const mail = await db.select({ o: outbox, name: students.name }).from(outbox).leftJoin(students, eq(students.id, outbox.studentId))
+    .where(and(eq(outbox.status, 'pending_review'), instructorId ? studentIdOwnedBy(outbox.studentId, instructorId) : undefined))
+  const bills = await db.select({ b: billingFlags, name: students.name }).from(billingFlags).leftJoin(students, eq(students.id, billingFlags.studentId))
+    .where(and(eq(billingFlags.status, 'open'), instructorId ? billingOwnedBy(instructorId) : undefined))
+  const loose = await db.select().from(notes).where(and(isNull(notes.studentId), instructorId ? noteOwnedBy(instructorId) : undefined)).orderBy(desc(notes.createdAt)).limit(20)
+  const diffs = await db.select().from(deckDiffs).where(and(eq(deckDiffs.status, 'pending'), instructorId ? deckIdOwnedBy(deckDiffs.deckId, instructorId) : undefined))
   const items: ReviewItem[] = [
     ...mail.map(({ o, name }) => ({ kind: o.kind, id: o.id, studentName: first(name), to: o.toEmail, subject: o.subject, body: o.body, createdAt: iso(o.createdAt) }) as ReviewItem),
     ...bills.map(({ b, name }) => ({ kind: 'billing' as const, id: b.id, studentName: first(name), urgency: b.urgency, note: b.note, amount: b.amount, createdAt: iso(b.createdAt) })),

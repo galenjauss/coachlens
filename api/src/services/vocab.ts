@@ -1,7 +1,8 @@
-import { asc, eq, inArray } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import { MAX_VOCAB, VOCAB_TERM_MAX } from '@matside/shared'
 import type { Db } from '../db/client'
-import { drills, schoolVocab } from '../db/schema'
+import { drills, instructorVocab, schoolVocab } from '../db/schema'
+import { currentInstructorId } from '../http/context'
 
 /** Total characters of hints handed to the transcriber (its prompt is short; names come first). */
 export const MAX_HINT_CHARS = 900
@@ -22,10 +23,29 @@ export function normalizeTerms(terms: readonly string[], max = MAX_VOCAB): strin
   return out
 }
 
+/**
+ * Storage (C4): the request's instructor gets their own rows; outside a request scope (scripts, direct service
+ * tests) the legacy deployment-wide table is used.
+ */
+const store = (db: Db) => {
+  const ins = currentInstructorId()
+  if (!ins) {
+    return {
+      list: () => db.select({ term: schoolVocab.term }).from(schoolVocab).orderBy(asc(schoolVocab.createdAt), asc(schoolVocab.term)),
+      remove: (terms: string[]) => db.delete(schoolVocab).where(inArray(schoolVocab.term, terms)),
+      add: (terms: string[]) => db.insert(schoolVocab).values(terms.map((term, i) => ({ term, createdAt: new Date(Date.now() + i) }))).onConflictDoNothing(),
+    }
+  }
+  return {
+    list: () => db.select({ term: instructorVocab.term }).from(instructorVocab).where(eq(instructorVocab.instructorId, ins)).orderBy(asc(instructorVocab.createdAt), asc(instructorVocab.term)),
+    remove: (terms: string[]) => db.delete(instructorVocab).where(and(eq(instructorVocab.instructorId, ins), inArray(instructorVocab.term, terms))),
+    add: (terms: string[]) => db.insert(instructorVocab).values(terms.map((term, i) => ({ instructorId: ins, term, createdAt: new Date(Date.now() + i) }))).onConflictDoNothing(),
+  }
+}
+
 /** The instructor's custom vocabulary, oldest first. */
 export async function vocabHints(db: Db): Promise<string[]> {
-  const rows = await db.select({ term: schoolVocab.term }).from(schoolVocab).orderBy(asc(schoolVocab.createdAt), asc(schoolVocab.term))
-  return rows.map(r => r.term)
+  return (await store(db).list()).map(r => r.term)
 }
 
 /** Same terms, newest first (the router sees the freshest words first). */
@@ -39,10 +59,10 @@ export async function setVocab(db: Db, terms: readonly string[]): Promise<string
   const have = await vocabHints(db)
   const keep = new Set(next.map(key))
   const gone = have.filter(t => !keep.has(key(t)))
-  if (gone.length) await db.delete(schoolVocab).where(inArray(schoolVocab.term, gone))
+  if (gone.length) await store(db).remove(gone)
   const haveKeys = new Set(have.map(key))
   const fresh = next.filter(t => !haveKeys.has(key(t)))
-  if (fresh.length) await db.insert(schoolVocab).values(fresh.map((term, i) => ({ term, createdAt: new Date(Date.now() + i) }))).onConflictDoNothing()
+  if (fresh.length) await store(db).add(fresh)
   return vocabHints(db)
 }
 
@@ -53,7 +73,7 @@ export async function addVocab(db: Db, terms: readonly string[]): Promise<number
     const haveKeys = new Set(have.map(key))
     const room = MAX_VOCAB - have.length
     const fresh = normalizeTerms(terms).filter(t => !haveKeys.has(key(t))).slice(0, Math.max(0, room))
-    if (fresh.length) await db.insert(schoolVocab).values(fresh.map((term, i) => ({ term, createdAt: new Date(Date.now() + i) }))).onConflictDoNothing()
+    if (fresh.length) await store(db).add(fresh)
     return fresh.length
   } catch (e) {
     console.error('[vocab:add]', e instanceof Error ? e.message : e)

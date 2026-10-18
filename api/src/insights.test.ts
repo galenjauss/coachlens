@@ -9,6 +9,7 @@ import {
   notes, outbox, sessions, students,
 } from './db/schema'
 import { runInsights } from './services/insights'
+import { runAs } from './http/context'
 import { inEmailCooldown } from './agents/parentEmail'
 
 const T0 = new Date('2026-10-20T00:30:00Z') // Mon 2026-10-19 5:30 PM PT
@@ -70,7 +71,7 @@ async function setup() {
   const setAutonomy = (autonomy: Record<string, string>) => app.request('/v1/settings', { method: 'PATCH', headers: h, body: JSON.stringify({ autonomy }) })
   const byKind = async (kind: string) => (await db.select().from(insights).where(eq(insights.kind, kind as 'new_pr')))
   const insightRuns = async (trigger?: string) => (await db.select().from(agentRuns).where(eq(agentRuns.agent, 'insights'))).filter(r => !trigger || r.trigger === trigger)
-  return { db, deps, app, h, clock, kids: kids!, teens: teens!, jake: jake!, maria: maria!, leo: leo!, zoe: zoe!, issue: issue!, get, post, setAutonomy, byKind, insightRuns }
+  return { ins: ins!.id, db, deps, app, h, clock, kids: kids!, teens: teens!, jake: jake!, maria: maria!, leo: leo!, zoe: zoe!, issue: issue!, get, post, setAutonomy, byKind, insightRuns }
 }
 
 describe('insights agent', () => {
@@ -79,7 +80,7 @@ describe('insights agent', () => {
   it('off: detectors do not run (no rows, no run logged)', async () => {
     const t = await setup()
     await t.setAutonomy({ insights: 'off' })
-    expect(await runInsights(t.deps, { trigger: 'cron' })).toEqual([])
+    expect(await runAs(t.ins, () => runInsights(t.deps, { trigger: 'cron' }))).toEqual([])
     expect((await t.get()).body).toEqual([])
     expect(await t.db.select().from(insights)).toEqual([])
     expect(await t.insightRuns()).toEqual([])
@@ -98,7 +99,7 @@ describe('insights agent', () => {
     expect(run!.summary).toMatch(/^5 new: /)
     expect(run!.summary).toContain('Jake attendance')
     expect(run!.summary).toContain('Maria ready to test')
-    expect(await runInsights(t.deps, { trigger: 'cron' })).toEqual([]) // same week: deduped
+    expect(await runAs(t.ins, () => runInsights(t.deps, { trigger: 'cron' }))).toEqual([]) // same week: deduped
     expect((await t.insightRuns('cron')).map(x => x.summary)).toContain('No new insights')
   })
 
@@ -121,7 +122,7 @@ describe('insights agent', () => {
 
   it('accept draft_email drafts through parentEmail (trigger insight); a second accept is a 409', async () => {
     const t = await setup()
-    await runInsights(t.deps, { trigger: 'cron' })
+    await runAs(t.ins, () => runInsights(t.deps, { trigger: 'cron' }))
     const [row] = await t.byKind('attendance_decline')
     const r = await t.post(`/v1/insights/${row!.id}/accept`)
     expect(r.status).toBe(200)
@@ -136,7 +137,7 @@ describe('insights agent', () => {
 
   it('accept draft_email respects parent_email autonomy: off drafts nothing, auto sends', async () => {
     const t = await setup()
-    await runInsights(t.deps, { trigger: 'cron' })
+    await runAs(t.ins, () => runInsights(t.deps, { trigger: 'cron' }))
     const [decline] = await t.byKind('attendance_decline')
     const [ready] = await t.byKind('ready_to_test')
     await t.setAutonomy({ parent_email: 'off' })
@@ -149,7 +150,7 @@ describe('insights agent', () => {
 
   it('accept plan_focus suggests a change to next class (planner review), applies it on planner auto', async () => {
     const t = await setup()
-    await runInsights(t.deps, { trigger: 'cron' })
+    await runAs(t.ins, () => runInsights(t.deps, { trigger: 'cron' }))
     const [focus] = await t.byKind('no_feedback')
     expect(focus!.studentId).toBe(t.maria.id)
     expect(await (await t.post(`/v1/insights/${focus!.id}/accept`)).json()).toEqual({ ok: true, outcome: 'Plan change ready for review' })
@@ -161,14 +162,14 @@ describe('insights agent', () => {
     // planner auto: a fresh insight next week is applied straight away
     await t.setAutonomy({ planner: 'auto' })
     t.clock.now = new Date(T0.getTime() + 7 * DAY)
-    await runInsights(t.deps, { trigger: 'cron' })
+    await runAs(t.ins, () => runInsights(t.deps, { trigger: 'cron' }))
     const next = (await t.byKind('no_feedback')).find(x => x.status === 'new')!
     expect(await (await t.post(`/v1/insights/${next.id}/accept`)).json()).toEqual({ ok: true, outcome: 'Added to next plan' })
   })
 
   it('accept resolve_issue closes the issue and drafts a positive note; accept none just records it', async () => {
     const t = await setup()
-    await runInsights(t.deps, { trigger: 'cron' })
+    await runAs(t.ins, () => runInsights(t.deps, { trigger: 'cron' }))
     const [quiet] = await t.byKind('issue_resolved')
     expect(await (await t.post(`/v1/insights/${quiet!.id}/accept`)).json()).toEqual({ ok: true, outcome: 'Resolved · email drafted for review' })
     expect((await t.db.select().from(issues).where(eq(issues.id, t.issue.id)))[0]!.status).toBe('resolved')
@@ -179,7 +180,7 @@ describe('insights agent', () => {
 
   it('a failed action leaves the insight new so it can be retried', async () => {
     const t = await setup()
-    await runInsights(t.deps, { trigger: 'cron' })
+    await runAs(t.ins, () => runInsights(t.deps, { trigger: 'cron' }))
     const [decline] = await t.byKind('attendance_decline')
     t.deps.llm = fakeLlm(() => { throw new Error('model down') })
     expect((await t.post(`/v1/insights/${decline!.id}/accept`)).status).toBe(502)
@@ -188,7 +189,7 @@ describe('insights agent', () => {
 
   it('dismiss hides it; dismissing twice is fine; unknown is 404; accepted is 409', async () => {
     const t = await setup()
-    await runInsights(t.deps, { trigger: 'cron' })
+    await runAs(t.ins, () => runInsights(t.deps, { trigger: 'cron' }))
     const [bill] = await t.byKind('billing_repeat')
     const r = await t.post(`/v1/insights/${bill!.id}/dismiss`)
     expect(r.status).toBe(200)
@@ -205,7 +206,7 @@ describe('insights agent', () => {
   it('auto: actions run at once (subject to their own autonomy) and rows become auto_done', async () => {
     const t = await setup()
     await t.setAutonomy({ insights: 'auto', parent_email: 'off' })
-    await runInsights(t.deps, { trigger: 'cron' })
+    await runAs(t.ins, () => runInsights(t.deps, { trigger: 'cron' }))
     const rows = await t.db.select().from(insights)
     expect(rows.find(r => r.kind === 'attendance_decline')).toMatchObject({ status: 'auto_done', outcome: 'Parent emails are off in Settings' })
     expect(rows.find(r => r.kind === 'no_feedback')).toMatchObject({ status: 'auto_done', outcome: 'Plan change ready for review' })
@@ -216,7 +217,7 @@ describe('insights agent', () => {
     // with parent emails on review, auto drafts for review
     t.clock.now = new Date(T0.getTime() + 7 * DAY)
     await t.setAutonomy({ parent_email: 'review' })
-    await runInsights(t.deps, { trigger: 'cron' })
+    await runAs(t.ins, () => runInsights(t.deps, { trigger: 'cron' }))
     const ready = (await t.byKind('ready_to_test')).find(r => r.createdAt.getTime() === t.clock.now.getTime())!
     expect(ready).toMatchObject({ status: 'auto_done', outcome: 'Email drafted for review' })
     expect((await t.db.select().from(outbox).where(eq(outbox.studentId, t.maria.id)))[0]!.trigger).toBe('insight_auto')
@@ -228,14 +229,14 @@ describe('insights agent', () => {
     const recent = new Date(T0.getTime() - 5 * DAY)
     await t.db.insert(outbox).values([t.jake, t.maria].map(s => ({ kind: 'parent_email' as const, studentId: s.id, toEmail: 'p@example.com', subject: 's', body: 'b', status: 'sent' as const, trigger: 'insight_auto', createdAt: recent })))
     await t.setAutonomy({ insights: 'auto' })
-    await runInsights(t.deps, { trigger: 'cron' })
+    await runAs(t.ins, () => runInsights(t.deps, { trigger: 'cron' }))
     expect((await t.byKind('attendance_decline'))[0]).toMatchObject({ status: 'auto_done', outcome: 'Skipped: emailed in last 30 days' })
     expect((await t.byKind('ready_to_test'))[0]!.outcome).toBe('Skipped: emailed in last 30 days')
     expect(await t.db.select().from(outbox).where(eq(outbox.status, 'pending_review'))).toHaveLength(1) // only Leo's positive note
     // manual accept of a review-mode insight still drafts despite the recent email
     await t.setAutonomy({ insights: 'review' })
     t.clock.now = new Date(T0.getTime() + 7 * DAY)
-    await runInsights(t.deps, { trigger: 'cron' })
+    await runAs(t.ins, () => runInsights(t.deps, { trigger: 'cron' }))
     const decline = (await t.byKind('attendance_decline')).find(r => r.status === 'new')!
     expect(await (await t.post(`/v1/insights/${decline.id}/accept`)).json()).toEqual({ ok: true, outcome: 'Email drafted for review' })
   })
@@ -278,7 +279,7 @@ describe('insights agent', () => {
 
   it('attendance in a live session runs returning_student; the lens view shows only that session\'s high items', async () => {
     const t = await setup()
-    await runInsights(t.deps, { trigger: 'cron' }) // low items already exist
+    await runAs(t.ins, () => runInsights(t.deps, { trigger: 'cron' })) // low items already exist
     // a stale high item from before class must not show
     await t.db.insert(insights).values({ kind: 'returning_student', studentId: t.leo.id, classId: t.kids.id, title: 'old', detail: 'old', urgency: 'high', action: { type: 'none', label: null }, dedupeKey: 'old', createdAt: new Date(T0.getTime() - DAY) })
     const { sessionId } = await (await t.post('/v1/sessions', { classId: t.kids.id })).json() as { sessionId: string }
@@ -334,7 +335,7 @@ describe('insights agent', () => {
     const t = await setup()
     const tile = async () => AgentsSummary.parse(await (await t.app.request('/v1/agents/summary', { headers: t.h })).json()).find(x => x.task === 'insights')!
     expect(await tile()).toMatchObject({ label: 'Insights', color: 'green', counts: { pending: 0 } })
-    await runInsights(t.deps, { trigger: 'cron' })
+    await runAs(t.ins, () => runInsights(t.deps, { trigger: 'cron' }))
     expect(await tile()).toMatchObject({ color: 'amber', counts: { pending: 5, urgent: 0 } })
     expect((await tile()).latest!.agent).toBe('insights')
   })

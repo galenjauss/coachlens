@@ -40,7 +40,8 @@ export function plannerInstructions(mode: ModeConfig): string {
 export async function planningContext(deps: Deps, classId: string, forDate: string) {
   const { db } = deps
   const mode = await modeForClass(db, classId)
-  const cur = await curriculumFor(db, mode, forDate)
+  const [owner] = await db.select({ ins: classes.instructorId }).from(classes).where(eq(classes.id, classId))
+  const cur = await curriculumFor(db, mode, forDate, owner?.ins ?? null)
   const roster = await db.select({ id: students.id, name: students.name, belt: students.belt })
     .from(enrollments).innerJoin(students, eq(students.id, enrollments.studentId)).where(eq(enrollments.classId, classId))
   const ids = roster.map(r => r.id)

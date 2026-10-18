@@ -81,7 +81,7 @@ describe('http', () => {
     const get = (p: string, init: RequestInit = {}) => app.request(p, { headers: h, ...init })
     expect((await get('/v1/decks/nope')).status).toBe(404)
     expect((await get('/v1/drills/nope/alternatives', { method: 'POST' })).status).toBe(404)
-    expect((await get('/v1/diffs/nope/accept', { method: 'POST', body: JSON.stringify({ remember: false }) })).status).toBe(409)
+    expect((await get('/v1/diffs/nope/accept', { method: 'POST', body: JSON.stringify({ remember: false }) })).status).toBe(404) // C4: unknown or not yours
     expect((await get('/v1/decks/nope/suggest', { method: 'POST', body: JSON.stringify({ text: 'more games' }) })).status).toBe(404)
     const today = await (await get('/v1/today')).json() as { deck: { id: string } }
     const bad = { drills: [{ id: 'ghost', name: 'X', minutes: 5, kind: 'drill', cues: [], focusStudentIds: [], rationale: '' }] }

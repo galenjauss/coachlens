@@ -4,6 +4,7 @@ import * as t from './schema'
 import { addDays, nextDateForWeekday, weekStart } from '../logic/dates'
 import { seedPersonalTraining, seedTutoring } from './seedModes'
 import { pastSessions, recordAttendance, sessionNotes } from './seedHistory'
+import { hashPairingCode } from '../services/pairing'
 
 const KIDS = [
   ['Priya Rao', 'orange', 2018], ['Leonardo Diaz', 'yellow', 2017], ['Jake Ross', 'white', 2019], ['Mia Lopez', 'white', 2019],
@@ -15,18 +16,21 @@ const KIDS = [
 const drill = (name: string, minutes: number, kind: 'warmup' | 'technique' | 'drill' | 'forms' | 'game' | 'sparring', cues: string[], rationale: string, focus: string[] = []) =>
   ({ name, minutes, kind, cues, rationale, focusStudentIds: focus })
 
-export async function seed(db: Db, opts: { today: string; guardianEmail: (i: number) => string }) {
-  for (const table of [t.agentRuns, t.reportCards, t.outbox, t.billingFlags, t.issues, t.notes, t.utterances, t.deckDiffs, t.drills, t.decks, t.attendance, t.sessions, t.curriculum, t.enrollments, t.guardians, t.students, t.classes, t.instructors, t.preferences, t.studentMetrics, t.insights]) {
+/** Synthetic demo data only. `pairingCode` (the env PAIRING_CODE) becomes the demo instructor's hashed code (C4). */
+export async function seed(db: Db, opts: { today: string; guardianEmail: (i: number) => string; pairingCode?: string }) {
+  for (const table of [t.apiTokens, t.agentRuns, t.reportCards, t.outbox, t.billingFlags, t.issues, t.notes, t.utterances, t.deckDiffs, t.drills, t.decks, t.attendance, t.sessions, t.curriculum, t.enrollments, t.guardians, t.students, t.classes, t.instructors, t.preferences, t.studentMetrics, t.insights]) {
     await db.delete(table)
   }
   // A reseed replays the demo: insight run/live-check bookkeeping goes too (settings and vocabulary are kept).
   await db.delete(t.kv).where(like(t.kv.key, 'insights:%'))
-  const [ins] = await db.insert(t.instructors).values({ name: 'Coach Galen', email: 'coach@matside.dev' }).returning()
+  const [ins] = await db.insert(t.instructors).values({
+    name: 'Coach Galen', email: 'coach@matside.dev', pairingCodeHash: opts.pairingCode ? await hashPairingCode(opts.pairingCode) : null,
+  }).returning()
   const [tue, thu] = await db.insert(t.classes).values([
     { instructorId: ins!.id, name: 'Kids · Tue', weekday: 2, startTime: '17:00' },
     { instructorId: ins!.id, name: 'Kids · Thu', weekday: 4, startTime: '17:00' },
   ]).returning()
-  const kids = await db.insert(t.students).values(KIDS.map(([name, belt, birthYear]) => ({ name, belt, birthYear, nickname: name.startsWith('Leonardo') ? 'Leo' : null }))).returning()
+  const kids = await db.insert(t.students).values(KIDS.map(([name, belt, birthYear]) => ({ instructorId: ins!.id, name, belt, birthYear, nickname: name.startsWith('Leonardo') ? 'Leo' : null }))).returning()
   await db.insert(t.guardians).values(kids.map((k, i) => ({ studentId: k.id, name: `${k.name.split(' ')[1]} family`, email: opts.guardianEmail(i) })))
   await db.insert(t.enrollments).values(kids.flatMap(k => [{ classId: tue!.id, studentId: k.id }, { classId: thu!.id, studentId: k.id }]))
 

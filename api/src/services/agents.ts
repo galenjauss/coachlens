@@ -7,6 +7,7 @@ import type { Db } from '../db/client'
 import type { Deps } from '../deps'
 import { agentRuns, billingFlags, deckDiffs, insights, notes, outbox, students, utterances } from '../db/schema'
 import { localDate } from '../logic/dates'
+import { billingOwnedBy, deckIdOwnedBy, insightOwnedBy, noteOwnedBy, studentIdOwnedBy } from './ownership'
 
 type RunRow = typeof agentRuns.$inferSelect
 
@@ -52,17 +53,18 @@ async function withColors(db: Db, rows: RunRow[]): Promise<AgentTaskRun[]> {
   return rows.map(r => ({ ...view(r), color: runColor(r, s), links: r.links ?? {} }))
 }
 
-async function pendingCounts(db: Db): Promise<Record<AgentTask, { pending: number; urgent: number }>> {
+async function pendingCounts(db: Db, owner: string): Promise<Record<AgentTask, { pending: number; urgent: number }>> {
   const n = (rows: { n: number }[]) => rows[0]?.n ?? 0
+  const mine = studentIdOwnedBy(outbox.studentId, owner)
   const [pe, peU, rc, bi, biU, pl, loose, ins] = await Promise.all([
-    db.select({ n: count() }).from(outbox).where(and(eq(outbox.kind, 'parent_email'), eq(outbox.status, 'pending_review'))),
-    db.select({ n: count() }).from(outbox).where(and(eq(outbox.kind, 'parent_email'), eq(outbox.status, 'pending_review'), eq(outbox.trigger, 'urgent'))),
-    db.select({ n: count() }).from(outbox).where(and(eq(outbox.kind, 'report_card'), eq(outbox.status, 'pending_review'))),
-    db.select({ n: count() }).from(billingFlags).where(eq(billingFlags.status, 'open')),
-    db.select({ n: count() }).from(billingFlags).where(and(eq(billingFlags.status, 'open'), eq(billingFlags.urgency, 'high'))),
-    db.select({ n: count() }).from(deckDiffs).where(eq(deckDiffs.status, 'pending')),
-    db.select({ n: count() }).from(notes).where(isNull(notes.studentId)),
-    db.select({ n: count() }).from(insights).where(eq(insights.status, 'new')),
+    db.select({ n: count() }).from(outbox).where(and(eq(outbox.kind, 'parent_email'), eq(outbox.status, 'pending_review'), mine)),
+    db.select({ n: count() }).from(outbox).where(and(eq(outbox.kind, 'parent_email'), eq(outbox.status, 'pending_review'), eq(outbox.trigger, 'urgent'), mine)),
+    db.select({ n: count() }).from(outbox).where(and(eq(outbox.kind, 'report_card'), eq(outbox.status, 'pending_review'), mine)),
+    db.select({ n: count() }).from(billingFlags).where(and(eq(billingFlags.status, 'open'), billingOwnedBy(owner))),
+    db.select({ n: count() }).from(billingFlags).where(and(eq(billingFlags.status, 'open'), eq(billingFlags.urgency, 'high'), billingOwnedBy(owner))),
+    db.select({ n: count() }).from(deckDiffs).where(and(eq(deckDiffs.status, 'pending'), deckIdOwnedBy(deckDiffs.deckId, owner))),
+    db.select({ n: count() }).from(notes).where(and(isNull(notes.studentId), noteOwnedBy(owner))),
+    db.select({ n: count() }).from(insights).where(and(eq(insights.status, 'new'), insightOwnedBy(owner))),
   ])
   return {
     progress: { pending: n(loose), urgent: 0 },
@@ -75,16 +77,16 @@ async function pendingCounts(db: Db): Promise<Record<AgentTask, { pending: numbe
   }
 }
 
-export async function agentsSummary(deps: Deps): Promise<AgentTile[]> {
+export async function agentsSummary(deps: Deps, owner: string): Promise<AgentTile[]> {
   const { db } = deps
   const now = deps.now()
   const today = localDate(now, deps.env.timeZone)
   const since = new Date(now.getTime() - 36 * 3_600_000) // covers "today" in any US time zone
   const allAgents = AgentTask.options.flatMap(t => TASK_AGENTS[t])
   const [recent, counts, latest] = await Promise.all([
-    db.select({ agent: agentRuns.agent, at: agentRuns.createdAt }).from(agentRuns).where(and(inArray(agentRuns.agent, allAgents), gte(agentRuns.createdAt, since))),
-    pendingCounts(db),
-    Promise.all(AgentTask.options.map(t => db.select().from(agentRuns).where(inArray(agentRuns.agent, TASK_AGENTS[t])).orderBy(desc(agentRuns.createdAt)).limit(1))),
+    db.select({ agent: agentRuns.agent, at: agentRuns.createdAt }).from(agentRuns).where(and(inArray(agentRuns.agent, allAgents), gte(agentRuns.createdAt, since), eq(agentRuns.instructorId, owner))),
+    pendingCounts(db, owner),
+    Promise.all(AgentTask.options.map(t => db.select().from(agentRuns).where(and(inArray(agentRuns.agent, TASK_AGENTS[t]), eq(agentRuns.instructorId, owner))).orderBy(desc(agentRuns.createdAt)).limit(1))),
   ])
   return AgentTask.options.map((task, i) => {
     const c = counts[task]
@@ -94,8 +96,8 @@ export async function agentsSummary(deps: Deps): Promise<AgentTile[]> {
   })
 }
 
-export async function agentTaskRuns(db: Db, task: AgentTask, limit: number): Promise<AgentTaskRun[]> {
-  const rows = await db.select().from(agentRuns).where(inArray(agentRuns.agent, TASK_AGENTS[task])).orderBy(desc(agentRuns.createdAt)).limit(limit)
+export async function agentTaskRuns(db: Db, task: AgentTask, limit: number, owner: string): Promise<AgentTaskRun[]> {
+  const rows = await db.select().from(agentRuns).where(and(inArray(agentRuns.agent, TASK_AGENTS[task]), eq(agentRuns.instructorId, owner))).orderBy(desc(agentRuns.createdAt)).limit(limit)
   return withColors(db, rows)
 }
 

@@ -6,6 +6,7 @@ import { makeTestDb, makeDeps, fakeLlm } from './test/helpers'
 import { createApp } from './app'
 import { instructors, agentRuns, classes, curriculum, decks, drills, enrollments, guardians, outbox, sessions, students, deckDiffs } from './db/schema'
 import { getAutonomy, patchSettings } from './services/settings'
+import { runAs } from './http/context'
 import { addVocab, capHints, vocabHints, MAX_HINT_CHARS } from './services/vocab'
 import { draftParentEmail } from './agents/parentEmail'
 import { autoAdjustNextDeck } from './agents/planner'
@@ -18,7 +19,7 @@ import { specificDrillNames } from './services/vocab'
 beforeEach(() => resetRateLimits())
 
 async function pairToken(app: ReturnType<typeof createApp>, db: Awaited<ReturnType<typeof makeTestDb>>) {
-  await db.insert(instructors).values({ name: 'Coach', email: 'c@example.com' })
+  await db.insert(instructors).values({ id: 'i1', name: 'Coach', email: 'c@example.com' }) // owns world()'s class (C4)
   const r = await app.request('/pair', { method: 'POST', body: JSON.stringify({ code: '4242' }), headers: { 'Content-Type': 'application/json' } })
   return ((await r.json()) as { token: string }).token
 }
@@ -61,8 +62,10 @@ describe('settings service', () => {
     expect((await patch({ autonomy: { progress: 'review', planner: 'off' } })).status).toBe(400) // all-or-nothing
     expect((await patch({ autonomy: { bogus: 'auto' } })).status).toBe(400)
     expect((await patch({ vocabulary: ['x'.repeat(41)] })).status).toBe(400)
-    expect(await getAutonomy(db, 'planner')).toBe('review')
-    expect(await getAutonomy(db, 'parent_email')).toBe('auto')
+    // The instructor's own settings (C4): read inside their request scope.
+    const ins = (await db.select().from(instructors))[0]!.id
+    expect(await runAs(ins, () => getAutonomy(db, 'planner'))).toBe('review')
+    expect(await runAs(ins, () => getAutonomy(db, 'parent_email'))).toBe('auto')
   })
 })
 
@@ -98,7 +101,7 @@ describe('vocabulary', () => {
 
   it('STT hints = roster + vocabulary + deck drills; router instructions get a Known terms line', async () => {
     const { db, classId } = await world()
-    await addVocab(db, ['Mawashi'])
+    await runAs('i1', () => addVocab(db, ['Mawashi'])) // the instructor's vocabulary (C4)
     const [d] = await db.insert(decks).values({ classId, forDate: '2026-10-19', status: 'active' }).returning()
     await db.insert(drills).values({ deckId: d!.id, position: 1, name: 'Guard-up jab', minutes: 6, kind: 'drill' })
     const [se] = await db.insert(sessions).values({ classId, deckId: d!.id, forDate: '2026-10-19', startedAt: new Date('2026-10-20T00:00:00Z') }).returning()
