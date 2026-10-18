@@ -342,7 +342,7 @@ describe('lens controller', () => {
     await vi.advanceTimersByTimeAsync(STATUS_MS)
     b.emit(dbl); await flush()
     b.emit(tap); await flush() // end → succeeds
-    expect(b.sent.join('\n')).toContain('40 min · 2 drills · 0/12 got feedback')
+    expect(b.sent.join('\n')).toContain('40 min · 2 drills · 0/12 with a note')
     expect(b.raw.imuControl).not.toHaveBeenCalledWith(false)
   })
 

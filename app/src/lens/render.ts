@@ -112,8 +112,8 @@ function context(s: LensState, now: number) {
   const drills = s.today?.deck.drills ?? []
   const active = drills.find(d => d.id === s.active?.drillId) ?? null
   const time = active && s.active ? minutesLeft(active.minutes, s.active.startedAt, now) : ''
-  const cov = `Feedback ${s.coverage.covered}/${s.coverage.present}`
-  const nextLine = s.nextStudent ? `> Next feedback: ${s.nextStudent.name} (${s.nextStudent.reason})` : s.coverage.present ? '> Everyone has feedback' : ''
+  const cov = `Noted ${s.coverage.covered}/${s.coverage.present}`
+  const nextLine = s.nextStudent ? `> Next to note: ${s.nextStudent.name} (${s.nextStudent.reason})` : s.coverage.present ? '> Everyone noted' : ''
   const drillHeader = active ? clipWithSuffix(active.name.toUpperCase(), ` · ${time}`, FULL) : cov
   return { drills, active, time, cov, nextLine, drillHeader }
 }
@@ -298,13 +298,13 @@ export function remindHint(names: readonly string[]): string {
 }
 
 /**
- * Row 1: `40 min · 6 drills · 9/12 got feedback`; when that is too long, `fed back`; then the time and
+ * Row 1: `40 min · 6 drills · 9/12 with a note`; when that is too long, `noted`; then the time and
  * drills are cut at a word boundary. The feedback count is never cut.
  */
 export function summaryRow(w: Pick<WrapUp, 'minutes' | 'drillsRun' | 'coverage'>, cols = BOXC): string {
   const head = `${w.minutes} min · ${plural(w.drillsRun, 'drill')}`
   const fb = `${w.coverage.covered}/${w.coverage.present}`
-  return [`${head} · ${fb} got feedback`, `${head} · ${fb} fed back`].find(r => r.length <= cols) ?? clipWithSuffix(head, ` · ${fb} fed back`, cols)
+  return [`${head} · ${fb} with a note`, `${head} · ${fb} noted`].find(r => r.length <= cols) ?? clipWithSuffix(head, ` · ${fb} noted`, cols)
 }
 
 /**

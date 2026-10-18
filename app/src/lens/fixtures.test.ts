@@ -39,7 +39,7 @@ describe('screenshot fixtures', () => {
 
     const lobby = r('lobby')
     expect(lobby.key).toBe('lobbyI')
-    expect(body(lobby, 'insight')).toContain('★ Gus ready to test')
+    expect(body(lobby, 'insight')).toContain('★ Gus: review for next rank')
     expect(body(lobby, 'body').split('\n').filter(l => /^\d /.test(l))).toHaveLength(3)
 
     const planning = r('planning')
@@ -71,7 +71,7 @@ describe('screenshot fixtures', () => {
     expect(body(r('brief'), 'hdr')).toBe('1/2 swipe · Priya Rao')
 
     const wrap = all(r('wrapup'))
-    for (const s of ['40 min · 6 drills · 9/12 got feedback', 'Missed: Eli, Mia, Leo', '7 agent actions · 3 to review', '★ Jake back after 3 missed', 'first next class']) expect(wrap).toContain(s)
+    for (const s of ['40 min · 6 drills · 9/12 with a note', 'Missed: Eli, Mia, Leo', '7 agent actions · 3 to review', '★ Jake back after 3 missed', 'first next class']) expect(wrap).toContain(s)
   })
 
   it('names are validated and the no-op API never settles', async () => {

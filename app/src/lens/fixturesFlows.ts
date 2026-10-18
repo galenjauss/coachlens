@@ -94,7 +94,7 @@ const CLASSES: ClassOption[] = [
 const insight = (id: string, title: string, detail: string, studentId: string, studentName: string, actionLabel: string, createdAt: number): Insight => ({
   id, kind: id.slice(2), studentId, studentName, classId: 'c-tue', title, detail, urgency: 'high', status: 'new', createdAt: new Date(createdAt).toISOString(), actionLabel,
 })
-const GUS_READY = insight('i-ready_to_test', 'Gus ready to test', '120 days at green belt · no open issues', 's-gus', 'Gus Hill', 'Plan test', FLOW_NOW - 3 * 60 * MIN)
+const GUS_READY = insight('i-rank_review', 'Gus: review for next rank', '120 days at green belt · no open issues', 's-gus', 'Gus Hill', 'Review rank', FLOW_NOW - 3 * 60 * MIN)
 const JAKE_BACK = insight('i-attendance_back', 'Jake\'s back after 3 missed', 'Welcome him back · missed 3 in a row', 's-jake', 'Jake Ross', 'Email family', FLOW_NOW - 20 * MIN)
 
 const run = (agent: string, summary: string, status = 'ok'): UtteranceRun => ({ agent, summary, status, createdAt: new Date(FLOW_NOW).toISOString() })
@@ -148,7 +148,7 @@ function lobbyFlow(): F[] {
   const withInsight = apply(lobby, { type: 'insightsLoaded', scope: 'lobby', insights: [GUS_READY], classId: 'c-tue' })
   return [
     ['Lobby: class, start time, plan length, first drills', 900, lobby],
-    ['Lobby with the agents\' top insight: ★ Gus ready to test', 2000, withInsight],
+    ['Lobby with the agents\' top insight: ★ Gus: review for next rank', 2000, withInsight],
   ]
 }
 

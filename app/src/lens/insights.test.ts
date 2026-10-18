@@ -47,7 +47,7 @@ describe('mid-class insight banner', () => {
     expect(r.state.insightUnseen.map(i => i.id)).toEqual(['a'])
     p = render(r.state, 0)
     expect(txt(p, 'hdr')).toBe(render(peekState, 0).texts[0]!.content) // the class header is back
-    expect(txt(p, 'next')).toBe(`> Next feedback: Priya (guard) ${INSIGHT_GLYPH}1`)
+    expect(txt(p, 'next')).toBe(`> Next to note: Priya (guard) ${INSIGHT_GLYPH}1`)
   })
 
   it('a poll never re-shows a known item; low urgency and handled items never banner', () => {
@@ -192,7 +192,7 @@ describe('end-of-class summary', () => {
     expect(st.wrapupInsight?.id).toBe('now') // this session's first, even when an older one is high
     const p = render(st, 0)
     expect(txt(p, 'body')!.split('\n')).toEqual([
-      '40 min · 6 drills · 9/12 got feedback',
+      '40 min · 6 drills · 9/12 with a note',
       'Missed: Jake, Mia, Leo',
       '7 agent actions · 3 to review',
       `${INSIGHT_GLYPH} Leo hit a new PR`,
@@ -202,7 +202,7 @@ describe('end-of-class summary', () => {
   })
   it('without an insight it is 3 rows; nobody missed means tap is just done', () => {
     const p = render({ ...atWrap, wrapup: { ...wrapup, missed: [], drillsRun: 1, agentActions: 1 } }, 0)
-    expect(txt(p, 'body')).toBe('40 min · 1 drill · 9/12 got feedback\nMissed: nobody!\n1 agent action · 3 to review')
+    expect(txt(p, 'body')).toBe('40 min · 1 drill · 9/12 with a note\nMissed: nobody!\n1 agent action · 3 to review')
     expect(txt(p, 'foot')).toBe('tap: done')
   })
   it('tap = remind (missed first next class) and home; double-tap = home; insights are cleared', () => {
@@ -221,15 +221,15 @@ describe('end-of-class summary', () => {
     for (const n of [['A'], ['Jake', 'Mia', 'Leo', 'Ann'], ['Christopher', 'Bo']]) expect(remindHint(n).length).toBeLessThanOrEqual(colsFor(576))
     expect(fitNames(['Jake', 'Mia', 'Leo'], 12)).toBe('Jake, Mia +1')
   })
-  it('row 1 never cuts the feedback count: "fed back" when "got feedback" does not fit, then the time is cut', () => {
+  it('row 1 never cuts the feedback count: "noted" when "with a note" does not fit, then the time is cut', () => {
     const big = { ...wrapup, minutes: 120, drillsRun: 12, coverage: { covered: 10, present: 12 } }
-    expect(`120 min · 12 drills · 10/12 got feedback`.length).toBeGreaterThan(colsFor(576, true))
-    expect(summaryRow(big)).toBe('120 min · 12 drills · 10/12 fed back')
-    expect(txt(render({ ...atWrap, wrapup: big }, 0), 'body')!.split('\n')[0]).toBe('120 min · 12 drills · 10/12 fed back')
-    expect(summaryRow(wrapup)).toBe('40 min · 6 drills · 9/12 got feedback')
+    expect(`120 min · 12 drills · 10/12 with a note`.length).toBeGreaterThan(colsFor(576, true))
+    expect(summaryRow(big)).toBe('120 min · 12 drills · 10/12 noted')
+    expect(txt(render({ ...atWrap, wrapup: big }, 0), 'body')!.split('\n')[0]).toBe('120 min · 12 drills · 10/12 noted')
+    expect(summaryRow(wrapup)).toBe('40 min · 6 drills · 9/12 with a note')
     const huge = { ...wrapup, minutes: 1200, drillsRun: 120, coverage: { covered: 100, present: 120 } }
-    expect(summaryRow(huge, 30)).toBe('1200 min… · 100/120 fed back') // drills cut at a word boundary, count intact
-    expect(summaryRow(huge, 30).endsWith(' · 100/120 fed back')).toBe(true)
+    expect(summaryRow(huge, 30)).toBe('1200 min… · 100/120 noted') // drills cut at a word boundary, count intact
+    expect(summaryRow(huge, 30).endsWith(' · 100/120 noted')).toBe(true)
     expect(summaryRow(huge, 30).length).toBeLessThanOrEqual(30)
   })
   it('a late wrap-up insight after the coach left the screen is ignored', () => {

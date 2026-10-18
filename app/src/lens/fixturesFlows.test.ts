@@ -22,7 +22,7 @@ describe('video flow fixtures', () => {
 
   it('the flows show the scripted moments through the real reducer and render', () => {
     expect(text(frame('homeFC'), 'hdr')).toBe('COACHLENS (3/4)')
-    expect(text(frame('lobbyFB'), 'insight')).toContain('★ Gus ready to test')
+    expect(text(frame('lobbyFB'), 'insight')).toContain('★ Gus: review for next rank')
     expect(text(frame('planningFD'), 'hdr')).toBe('● Planning · 0:15')
     expect(text(frame('planningFD'), 'body')).toContain('add partner sparring')
     expect(text(frame('planResultFC'), 'hdr')).toBe('PLAN UPDATED')
