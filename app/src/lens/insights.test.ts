@@ -121,6 +121,33 @@ describe('mid-class insight banner', () => {
     expect(reduce(planning, polled(ins('a'))).state).toBe(planning)
   })
 
+  it('an insight polled in during roll call becomes the banner when the tap leaves for peek', () => {
+    const cov = { covered: 0, present: 12 }
+    const sending = { ...peekState, screen: 'sending' as const, active: null, pending: { mode: 'attendance' as const, returnTo: 'peek' as const, viaLongPress: false, at: 0 } }
+    const res = { utteranceId: 'u', transcript: 'x', cardLines: ['12 present'], coverage: cov, nextStudent: null, disambiguation: null }
+    const roll = run(sending, { type: 'utteranceResult', res }, polled(ins('back', { kind: 'returning_student', title: "Jake's back" })))
+    expect(roll.state.screen).toBe('attendanceDone')
+    expect(roll.state.insightBanner).toBeNull()
+    expect(roll.state.insightUnseen.map(i => i.id)).toEqual(['back'])
+    const r = reduce(roll.state, { type: 'tap', now: SESSION_START })
+    expect(r.state).toMatchObject({ screen: 'peek', insightUnseen: [] })
+    expect(r.state.insightBanner?.id).toBe('back')
+    expect(r.effects).toContainEqual({ type: 'expireBanner', ms: INSIGHT_BANNER_MS })
+    expect(r.effects).toContainEqual(expect.objectContaining({ type: 'logDrill', event: 'start' }))
+  })
+
+  it('dismissing the card to peek promotes a pending high insight; with none pending it is a plain peek', () => {
+    const card: Card = { lines: ['✓ Jake · present'], transcript: 'mark Jake present', utteranceId: 'u', runs: null, runsFinal: false, page: 0 }
+    const onCard = run({ ...peekState, screen: 'card', card }, polled(ins('a'))).state
+    const r = reduce(onCard, { type: 'tap' })
+    expect(r.state).toMatchObject({ screen: 'peek', card: null, insightUnseen: [] })
+    expect(r.state.insightBanner?.id).toBe('a')
+    expect(r.effects).toEqual([{ type: 'expireBanner', ms: INSIGHT_BANNER_MS }])
+    const plain = reduce({ ...peekState, screen: 'card', card }, { type: 'tap' })
+    expect(plain.state).toMatchObject({ screen: 'peek', insightBanner: null })
+    expect(plain.effects).toEqual([])
+  })
+
   it('a new session and the end of class clear every insight surface', () => {
     const st = run(peekState, polled(ins('a'), ins('b'))).state
     const started = run({ ...st, session: null }, { type: 'sessionStarted', res: { sessionId: 's2', startedAt: '2026-10-20T18:00:00Z', coverage: { covered: 0, present: 0 }, nextStudent: null }, resumed: true, now: 0 }).state

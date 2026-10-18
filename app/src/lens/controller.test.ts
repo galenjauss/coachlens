@@ -10,7 +10,7 @@ import { RUNS_MAX_MS, RUNS_POLL_MS } from './agentRuns'
 import { AudioInputSource } from '@evenrealities/even_hub_sdk'
 import { attendanceChanged, KEEP_WARM_MS, MIC_FALLBACK_MS, MIC_METER_MS, OUTBOX_RETRY_MS, startLens, STOP_DEBOUNCE_MS, TICK_MS, type LensBridge, type LensHandle } from './controller'
 import { NetworkError, TRANSCRIBE_TIMEOUT_MS } from '../core/api'
-import { INSIGHT_AFTER_ATTENDANCE_MS, INSIGHT_BANNER_MS, INSIGHT_GLYPH, INSIGHT_POLL_MS, PLAN_CHUNK_MS, PLAN_MAX_MS, QUEUED_GLYPH } from '../config'
+import { INSIGHT_AFTER_ATTENDANCE_MS, INSIGHT_AFTER_ATTENDANCE_LATE_MS, INSIGHT_BANNER_MS, INSIGHT_GLYPH, INSIGHT_POLL_MS, PLAN_CHUNK_MS, PLAN_MAX_MS, QUEUED_GLYPH } from '../config'
 import { PLAN_TRANSCRIBE_TIMEOUT_MS } from './planListen'
 import { STATUS_MS } from './reducer'
 
@@ -1075,8 +1075,11 @@ describe('lens controller · insight poll right after attendance changes', () =>
   }
   const sessionCalls = (fn: ReturnType<typeof vi.fn>) => fn.mock.calls.filter(c => (c[0] as { sessionId?: string }).sessionId).length
 
-  it('a voice "mark present" polls insights once 1.5 s later, then the regular 30 s cadence resumes', async () => {
-    const insights = vi.fn(async (p: { sessionId?: string }) => ({ insights: p.sessionId ? [back] : [] }))
+  it('a voice "mark present" polls insights 1.5 s and 5 s later, then the regular 30 s cadence resumes', async () => {
+    expect(INSIGHT_AFTER_ATTENDANCE_LATE_MS).toBe(5000)
+    let calls = 0
+    // The detector is slow: its row is not there at the first early poll, only at the second.
+    const insights = vi.fn(async (p: { sessionId?: string }) => ({ insights: p.sessionId && ++calls > 1 ? [back] : [] }))
     const utterance = vi.fn(async () => res({ cardLines: ['✓ Jake marked present'], attendanceChanged: true }))
     const b = await toPeek(fakeApi({ insights, utterance }))
     await say(b)
@@ -1086,10 +1089,17 @@ describe('lens controller · insight poll right after attendance changes', () =>
     expect(sessionCalls(insights)).toBe(0)
     await vi.advanceTimersByTimeAsync(100)
     expect(sessionCalls(insights)).toBe(1)
-    await vi.advanceTimersByTimeAsync(INSIGHT_POLL_MS - 100)
-    expect(sessionCalls(insights)).toBe(1) // no extra poll in between
+    b.emit(tap); await flush() // card → peek: nothing to promote yet
+    expect(b.sent.join('\n')).not.toContain("Jake's back")
+    await vi.advanceTimersByTimeAsync(INSIGHT_AFTER_ATTENDANCE_LATE_MS - INSIGHT_AFTER_ATTENDANCE_MS - 100)
+    expect(sessionCalls(insights)).toBe(1)
     await vi.advanceTimersByTimeAsync(100)
-    expect(sessionCalls(insights)).toBe(2)
+    expect(sessionCalls(insights)).toBe(2) // the second early poll finds it: the banner shows on peek
+    expect(b.sent.join('\n')).toContain("Jake's back after 2 missed")
+    await vi.advanceTimersByTimeAsync(INSIGHT_AFTER_ATTENDANCE_MS + INSIGHT_POLL_MS - INSIGHT_AFTER_ATTENDANCE_LATE_MS - 100)
+    expect(sessionCalls(insights)).toBe(2) // no extra poll in between
+    await vi.advanceTimersByTimeAsync(100)
+    expect(sessionCalls(insights)).toBe(3)
   })
 
   it('any other reply adds no poll: the first one still comes 30 s after class start', async () => {

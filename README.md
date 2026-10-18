@@ -194,7 +194,7 @@ Plain speech, no syntax. The transcript shows first, the agent card confirms, an
 
 ### Execution
 *"Can a judge put on G2 and experience the core idea right now?"*
-Yes: the loaner is paired at the table, and the core loop (tap, speak, card) runs on real G2 hardware. 500+ automated tests (shared, api, app) plus live router evals: 43/44 cases pass on the live model across the three modes.
+Yes: the loaner is paired at the table, and the core loop (tap, speak, card) runs on real G2 hardware. 668 automated tests (shared, api, app) plus live router evals: 43/44 cases pass on the live model across the three modes.
 
 ## Policy and security
 
@@ -206,7 +206,7 @@ Yes: the loaner is paired at the table, and the core loop (tap, speak, card) run
 
 ## Tests
 
-<<TEST_COUNTS>>
+668 automated tests, all passing with `npm test` at the repo root: 13 in shared, 279 in api, 376 in app.
 
 ## Research
 

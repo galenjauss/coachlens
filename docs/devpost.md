@@ -35,7 +35,7 @@ Three modes run on one engine: martial arts, personal training and tutoring.
 - **API:** Hono on Vercel Fluid Compute, Neon Postgres via Drizzle. OpenAI gpt-4o-transcribe with roster names and custom vocabulary as hints. A Claude Haiku 5.5 router turns the transcript into typed intents; Claude Sonnet 5.5 writes emails, report cards and plans through the AI SDK. Insights, briefs, metrics and the summary are deterministic code with no LLM. Resend sends email. A daily AI budget cap fails soft.
 - **Speed:** transcript-first display, dual-mic start (glasses and phone together), keep-warm pings during a session.
 - **Safety:** per-agent autonomy (emails default to Review), billing is flags only, injuries are observations, demo email goes to one owned inbox.
-- **Process:** subagent-driven development in Claude Code, with an independent review per task, live router evals, and 500+ automated tests (shared, api, app).
+- **Process:** subagent-driven development in Claude Code, with an independent review per task, live router evals, and 668 automated tests (shared, api, app).
 
 ## Challenges
 
@@ -98,7 +98,7 @@ No syntax: "Dee rolled her ankle and sat out the last drill" just works, and so 
 
 ### Execution
 *"Can a judge put on G2 and experience the core idea right now?"*
-Yes, on the loaner, paired at the table. Hardware-tested on a real G2: the tap-speak-card loop, the per-second timer, the nod, the phone-mic fallback. 500+ automated tests (shared, api, app) plus live router evals across all three modes: 43/44 cases pass on the live model.
+Yes, on the loaner, paired at the table. Hardware-tested on a real G2: the tap-speak-card loop, the per-second timer, the nod, the phone-mic fallback. 668 automated tests (shared, api, app) plus live router evals across all three modes: 43/44 cases pass on the live model.
 
 ## Built with
 

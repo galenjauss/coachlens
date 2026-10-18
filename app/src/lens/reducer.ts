@@ -290,7 +290,8 @@ export function reduce(s: LensState, e: LensEvent): R {
       }
       return done(s)
     case 'attendanceDone':
-      return e.type === 'tap' ? startDrill(s, 0, now) : done(s)
+      // An insight polled in during roll call waited unseen; leaving for peek gives it the banner.
+      return e.type === 'tap' ? promoteBanner(startDrill(s, 0, now)) : done(s)
     case 'dark':
       // The lens is off by choice: a tap only wakes it (never records). Before class any gesture wakes
       // it (never exits); during class the other gestures work as in peek.
@@ -340,8 +341,8 @@ export function reduce(s: LensState, e: LensEvent): R {
       return e.type === 'doubleTap' ? peek(s) : done(s)
     case 'card':
       // The card stays until tapped away; double-tap undoes.
-      if (e.type === 'doubleTap' && s.card?.utteranceId) return peek({ ...s, card: null }, 'Undone', { type: 'undo', utteranceId: s.card.utteranceId })
-      if (e.type === 'tap' || e.type === 'doubleTap') return peek({ ...s, card: null })
+      if (e.type === 'doubleTap' && s.card?.utteranceId) return promoteBanner(peek({ ...s, card: null }, 'Undone', { type: 'undo', utteranceId: s.card.utteranceId }))
+      if (e.type === 'tap' || e.type === 'doubleTap') return promoteBanner(peek({ ...s, card: null }))
       if ((e.type === 'swipeDown' || e.type === 'swipeUp') && s.card) {
         // Swipe pages through a transcript longer than one page.
         const last = cardPageCount(s.card) - 1
@@ -400,6 +401,16 @@ export function remindedStatus(names: string[]): string {
 /** The insight detail screen (opening it counts as seeing it). */
 function openInsight(s: LensState, insight: Insight): R {
   return done({ ...s, screen: 'insight', insightDetail: insight, status: null, darkFrom: null })
+}
+
+/**
+ * Back on peek: the first high-urgency insight that arrived while another screen was up (roll call, the card)
+ * becomes the banner, if none is showing.
+ */
+function promoteBanner(r: R): R {
+  const [u, ...rest] = r.state.insightUnseen
+  if (r.state.screen !== 'peek' || r.state.insightBanner || !u || u.urgency !== 'high') return r
+  return done({ ...r.state, insightBanner: u, insightUnseen: rest }, ...r.effects, { type: 'expireBanner', ms: INSIGHT_BANNER_MS })
 }
 
 /** The banner's time is up (or the coach moved on): it waits behind the `💡N` suffix until seen. */

@@ -110,9 +110,20 @@ export async function maybeLazyRun(deps: Deps): Promise<boolean> {
   return true
 }
 
+const attendanceRun = (s: { sessionId: string; classId: string; forDate: string }): RunOptions =>
+  ({ trigger: 'attendance', sessionId: s.sessionId, classId: s.classId, today: s.forDate, only: ['returning_student'] })
+
 /** Attendance changed in a live session: only returning_student, in the background. */
 export function insightsOnAttendance(deps: Deps, s: { sessionId: string; classId: string; forDate: string }) {
-  safeDefer(deps, 'insights', runInsights(deps, { trigger: 'attendance', sessionId: s.sessionId, classId: s.classId, today: s.forDate, only: ['returning_student'] }))
+  safeDefer(deps, 'insights', runInsights(deps, attendanceRun(s)))
+}
+
+/**
+ * Attendance changed by voice: the returning_student row is written before the reply goes out, so the lens's
+ * early poll finds it. Its actions (an auto-mode email draft) stay in the background; a failure is logged, never thrown.
+ */
+export async function detectOnAttendance(deps: Deps, s: { sessionId: string; classId: string; forDate: string }): Promise<void> {
+  await runInsights(deps, { ...attendanceRun(s), deferActions: true }).catch(e => console.error('[insights]', e))
 }
 
 /** Once 70% of planned class time has passed, flags present students with no note yet (one check per session). */

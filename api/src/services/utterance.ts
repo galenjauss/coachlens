@@ -17,7 +17,7 @@ import { applyRank, recordMetric } from './metrics'
 import { isGradeMetric, metricPhrase, normalizeKey, shortDate } from '../logic/metrics'
 import { localDate } from '../logic/dates'
 import { coverageAndNext, loadSessionContext, markPresent, type SessionContext } from './context'
-import { insightsOnAttendance } from './insights'
+import { detectOnAttendance } from './insights'
 import { answerQuestion } from '../agents/answer'
 
 const DAY = 86_400_000
@@ -96,10 +96,11 @@ async function applyRollCall(deps: Deps, ctx: SessionContext, utteranceId: strin
       .values(ctx.roster.map(s => ({ sessionId: ctx.sessionId, studentId: s.id, status: absent.has(s.id) ? 'absent' as const : 'present' as const, source: 'voice' as const })))
       .onConflictDoUpdate({ target: [attendance.sessionId, attendance.studentId], set: { status: sql`excluded.status`, source: 'voice' } })
   }
-  insightsOnAttendance(deps, ctx)
   await withRun(deps, run, async () => ({
     result: true, summary: `${ctx.roster.length - absent.size} present, absent: ${[...absent.values()].join(', ') || 'none'}`, reason: parsed.kind === 'present' ? 'voice roll call (named present)' : 'voice roll call',
   }))
+  // Before the reply: the lens polls insights right after it, and the returning-student row must be there.
+  await detectOnAttendance(deps, ctx)
   return { kind: 'attendance', present: ctx.roster.length - absent.size, absentNames: [...absent.values()] }
 }
 
@@ -250,7 +251,7 @@ async function applyAttendanceIntent(deps: Deps, ctx: SessionContext, utteranceI
     })
     actions.push({ kind: 'marked', name: first(m.student.name), status })
   }
-  if (status === 'present' && actions.length) insightsOnAttendance(deps, ctx)
+  if (status === 'present' && actions.length) await detectOnAttendance(deps, ctx)
   return { actions, disambiguation: null }
 }
 

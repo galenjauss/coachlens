@@ -37,5 +37,7 @@ export const INSIGHT_GLYPH: string = '💡'
 export const INSIGHT_POLL_MS: number = 30_000
 /** After a reply that changed attendance (roll call, "mark present"), one insight poll this soon (the returning-student 💡). */
 export const INSIGHT_AFTER_ATTENDANCE_MS: number = 1_500
+/** …and a second one this soon after the reply, in case the detector was still writing at the first. */
+export const INSIGHT_AFTER_ATTENDANCE_LATE_MS: number = 5_000
 /** A new high-urgency insight shows atop peek this long, then collapses to the status-row suffix. */
 export const INSIGHT_BANNER_MS: number = 8_000

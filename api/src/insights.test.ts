@@ -300,14 +300,17 @@ describe('insights agent', () => {
     expect(await t.insightRuns('session_end')).toHaveLength(1)
   })
 
-  it('a voice roll call also triggers returning_student', async () => {
+  it('a voice roll call writes the returning_student row before it replies (the lens polls right after)', async () => {
     const t = await setup()
     const { sessionId } = await (await t.post('/v1/sessions', { classId: t.kids.id })).json() as { sessionId: string }
     const form = new FormData()
     form.set('sessionId', sessionId); form.set('mode', 'attendance'); form.set('text', 'everyone is here')
     expect((await t.app.request('/v1/utterance', { method: 'POST', headers: { Authorization: t.h.Authorization }, body: form })).status).toBe(200)
-    await t.deps.flush()
+    // No flush: the detector ran inside the request, so the row and the lens view already have it.
     expect((await t.byKind('returning_student')).map(r => r.studentId)).toEqual([t.jake.id])
+    expect((await t.get(`?sessionId=${sessionId}`)).body!.map(i => i.kind)).toContain('returning_student')
+    await t.deps.flush()
+    expect(await t.byKind('returning_student')).toHaveLength(1)
   })
 
   it('at 70% of class time, present students with no note yet get a high no_feedback item (once)', async () => {

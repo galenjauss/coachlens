@@ -1,5 +1,5 @@
 import { ImuReportPace, OsEventTypeList, type EvenAppBridge } from '@evenrealities/even_hub_sdk'
-import { INSIGHT_AFTER_ATTENDANCE_MS, INSIGHT_POLL_MS, MIC_DUAL_START } from '../config'
+import { INSIGHT_AFTER_ATTENDANCE_MS, INSIGHT_AFTER_ATTENDANCE_LATE_MS, INSIGHT_POLL_MS, MIC_DUAL_START } from '../config'
 import { ApiError, NetworkError, TRANSCRIBE_TIMEOUT_MS, type Api } from '../core/api'
 import { MAX_RECORD_MS, Recorder, type MicSource, type StopResult } from '../core/audio'
 import { bus } from '../core/bus'
@@ -88,7 +88,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
   const glasses = new Glasses(d.bridge)
   const recorder = new Recorder(d.bridge, { dual: d.micDualStart ?? MIC_DUAL_START })
   const detector = new NodDetector(d.nod)
-  const timers = { status: slot(), timerEnded: slot(), recordMax: slot(), micFallback: slot(), micMeter: slot(), think: slot(), keepWarm: slot(), outboxRetry: slot(), insightPoll: slot(), banner: slot() }
+  const timers = { status: slot(), timerEnded: slot(), recordMax: slot(), micFallback: slot(), micMeter: slot(), think: slot(), keepWarm: slot(), outboxRetry: slot(), insightPoll: slot(), insightPollLate: slot(), banner: slot() }
   const online = () => (d.isOnline ? d.isOnline() : !(typeof navigator !== 'undefined' && navigator.onLine === false))
   /** Flushes reporting on the note just recorded; background retries wait so they never take its reply. */
   let inFlight = 0
@@ -147,18 +147,20 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
   /** While class runs (and the app is in front), poll this session's high-urgency insights every INSIGHT_POLL_MS. */
   function insightPoll(): void {
     const sessionId = state.session?.id
-    if (!sessionId || classOver() || suspended || exited || insightsMissingFor === sessionId) return timers.insightPoll.clear()
+    if (!sessionId || classOver() || suspended || exited || insightsMissingFor === sessionId) { timers.insightPollLate.clear(); return timers.insightPoll.clear() }
     if (timers.insightPoll.active) return
     timers.insightPoll.set(INSIGHT_POLL_MS, () => { void pollInsightsOnce(sessionId) })
   }
   /**
    * A reply that changed attendance: one poll INSIGHT_AFTER_ATTENDANCE_MS from now in place of the pending regular one
-   * (which re-arms after it), so a returning-student banner lands within seconds.
+   * (which re-arms after it), so a returning-student banner lands within seconds; and a second one at
+   * INSIGHT_AFTER_ATTENDANCE_LATE_MS in case the detector had not written its row by the first (it leaves the cadence alone).
    */
   function insightPollSoon(): void {
     const sessionId = state.session?.id
     if (!sessionId || classOver() || suspended || exited || insightsMissingFor === sessionId) return
     timers.insightPoll.set(INSIGHT_AFTER_ATTENDANCE_MS, () => { void pollInsightsOnce(sessionId) })
+    timers.insightPollLate.set(INSIGHT_AFTER_ATTENDANCE_LATE_MS, () => { void pollInsightsOnce(sessionId) })
   }
   async function pollInsightsOnce(sessionId: string): Promise<void> {
     if (state.session?.id !== sessionId || classOver() || suspended || exited) return
@@ -487,7 +489,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
         return
       case 'exit':
         exited = true
-        timers.keepWarm.clear(); timers.outboxRetry.clear(); timers.insightPoll.clear()
+        timers.keepWarm.clear(); timers.outboxRetry.clear(); timers.insightPoll.clear(); timers.insightPollLate.clear()
         await setImu(false)
         await d.bridge.shutDownPageContainer(1)
         return
@@ -513,7 +515,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
       }
       timers.keepWarm.clear()
       timers.outboxRetry.clear()
-      timers.insightPoll.clear()
+      timers.insightPoll.clear(); timers.insightPollLate.clear()
       return
     }
     const le = toLensEvent(e)
