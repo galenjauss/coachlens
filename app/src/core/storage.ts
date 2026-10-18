@@ -1,5 +1,5 @@
 export interface KV { get(k: string): Promise<string | null>; set(k: string, v: string): Promise<void> }
-export const KEYS = { token: 'matside.token', outbox: 'matside.outbox', firstRunSeen: 'matside.firstRun', session: 'matside.session' } as const
+export const KEYS = { token: 'matside.token', outbox: 'matside.outbox', outboxFailed: 'matside.outbox.failed', displayMode: 'coachlens.displayMode', firstRunSeen: 'matside.firstRun', session: 'matside.session' } as const
 
 export function memoryKV(): KV {
   const m = new Map<string, string>()

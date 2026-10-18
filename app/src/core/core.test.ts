@@ -50,31 +50,35 @@ describe('outbox', () => {
     const r = await ob.flush(async i => { calls.push(i.id); if (i.id === a.id) throw new BadResponseError(); return res(i.id) })
     expect(r.delivered.has(a.id)).toBe(true)
     expect(r.results.has(a.id)).toBe(false)
-    expect(r.dropped.has(a.id)).toBe(false)
+    expect(r.failed.has(a.id)).toBe(false)
     expect(r.results.has(b.id)).toBe(true) // the queue carried on
     expect(r.remaining).toBe(0)
     await ob.flush(async i => { calls.push(i.id); return res(i.id) })
     expect(calls).toEqual([a.id, b.id]) // a was sent exactly once
   })
-  it('drops items on 4xx and records the status', async () => {
+  it('a permanent 4xx moves the item to the failed store with its status and reason (kept, not deleted)', async () => {
     const ob = new Outbox(memoryKV())
     const a = await ob.enqueue(form)
     const r = await ob.flush(async () => { throw new ApiError(422, 'empty_transcript') })
-    expect(r.dropped.get(a.id)).toBe(422)
+    expect(r.failed.get(a.id)).toMatchObject({ status: 422, reason: 'Nothing was heard in this recording' })
     expect(r.remaining).toBe(0)
+    expect(r.failedCount).toBe(1)
+    expect((await ob.failed()).map(f => f.id)).toEqual([a.id])
   })
-  it('gives up after 5 server errors', async () => {
-    const ob = new Outbox(memoryKV())
+  it('never gives up on server errors: still queued after 5 x 500 (with backoff between)', async () => {
+    let t = 1_000
+    const ob = new Outbox(memoryKV(), () => t)
     await ob.enqueue(form)
-    for (let i = 0; i < 5; i++) await ob.flush(async () => { throw new ApiError(500, 'x') })
-    expect((await ob.list()).length).toBe(0)
+    for (let i = 0; i < 5; i++) { await ob.flush(async () => { throw new ApiError(500, 'x') }); t += 10 * 60_000 }
+    expect((await ob.list()).length).toBe(1)
+    expect((await ob.failed()).length).toBe(0)
   })
   it('keeps items on 429', async () => {
     const ob = new Outbox(memoryKV())
     await ob.enqueue(form)
     const r = await ob.flush(async () => { throw new ApiError(429, 'rate_limited') })
     expect(r.remaining).toBe(1)
-    expect(r.dropped.size).toBe(0)
+    expect(r.failed.size).toBe(0)
     expect((await ob.list())[0]!.attempts).toBe(1)
   })
   it('keeps items on 401', async () => {
@@ -82,7 +86,7 @@ describe('outbox', () => {
     await ob.enqueue(form)
     const r = await ob.flush(async () => { throw new ApiError(401, 'unauthorized') })
     expect(r.remaining).toBe(1)
-    expect(r.dropped.size).toBe(0)
+    expect(r.failed.size).toBe(0)
   })
   it('keeps an item enqueued while a flush is awaiting a slow send', async () => {
     const ob = new Outbox(memoryKV())
@@ -114,12 +118,14 @@ describe('outbox', () => {
     const [a, b] = await Promise.all([ob.enqueue(form), ob.enqueue({ ...form, text: 'two' })])
     expect((await ob.list()).map(i => i.id)).toEqual([a.id, b.id])
   })
-  it('drops a poison item after 5 unknown errors and proceeds to the next', async () => {
-    const ob = new Outbox(memoryKV())
+  it('sets a poison item aside (failed store, kept) after 5 unknown errors and proceeds to the next', async () => {
+    let t = 1_000
+    const ob = new Outbox(memoryKV(), () => t)
     const a = await ob.enqueue(form)
     const b = await ob.enqueue({ ...form, text: 'two' })
-    for (let i = 0; i < 5; i++) await ob.flush(async () => { throw new Error('zod blew up') })
+    for (let i = 0; i < 5; i++) { await ob.flush(async () => { throw new Error('zod blew up') }); t += 10 * 60_000 }
     expect((await ob.list()).map(i => i.id)).toEqual([b.id])
+    expect((await ob.failed()).map(i => i.id)).toEqual([a.id])
     const r = await ob.flush(async i => res(i.id))
     expect(r.results.has(b.id)).toBe(true)
     expect(a.id).not.toBe(b.id)
@@ -170,7 +176,7 @@ describe('api bad responses', () => {
     const api = mk(new Response('<html>portal</html>', { status: 200, headers: { 'content-type': 'text/html' } }))
     const r = await ob.flush(i => api.utterance({ sessionId: i.form.sessionId, drillId: i.form.drillId, mode: i.form.mode, text: i.form.text, audio: null }))
     expect(r.delivered.has(a.id)).toBe(false)
-    expect(r.dropped.has(a.id)).toBe(false)
+    expect(r.failed.has(a.id)).toBe(false)
     expect((await ob.list()).map(i => [i.id, i.attempts])).toEqual([[a.id, 0]])
   })
   it('a JSON 2xx with the wrong shape is still BadResponseError (delivered): the outbox removes it', async () => {

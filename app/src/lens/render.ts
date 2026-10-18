@@ -77,6 +77,9 @@ export const SORTING_LINE = '… sorting'
 /** Compact status-row suffix while notes wait in the outbox: ` ↑ 2 queued` ('' when none). */
 export const queuedSuffix = (n: number): string => (n > 0 ? ` ${QUEUED_GLYPH} ${n} queued` : '')
 
+/** Status-row suffix for notes the server rejected (kept on the phone's Unsent notes): ` ! 1 failed`. */
+export const failedSuffix = (n: number): string => (n > 0 ? ` ! ${n} failed` : '')
+
 /** Compact status-row suffix for insights surfaced but not seen yet: ` ★1` ('' when none). */
 export const insightSuffix = (n: number): string => (n > 0 ? ` ${INSIGHT_GLYPH}${n}` : '')
 
@@ -89,8 +92,8 @@ export function insightRows(i: Pick<Insight, 'title' | 'detail'>, cols = FULL, d
  * Status-row lines with the queued suffix: appended to the last line when it fits, else on a spare
  * row when `rows` allows one, else the last line is cut at a word boundary to make room.
  */
-function withQueued(lines: string[], n: number, rows = 1, cols = FULL): string[] {
-  return withSuffix(lines, queuedSuffix(n), rows, cols)
+function withQueued(lines: string[], n: number, rows = 1, cols = FULL, failed = 0): string[] {
+  return withSuffix(lines, queuedSuffix(n) + failedSuffix(failed), rows, cols)
 }
 
 /** `withQueued` for any suffix (queued count, insight count, or both). */
@@ -125,7 +128,7 @@ function home(s: LensState): PageSpec {
   const shownId = s.selectedClassId ?? td?.classId
   const shown = s.classes.find(c => c.id === shownId)
   const pos = n > 1 && shown ? ` (${s.classes.indexOf(shown) + 1}/${n})` : ''
-  const footer = withQueued([s.status ?? (n > 1 ? 'swipe: change class · 2×: exit' : '2×: exit')], s.queued)[0]!
+  const footer = withQueued([s.status ?? (n > 1 ? 'swipe: change class · 2×: exit' : '2×: exit')], s.queued, 1, FULL, s.failed)[0]!
   if (s.selectedClassId && shown && td?.classId !== s.selectedClassId) {
     return panel(`COACHLENS${pos}`, `${shown.name}\n${shown.modeLabel}\n\n${s.loadError ? `${s.loadError} · tap to retry` : 'Loading class…'}`, footer)
   }
@@ -185,14 +188,16 @@ function peek(s: LensState, now: number): PageSpec {
   const box = a ? [...(fit.bar ? [bar(barFrac)] : []), ...fit.cues].join('\n') || bar(barFrac) : '> Swipe to pick one'
   const nextY = fit.nextRows === 2 ? PEEK.next2Y : PEEK.next1Y
   const short = s.nextStudent ? `> Next: ${s.nextStudent.name}` : c.nextLine
-  const nextText = s.status ?? (fit.more ? 'swipe: full drill in the deck' : fit.nextRows === 2 ? c.nextLine : short)
+  // One short state hint (C6) when there is nothing else to say: what tap / swipe / 2× do right now.
+  const hint = s.insightBanner ? BANNER_HINT : PEEK_HINT
+  const nextText = s.status ?? (s.insightBanner ? hint : fit.more ? 'swipe: full drill in the deck' : (fit.nextRows === 2 ? c.nextLine : short) || hint)
   const td = s.today
   // A new insight banner takes the header (★ title) and the drill-name rows (detail) for INSIGHT_BANNER_MS:
   // two container updates in, two out; the clock, box and status row keep running.
   const b = s.insightBanner
   const header = b ? clip(`${INSIGHT_GLYPH} ${b.title}`, FULL) : td ? classHeader(td.theme, td.className, td.modeLabel, FULL) : ''
   const drill = b ? wrap(b.detail, NAME_COLS, 2).join('\n') : a ? wrap(a.drill.name, NAME_COLS, 2).join('\n') : 'No drill running'
-  const suffix = queuedSuffix(s.queued) + insightSuffix(s.insightUnseen.length)
+  const suffix = queuedSuffix(s.queued) + failedSuffix(s.failed) + insightSuffix(s.insightUnseen.length)
   return { key: `peek${fit.nextRows}`, list: null, texts: [
     t(1, 'hdr', 0, 0, W, 40, header),
     t(2, 'drill', 0, 44, PEEK.nameW, 72, drill),
@@ -202,6 +207,10 @@ function peek(s: LensState, now: number): PageSpec {
     t(6, 'next', 0, nextY, W, H - nextY, withSuffix(wrap(nextText, FULL, fit.nextRows), suffix, fit.nextRows).join('\n')),
   ] }
 }
+
+/** Peek state hints (C6): tap always records in class; a banner is opened (and dismissed) by swipe. */
+export const PEEK_HINT = 'tap: note · swipe: deck · 2×: end'
+export const BANNER_HINT = 'tap: note · swipe: open insight'
 
 /** Card pages: the student brief first (when the reply has one), then the transcript pages. */
 export function cardPageCount(cd: Pick<Card, 'transcript' | 'brief'>): number {
@@ -425,12 +434,26 @@ function insightDetail(s: LensState): PageSpec {
   const body = [...wrap(i.title, BOXC, 2), ...wrap(i.detail, BOXC, DETAIL_ROWS - Math.min(2, wrap(i.title, BOXC).length))]
   return panel(clipWithSuffix(`${INSIGHT_GLYPH} INSIGHT${who}`, act.length < FULL - 12 ? act : '', FULL), body.join('\n'), INSIGHT_HINT)
 }
-/** Insight detail footer. */
-export const INSIGHT_HINT = 'tap: got it · swipe: deck · 2×: back'
+/** Insight detail footer (C6: tap records in class; swipe or 2× goes back). */
+export const INSIGHT_HINT = 'tap: note · swipe or 2×: back'
+
+/** F02 undo screen: "Undoing…" until the server answers, then exactly what it reversed, cancelled, or could not. */
+function undoScreen(s: LensState): PageSpec {
+  const u = s.undo
+  if (!u || u.stage === 'pending') return panel('UNDO', 'Undoing…', '')
+  if (u.stage === 'failed') return panel('UNDO', ['Undo failed · tap to retry', ...(u.message ? [u.message] : [])].join('\n'), 'tap: retry · 2×: close')
+  if (u.stage === 'already') return panel('UNDO', 'Already undone', 'tap: close')
+  if (u.stage === 'missing') return panel('UNDO', 'Nothing to undo · note not found', 'tap: close')
+  const changed = [...u.reversed, ...u.cancelled]
+  const header = !u.notReversible.length ? 'UNDONE' : changed.length ? 'PARTLY UNDONE' : 'NOT UNDONE'
+  const lines = [...changed, ...(u.notReversible.length ? ["Can't undo:", ...u.notReversible] : [])]
+  return panel(header, (lines.length ? lines : ['Nothing needed changing']).join('\n'), 'tap: close')
+}
 
 export function render(s: LensState, now: number): PageSpec {
   switch (s.screen) {
     case 'insight': return insightDetail(s)
+    case 'undo': return undoScreen(s)
     case 'dark': return DARK
     case 'peek': return peek(s, now)
     case 'home': return home(s)
@@ -443,7 +466,7 @@ export function render(s: LensState, now: number): PageSpec {
     case 'planResult': return planResult(s)
     case 'wrapup': return wrapup(s)
     case 'firstRun':
-      return panel('WELCOME TO COACHLENS', 'Your drill and timer stay on the lens.\ntap: talk · nod: lens off/on\nswipe: deck · 2×: end class / undo\n\n> Pair on your phone, then tap here.', '')
+      return panel('WELCOME TO COACHLENS', 'Quiet: the lens goes dark when idle.\nnod or tap: wake · tap: note\nswipe: deck · 2×: end class / undo\n\n> Pair on your phone, then tap here.', '')
     case 'attendance': return attendance(s)
     case 'attendanceDone': {
       const drills = s.today?.deck.drills ?? []

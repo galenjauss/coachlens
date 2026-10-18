@@ -6,7 +6,7 @@ export const MAX_RECORD_MS = 20_000
 export const MIN_BYTES = 16000 * 2 * 0.4
 export type MicSource = 'glasses' | 'phone'
 /** Why a recording produced nothing to send. */
-export type EmptyReason = 'no_audio' | 'too_short' | 'not_understood'
+export type EmptyReason = 'no_audio' | 'too_short' | 'not_understood' | 'quiet'
 
 type AudioBridge = { audioControl(isOpen: boolean, source?: AudioInputSource): Promise<boolean> }
 export type StopResult = { wav: Uint8Array; bytes: number } | { wav: null; bytes: number; reason: Exclude<EmptyReason, 'not_understood'> }

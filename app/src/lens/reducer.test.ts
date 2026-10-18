@@ -110,10 +110,10 @@ describe('lens reducer', () => {
     expect(r.effects).toContainEqual({ type: 'startMic' })
   })
 
-  it('tap in dark only wakes the lens to peek: it never records', () => {
+  it('C6: tap in dark during class wakes and records in one action', () => {
     const r = run(inDark(), { type: 'tap' })
-    expect(r.state.screen).toBe('peek')
-    expect(r.effects).not.toContainEqual({ type: 'startMic' })
+    expect(r.state.screen).toBe('recording')
+    expect(r.effects).toContainEqual({ type: 'startMic' })
   })
 
   it('timerEnded peeks with the next drill name (waking a dark lens), or wrap up after the last', () => {
@@ -216,8 +216,8 @@ describe('lens reducer', () => {
     let r = run(inPeek(), { type: 'tap' }, { type: 'tap' }, note(['√ x']))
     r = run(r.state, { type: 'doubleTap' })
     expect(r.effects).toContainEqual({ type: 'undo', utteranceId: 'u1' })
-    expect(r.state).toMatchObject({ screen: 'peek', status: 'Undone' })
-    expect(r.effects).toContainEqual({ type: 'expireStatus', ms: STATUS_MS })
+    expect(r.state).toMatchObject({ screen: 'undo', undo: { stage: 'pending' } }) // F02: no optimistic "Undone"
+    expect(r.state.status).not.toBe('Undone')
   })
 
   it('long press records (from peek or dark) and release sends', () => {

@@ -71,9 +71,11 @@ describe('lens controller', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-20T17:00:00Z')) })
   afterEach(() => { lens?.stop(); lens = null; vi.useRealTimers() })
 
-  async function boot(api = fakeApi(), firstRunSeen = true, opts: { nod?: typeof NOD; micDualStart?: boolean; isOnline?: () => boolean } = {}) {
+  async function boot(api = fakeApi(), firstRunSeen = true, opts: { nod?: typeof NOD; micDualStart?: boolean; isOnline?: () => boolean; displayMode?: 'quiet' | 'standard' } = {}) {
     const kv = memoryKV()
     if (firstRunSeen) await kv.set(KEYS.firstRunSeen, '1')
+    // These flows were written for the persistent display; the C6 quiet timers have their own tests.
+    await kv.set(KEYS.displayMode, opts.displayMode ?? 'standard')
     const b = fakeBridge()
     lens = await startLens({ bridge: b.bridge, api, kv, outbox: new Outbox(kv), nod: opts.nod ?? NOD, micDualStart: opts.micDualStart, isOnline: opts.isOnline })
     await flush()
@@ -259,12 +261,12 @@ describe('lens controller', () => {
     expect(b.sent.at(-1)).toMatch(/COACHLENS/)
   })
 
-  it('tap in dark wakes the lens and does not open the mic', async () => {
+  it('C6: tap in dark during class wakes the lens AND opens the mic (one action)', async () => {
     const b = await toDark()
     b.raw.audioControl.mockClear()
     b.emit(tap); await flush()
-    expect(b.sent.at(-1)).toMatch(/^rebuild:STANCES/)
-    expect(b.raw.audioControl).not.toHaveBeenCalled()
+    expect(b.sent.at(-1)).toContain('speak, then tap')
+    expect(b.raw.audioControl).toHaveBeenCalled()
   })
 
   it('never repaints while dark, even across many ticks', async () => {
@@ -673,7 +675,7 @@ describe('lens controller', () => {
       expect(transcribe).toHaveBeenCalledWith(expect.any(Blob), { sessionId: 's1' })
       expect(utterance).toHaveBeenCalledTimes(1)
       expect(transcribe.mock.invocationCallOrder[0]!).toBeLessThan(utterance.mock.invocationCallOrder[0]!)
-      expect(utterance).toHaveBeenCalledWith({ sessionId: 's1', drillId: null, mode: 'note', text: 'Priya guard up', audio: null })
+      expect(utterance).toHaveBeenCalledWith({ sessionId: 's1', drillId: null, mode: 'note', text: 'Priya guard up', audio: null }, { opId: expect.any(String) })
       const shown = b.sent.slice(n).join('\n')
       expect(shown).toContain('Priya guard up') // before the reply
       expect(shown).toContain('… sorting')
@@ -749,7 +751,7 @@ describe('lens controller', () => {
       await say(b, twenty(pcm()))
       expect(transcribe).not.toHaveBeenCalled()
       expect(firstPayload(utterance).audio).toBeInstanceOf(Blob)
-      expect(b.sent.join('\n')).toContain('Saved · will sync')
+      expect(b.sent.join('\n')).toContain('Saved · offline, will sync')
     })
 
     it('an empty transcript (422) says so and sends nothing', async () => {
@@ -1006,7 +1008,7 @@ describe('lens controller · insights', () => {
   })
   async function toPeek(api: Api) {
     const kv = memoryKV()
-    await kv.set(KEYS.firstRunSeen, '1')
+    await kv.set(KEYS.firstRunSeen, '1'); await kv.set(KEYS.displayMode, 'standard')
     const b = fakeBridge()
     lens = await startLens({ bridge: b.bridge, api, kv, outbox: new Outbox(kv), nod: NOD })
     await flush()
@@ -1019,7 +1021,7 @@ describe('lens controller · insights', () => {
 
   it('the lobby shows the class insight fetched on enter', async () => {
     const insights = vi.fn(async () => ({ insights: [insight('l', { urgency: 'low', title: 'Mia is close to her next belt' })] }))
-    const kv = memoryKV(); await kv.set(KEYS.firstRunSeen, '1')
+    const kv = memoryKV(); await kv.set(KEYS.firstRunSeen, '1'); await kv.set(KEYS.displayMode, 'standard')
     const b = fakeBridge()
     lens = await startLens({ bridge: b.bridge, api: fakeApi({ insights }), kv, outbox: new Outbox(kv), nod: NOD })
     await flush()
@@ -1094,7 +1096,7 @@ describe('lens controller · insight poll right after attendance changes', () =>
   const back = { id: 'back', kind: 'returning_student', studentId: 'j', studentName: 'Jake', classId: 'c1', title: "Jake's back after 2 missed", detail: 'd', urgency: 'high', status: 'new', createdAt: '2026-10-20T17:00:10Z', actionLabel: null }
   const res = (o: Record<string, unknown>) => ({ utteranceId: 'u1', transcript: 'x', cardLines: ['√ Priya · guard'], coverage: cov, nextStudent: null, disambiguation: null, ...o })
   async function toPeek(api: Api) {
-    const kv = memoryKV(); await kv.set(KEYS.firstRunSeen, '1')
+    const kv = memoryKV(); await kv.set(KEYS.firstRunSeen, '1'); await kv.set(KEYS.displayMode, 'standard')
     const b = fakeBridge()
     lens = await startLens({ bridge: b.bridge, api, kv, outbox: new Outbox(kv), nod: NOD })
     await flush()
@@ -1161,7 +1163,7 @@ describe('lens controller · insight poll around class end', () => {
   afterEach(() => { lens?.stop(); lens = null; vi.useRealTimers() })
   const high = { id: 'late', kind: 'no_feedback', studentId: 'j', studentName: 'Jake', classId: 'c1', title: 'Late insight title', detail: 'd', urgency: 'high', status: 'new', createdAt: '2026-10-20T17:00:10Z', actionLabel: null }
   async function toPeek(api: Api) {
-    const kv = memoryKV(); await kv.set(KEYS.firstRunSeen, '1')
+    const kv = memoryKV(); await kv.set(KEYS.firstRunSeen, '1'); await kv.set(KEYS.displayMode, 'standard')
     const b = fakeBridge()
     lens = await startLens({ bridge: b.bridge, api, kv, outbox: new Outbox(kv), nod: NOD })
     await flush()

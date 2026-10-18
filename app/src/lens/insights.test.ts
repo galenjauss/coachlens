@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Insight, Today } from '@matside/shared'
 import { INSIGHT_BANNER_MS, INSIGHT_GLYPH } from '../config'
 import { topInsight } from './insights'
-import { BANNER_HIDDEN, STATUS_MS, initialState, reduce } from './reducer'
+import { STATUS_MS, initialState, reduce } from './reducer'
 import { ANSWER_HEADER, BRIEF_HINT, INSIGHT_HINT, remindHint, render, summaryRow, type PageSpec } from './render'
 import type { Card, LensEvent, LensState } from './state'
 import { colsFor, fitNames, rowsFor } from './text'
@@ -60,14 +60,12 @@ describe('mid-class insight banner', () => {
     expect(second.insightUnseen.map(i => i.id)).toEqual(['b'])
   })
 
-  it('tap on the banner dismisses it (no recording); swipe opens the detail', () => {
+  it('C6: tap on the banner records (the banner waits behind ★); swipe opens the detail', () => {
     const shown = run(peekState, polled(ins('a'))).state
     const tapped = run(shown, { type: 'tap' })
-    expect(tapped.state).toMatchObject({ screen: 'peek', insightBanner: null, insightUnseen: [], status: BANNER_HIDDEN, pending: null })
-    expect(tapped.effects).toEqual([{ type: 'expireStatus', ms: STATUS_MS }]) // no startMic: the tap hid the banner
-    expect(BANNER_HIDDEN).toBe('Insight hidden · tap to record')
-    expect(txt(render(tapped.state, 0), 'next')).toBe(BANNER_HIDDEN)
-    expect(run(tapped.state, { type: 'tap' }).state.screen).toBe('recording') // the next tap records
+    expect(tapped.state).toMatchObject({ screen: 'recording', insightBanner: null })
+    expect(tapped.state.insightUnseen.map(i => i.id)).toEqual(['a'])
+    expect(tapped.effects).toContainEqual({ type: 'startMic' })
     const swiped = run(shown, { type: 'swipeDown' })
     expect(swiped.state).toMatchObject({ screen: 'insight', insightBanner: null })
     expect(swiped.state.insightDetail?.id).toBe('a')
@@ -75,8 +73,8 @@ describe('mid-class insight banner', () => {
     expect(txt(p, 'hdr')).toBe(`${INSIGHT_GLYPH} INSIGHT · Jake · Plan focus on phone`)
     expect(txt(p, 'body')).toContain('Jake: no feedback in 3 classes')
     expect(txt(p, 'foot')).toBe(INSIGHT_HINT)
-    expect(run(swiped.state, { type: 'tap' }).state).toMatchObject({ screen: 'peek', insightDetail: null })
-    expect(run(swiped.state, { type: 'swipeUp' }).state.screen).toBe('deck')
+    expect(run(swiped.state, { type: 'tap' }).state).toMatchObject({ screen: 'recording', insightDetail: null })
+    expect(run(swiped.state, { type: 'swipeUp' }).state).toMatchObject({ screen: 'peek', insightDetail: null })
   })
 
   it('long-press or double-tap still work while the banner is up (it collapses to the suffix)', () => {
