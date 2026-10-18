@@ -60,20 +60,78 @@ describe('security fix round 1', () => {
     expect((await pair(app, A.code)).status).toBe(200)
   })
 
-  it('a changed PAIRING_CODE moves the demo instructor to it at boot; a rotated code survives restarts while the env is unchanged', async () => {
+  describe('PAIRING_CODE sync (fix round 2)', () => {
+    async function demoDb(code: string | null, pepper?: string) {
+      const db = await makeTestDb()
+      const [demo] = await db.insert(instructors).values({ name: 'Demo', email: DEMO_INSTRUCTOR_EMAIL }).returning()
+      await db.insert(instructors).values({ name: 'Other', email: 'other@example.test' })
+      if (code) await setPairingCode(db, demo!.id, code, pepper)
+      const deps = makeDeps(db)
+      const boot = (env: Partial<typeof deps.env>) => createApp({ ...deps, env: { ...deps.env, ...env } })
+      return { db, boot }
+    }
+
+    it('first boot: a demo instructor with no code gets the env code', async () => {
+      const { boot } = await demoDb(null)
+      expect((await pair(boot({ pairingCode: 'env-code-1' }), 'env-code-1')).status).toBe(200)
+    })
+
+    it('an existing code is kept on the first run; a later change of the env value moves it', async () => {
+      const { boot } = await demoDb('seeded-code-1')
+      const app1 = boot({ pairingCode: 'env-code-1' })
+      expect((await pair(app1, 'seeded-code-1')).status).toBe(200)
+      expect((await pair(app1, 'env-code-1')).status).toBe(401)
+      const app2 = boot({ pairingCode: 'env-code-2' }) // a redeploy with a new PAIRING_CODE
+      expect((await pair(app2, 'env-code-2')).status).toBe(200)
+      expect((await pair(app2, 'seeded-code-1')).status).toBe(401)
+    })
+
+    it('a code rotated in the app always wins over later env changes', async () => {
+      const { boot } = await demoDb('seeded-code-1')
+      const app1 = boot({ pairingCode: 'seeded-code-1' })
+      const { h } = await pairWith(app1, 'seeded-code-1')
+      const { code } = await (await app1.request('/v1/pairing/rotate', { method: 'POST', headers: h })).json() as { code: string }
+      const app2 = boot({ pairingCode: 'env-code-2' })
+      expect((await pair(app2, code)).status).toBe(200)
+      expect((await pair(app2, 'env-code-2')).status).toBe(401)
+    })
+
+    it('a pepper change alone never resets a code; PAIRING_PEPPER_PREVIOUS matches once and upgrades', async () => {
+      const { db, boot } = await demoDb('seeded-code-1', 'old-pepper')
+      const app1 = boot({ pairingCode: 'seeded-code-1', pairingPepper: 'old-pepper' })
+      expect((await pair(app1, 'seeded-code-1')).status).toBe(200)
+      const app2 = boot({ pairingCode: 'seeded-code-1', pairingPepper: 'new-pepper', pairingPepperPrevious: 'old-pepper' })
+      expect((await pair(app2, 'seeded-code-1')).status).toBe(200)
+      const [demo] = await db.select().from(instructors).where(eq(instructors.email, DEMO_INSTRUCTOR_EMAIL))
+      expect(demo!.pairingCodeHash).toBe(await hashPairingCode('seeded-code-1', 'new-pepper'))
+      const app3 = boot({ pairingCode: 'seeded-code-1', pairingPepper: 'new-pepper' })
+      expect((await pair(app3, 'seeded-code-1')).status).toBe(200)
+    })
+  })
+
+  it('without a trusted IP header nobody shares a lockout bucket; the prefix bucket never refuses a matching code', async () => {
     const db = await makeTestDb()
-    const [demo] = await db.insert(instructors).values({ name: 'Demo', email: DEMO_INSTRUCTOR_EMAIL }).returning()
-    await db.insert(instructors).values({ name: 'Other', email: 'other@example.test' })
-    await setPairingCode(db, demo!.id, 'old-code-1')
-    const deps = makeDeps(db)
-    const boot = () => createApp({ ...deps, env: { ...deps.env, pairingCode: 'new-code-2' } })
-    const app1 = boot()
-    expect((await pair(app1, 'new-code-2')).status).toBe(200)
-    expect((await pair(app1, 'old-code-1')).status).toBe(401)
-    const { h } = await pairWith(app1, 'new-code-2')
-    const { code } = await (await app1.request('/v1/pairing/rotate', { method: 'POST', headers: h })).json() as { code: string }
-    const app2 = boot() // a restart with the same env keeps the rotated code
-    expect((await pair(app2, code)).status).toBe(200)
-    expect((await pair(app2, 'new-code-2')).status).toBe(401)
+    const A = await makeTenant(db, 'Alpha')
+    const app = createApp(makeDeps(db))
+    for (let i = 0; i < 20; i++) expect((await pair(app, `zz-wrong-${i}`)).status).toBe(401)
+    expect((await pair(app, A.code)).status).toBe(200)
+    // Same-prefix guesses: refused after 30 failures, while the real code (another prefix or not) still pairs.
+    for (let i = 0; i < 11; i++) await pair(app, `zz-more-${i}`)
+    expect((await pair(app, 'zz-again')).status).toBe(429)
+    await setPairingCode(db, A.instructorId, 'zz-real-code')
+    expect((await pair(app, 'zz-real-code')).status).toBe(200)
+  })
+
+  it('pair_attempts is pruned by the daily cron and opportunistically', async () => {
+    const { pairAttempts } = await import('./db/schema')
+    const { bump } = await import('./services/pairLimits')
+    const db = await makeTestDb()
+    await db.insert(pairAttempts).values([{ bucket: 'ip:old', count: 3, windowStart: new Date('2026-10-01T00:00:00Z') }, { bucket: 'ip:older', count: 1, windowStart: new Date('2026-09-01T00:00:00Z') }])
+    const app = createApp(makeDeps(db))
+    expect((await app.request('/jobs/plan', { headers: { Authorization: 'Bearer cron' } })).status).toBe(200)
+    expect(await db.select().from(pairAttempts)).toEqual([])
+    await db.insert(pairAttempts).values({ bucket: 'ip:stale', count: 3, windowStart: new Date('2026-10-01T00:00:00Z') })
+    await bump(db, 'ip:new', new Date('2026-10-20T00:00:00Z'), true)
+    expect((await db.select().from(pairAttempts)).map(r => r.bucket)).toEqual(['ip:new'])
   })
 })

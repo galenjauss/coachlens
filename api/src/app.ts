@@ -9,7 +9,7 @@ import { getStatus } from './services/status'
 import { attendance, billingFlags, drills, enrollments, instructors, insights as insightsTable, notes, sessions, students, classes, utterances } from './db/schema'
 import { runAs } from './http/context'
 import { authenticate, DEV_PAIRING_PEPPER, instructorForCode, issueToken, revokeOtherTokens, revokeToken, rotatePairingCode, syncEnvPairingCode } from './services/pairing'
-import { bump, clientIp, IP_LIMIT, PREFIX_LIMIT, prefixBucket, unbump } from './services/pairLimits'
+import { bump, clientIp, IP_LIMIT, PREFIX_LIMIT, prefixBucket, prunePairAttempts, unbump } from './services/pairLimits'
 import {
   insightOwnedBy, ownedStudentIds, ownsAgentRun, ownsBilling, ownsClass, ownsDeck, ownsDiff, ownsDrill, ownsInsight,
   ownsMetric, ownsNote, ownsOutbox, ownsSession, ownsStudent, ownsUtterance,
@@ -91,12 +91,13 @@ export function createApp(deps: Deps) {
     envSynced ??= syncEnvPairingCode(db, deps.env.pairingCode, pepper).catch(e => { envSynced = null; console.error('[pair:sync]', e) })
     await envSynced
     // S1: the attempt is counted (in the database) before the lookup; a blocked IP is refused without a lookup.
-    const ipBucket = `ip:${clientIp(k => c.req.header(k))}`
-    if (await bump(db, ipBucket, deps.now()) > IP_LIMIT) throw new HTTPException(429, { message: 'slow down' })
+    const ip = clientIp(k => c.req.header(k))
+    const ipBucket = ip ? `ip:${ip}` : null
+    if (ipBucket && await bump(db, ipBucket, deps.now()) > IP_LIMIT) throw new HTTPException(429, { message: 'slow down' })
     // C4: a code pairs to exactly one instructor (keyed hash lookup); no "first instructor" fallback.
-    const instructorId = await instructorForCode(db, code, deps.env.pairingCode, pepper)
+    const instructorId = await instructorForCode(db, code, deps.env.pairingCode, pepper, deps.env.pairingPepperPrevious)
     if (instructorId) {
-      await unbump(db, ipBucket)
+      if (ipBucket) await unbump(db, ipBucket)
       return c.json({ token: await issueToken(db, instructorId, deps.now()) })
     }
     // The shared prefix bucket only ever refuses codes that do not match.
@@ -420,6 +421,7 @@ export function createApp(deps: Deps) {
       }
     }
     // Daily opportunistic pass (after the plans, so a plan_focus auto action finds next class's deck).
+    await prunePairAttempts(db, deps.now()).catch(e => console.error('[jobs/plan] prune pair_attempts', e))
     // Per instructor (C4): each pass sees only that instructor's students and settings.
     let insights = 0
     for (const ins of await db.select({ id: instructors.id }).from(instructors)) {

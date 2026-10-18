@@ -29,8 +29,9 @@ export function prodDeps(): Deps {
   if (allowedOrigins.includes('*')) console.warn('[prod] ALLOWED_ORIGINS=* (any origin); narrow it to the WebView origin')
   const cap = Number(process.env.AI_DAILY_CAP || 400)
   if (!Number.isFinite(cap) || cap <= 0) throw new Error('AI_DAILY_CAP must be a positive number')
-  // S2: one instructor can use at most this many of the day's calls (default: half the global cap, which stays the ceiling).
-  const instructorCap = Number(process.env.AI_INSTRUCTOR_DAILY_CAP || Math.max(1, Math.floor(cap / 2)))
+  // S2: one instructor can use at most this many of the day's calls; the global cap stays the ceiling.
+  // Unset: the global cap (a single-coach deployment keeps all of it). Only an explicit value sets a lower sub-cap.
+  const instructorCap = Math.min(cap, Number(process.env.AI_INSTRUCTOR_DAILY_CAP || cap))
   if (!Number.isFinite(instructorCap) || instructorCap <= 0) throw new Error('AI_INSTRUCTOR_DAILY_CAP must be a positive number')
   // Pairing-code hashes are keyed by a server secret: PAIRING_PEPPER, else one derived from CRON_SECRET.
   const pairingPepper = pairingPepperFrom({ PAIRING_PEPPER: process.env.PAIRING_PEPPER, CRON_SECRET: need('CRON_SECRET') })
@@ -76,6 +77,7 @@ export function prodDeps(): Deps {
       aiDailyCap: cap,
       aiInstructorDailyCap: instructorCap,
       pairingPepper,
+      pairingPepperPrevious: process.env.PAIRING_PEPPER_PREVIOUS || undefined,
       sttConfigured: Boolean(openaiKey),
     },
   }

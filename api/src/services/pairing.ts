@@ -37,23 +37,34 @@ export async function setPairingCode(db: Db, instructorId: string, code: string,
   await db.update(instructors).set({ pairingCodeHash: await hashPairingCode(code, pepper) }).where(eq(instructors.id, instructorId))
 }
 
-const ENV_CODE_KEY = 'pairing:env_code_hash'
+const ENV_FINGERPRINT_KEY = 'pairing:env_fingerprint'
+const rotatedKey = (instructorId: string) => `pairing:rotated:${instructorId}`
+/** Pepper-independent fingerprint of the env value, so a pepper change never looks like a code change. */
+const envFingerprint = (envCode: string) => hashToken(`env:${envCode.trim()}`)
+
 /**
- * Boot sync: when the deployment's PAIRING_CODE changes, the demo instructor's code follows it (once per change,
- * tracked in kv). A code rotated in the app is kept until the env code itself changes again.
+ * Boot sync of the demo instructor's code with PAIRING_CODE. The env code is applied only when:
+ * - the demo instructor has no code yet (first boot), or
+ * - the env value itself changed since the stored fingerprint, AND the code was never rotated in the app.
+ * A code rotated in the app always wins (rotation sets a flag); a pepper change alone never resets a code.
+ * The first run with an existing code just records the fingerprint and keeps that code.
  */
 export async function syncEnvPairingCode(db: Db, envCode: string, pepper: string): Promise<void> {
   if (!envCode) return
-  const hash = await hashPairingCode(envCode, pepper)
-  const [seen] = await db.select().from(kv).where(eq(kv.key, ENV_CODE_KEY))
-  if (seen?.value === hash) return
-  const [demo] = await db.select({ id: instructors.id }).from(instructors).where(eq(instructors.email, DEMO_INSTRUCTOR_EMAIL))
+  const fingerprint = await envFingerprint(envCode)
+  const [seen] = await db.select().from(kv).where(eq(kv.key, ENV_FINGERPRINT_KEY))
+  if (seen?.value === fingerprint) return
+  const [demo] = await db.select({ id: instructors.id, hash: instructors.pairingCodeHash }).from(instructors).where(eq(instructors.email, DEMO_INSTRUCTOR_EMAIL))
   if (demo) {
-    const [taken] = await db.select({ id: instructors.id }).from(instructors).where(eq(instructors.pairingCodeHash, hash))
-    if (taken && taken.id !== demo.id) return // another instructor already holds this code: never move it
-    await db.update(instructors).set({ pairingCodeHash: hash }).where(eq(instructors.id, demo.id))
+    const [rotated] = await db.select().from(kv).where(eq(kv.key, rotatedKey(demo.id)))
+    const apply = demo.hash === null || (seen !== undefined && !rotated)
+    if (apply) {
+      const hash = await hashPairingCode(envCode, pepper)
+      const [taken] = await db.select({ id: instructors.id }).from(instructors).where(eq(instructors.pairingCodeHash, hash))
+      if (!taken || taken.id === demo.id) await db.update(instructors).set({ pairingCodeHash: hash }).where(eq(instructors.id, demo.id))
+    }
   }
-  await db.insert(kv).values({ key: ENV_CODE_KEY, value: hash }).onConflictDoUpdate({ target: kv.key, set: { value: hash, updatedAt: new Date() } })
+  await db.insert(kv).values({ key: ENV_FINGERPRINT_KEY, value: fingerprint }).onConflictDoUpdate({ target: kv.key, set: { value: fingerprint, updatedAt: new Date() } })
 }
 
 /**
@@ -61,15 +72,19 @@ export async function syncEnvPairingCode(db: Db, envCode: string, pepper: string
  * Env bootstrap: the deployment's PAIRING_CODE claims the instructor only when the deployment has exactly one
  * instructor and no code has been set yet (a fresh single-coach install). There is no "first instructor" pick.
  */
-export async function instructorForCode(db: Db, code: string, envCode: string, pepper: string = DEV_PAIRING_PEPPER): Promise<string | null> {
+export async function instructorForCode(db: Db, code: string, envCode: string, pepper: string = DEV_PAIRING_PEPPER, previousPepper?: string): Promise<string | null> {
   const hash = await hashPairingCode(code, pepper)
   const [hit] = await db.select({ id: instructors.id }).from(instructors).where(eq(instructors.pairingCodeHash, hash))
   if (hit) return hit.id
-  // A first-version (unkeyed) hash matches once and is upgraded to the keyed one.
-  const [old] = await db.select({ id: instructors.id }).from(instructors).where(eq(instructors.pairingCodeHash, await legacyHash(code)))
-  if (old) {
-    await db.update(instructors).set({ pairingCodeHash: hash }).where(eq(instructors.id, old.id))
-    return old.id
+  // A hash made with the previous pepper (PAIRING_PEPPER_PREVIOUS, during a pepper change) or the first-version
+  // unkeyed hash matches once and is upgraded to the current keyed one.
+  const olderHashes = [...(previousPepper ? [await hashPairingCode(code, previousPepper)] : []), await legacyHash(code)]
+  for (const older of olderHashes) {
+    const [old] = await db.select({ id: instructors.id }).from(instructors).where(eq(instructors.pairingCodeHash, older))
+    if (old) {
+      await db.update(instructors).set({ pairingCodeHash: hash }).where(eq(instructors.id, old.id))
+      return old.id
+    }
   }
   if (!envCode || !sameString(code.trim(), envCode)) return null
   const all = await db.select({ id: instructors.id, hash: instructors.pairingCodeHash }).from(instructors).limit(2)
@@ -110,6 +125,8 @@ export async function rotatePairingCode(db: Db, instructorId: string, pepper: st
     const [taken] = await db.select({ id: instructors.id }).from(instructors).where(sql`${instructors.pairingCodeHash} = ${hash}`)
     if (taken) continue
     await db.update(instructors).set({ pairingCodeHash: hash }).where(eq(instructors.id, instructorId))
+    // The owner's rotation wins over PAIRING_CODE from now on (see syncEnvPairingCode).
+    await db.insert(kv).values({ key: rotatedKey(instructorId), value: new Date().toISOString() }).onConflictDoUpdate({ target: kv.key, set: { value: new Date().toISOString(), updatedAt: new Date() } })
     return code
   }
   throw new Error('could not generate a unique pairing code')

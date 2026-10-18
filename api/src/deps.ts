@@ -20,6 +20,8 @@ export interface Env {
   aiDailyCap?: number | null
   /** Server secret keying pairing-code hashes (PAIRING_PEPPER); absent = the development pepper. */
   pairingPepper?: string
+  /** The pepper before a change (PAIRING_PEPPER_PREVIOUS): codes hashed with it still match once and are upgraded. */
+  pairingPepperPrevious?: string
   /** Per-instructor daily Anthropic-call cap (AI_INSTRUCTOR_DAILY_CAP); absent = the global cap. The global cap stays the ceiling. */
   aiInstructorDailyCap?: number | null
   /** False when no speech-to-text key is configured (transcription then fails with 503); absent = configured. */
