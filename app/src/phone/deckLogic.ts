@@ -8,7 +8,16 @@ export const MAX_ITEMS = 20
 export const MAX_CUES = 2
 export const CUE_MAX_CHARS = 90 // = shared Drill contract; the lens wraps long text (never cuts mid-word)
 export const NAME_MAX_CHARS = 80
-export const RATIONALE_MAX_CHARS = 160
+export const RATIONALE_MAX_CHARS = 240 // = shared Drill contract
+
+/** Cuts to `max` chars at a word boundary (hard-cuts a single over-long word); text within the limit is untouched. */
+export function clipWords(s: string, max: number): string {
+  if (s.length <= max) return s
+  const cut = s.slice(0, max)
+  if (s[max] === ' ') return cut.trimEnd()
+  const sp = cut.lastIndexOf(' ')
+  return (sp >= max * 0.4 ? cut.slice(0, sp) : cut).trimEnd()
+}
 
 /** One-tap requests for the planner, per mode. */
 export const QUICK_CHIPS: Record<ModeId, readonly string[]> = {
@@ -47,7 +56,7 @@ export function normalizeItem(d: Editable): Editable {
     name: d.name.trim().slice(0, NAME_MAX_CHARS),
     minutes: clampMinutes(d.minutes),
     cues: clampCues(d.cues),
-    rationale: d.rationale.slice(0, RATIONALE_MAX_CHARS),
+    rationale: clipWords(d.rationale, RATIONALE_MAX_CHARS),
   }
 }
 

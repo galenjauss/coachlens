@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or } from 'drizzle-orm'
+import { sql, and, asc, desc, eq, inArray, isNotNull, isNull, lt, or } from 'drizzle-orm'
 import type { Deck, DrillDraft, ModeConfig } from '@matside/shared'
 import type { Db } from '../db/client'
 import type { Deps } from '../deps'
@@ -86,7 +86,8 @@ export async function draftDeck(deps: Deps, classId: string, forDate: string, ut
   if (existing) {
     const [has] = await deps.db.select({ id: drills.id }).from(drills).where(eq(drills.deckId, existing.id)).limit(1)
     if (has) {
-      await maybeRedraftStarter(deps, existing.id, utteranceId)
+      // Background: Today returns the current deck now; the next load shows the re-drafted one.
+      deps.defer(maybeRedraftStarter(deps, existing.id, utteranceId).catch(e => console.error('[planner] redraft failed', e)))
       return existing.id
     }
     await deps.db.delete(decks).where(eq(decks.id, existing.id)) // empty leftover from a failed draft
@@ -119,6 +120,14 @@ export async function draftDeck(deps: Deps, classId: string, forDate: string, ut
  * (claimed atomically via last_attempt_at, so polling can't loop LLM calls). On failure the starter deck stays and the run is logged as an error.
  * A spent daily budget simply fails the attempt (and waits out the cooldown).
  */
+/** True once a session exists for the deck or any of its drills has started. */
+async function isStarted(db: Db, deckId: string): Promise<boolean> {
+  const [s] = await db.select({ id: sessions.id }).from(sessions).where(eq(sessions.deckId, deckId)).limit(1)
+  if (s) return true
+  const [r] = await db.select({ id: drills.id }).from(drills).where(and(eq(drills.deckId, deckId), isNotNull(drills.startedAt))).limit(1)
+  return !!r
+}
+
 async function maybeRedraftStarter(deps: Deps, deckId: string, utteranceId: string | null): Promise<void> {
   const { db } = deps
   const [d] = await db.select().from(decks).where(eq(decks.id, deckId))
@@ -129,10 +138,7 @@ async function maybeRedraftStarter(deps: Deps, deckId: string, utteranceId: stri
   if (!d.isStarter && !truncated) return
   const now = deps.now()
   if (now.getTime() - d.createdAt.getTime() < REDRAFT_MIN_AGE_MS) return
-  const [started] = await db.select({ id: sessions.id }).from(sessions).where(eq(sessions.deckId, deckId)).limit(1)
-  if (started) return
-  const [ranDrill] = await db.select({ id: drills.id }).from(drills).where(and(eq(drills.deckId, deckId), isNotNull(drills.startedAt))).limit(1)
-  if (ranDrill) return
+  if (await isStarted(db, deckId)) return
   const cooled = new Date(now.getTime() - REDRAFT_COOLDOWN_MS)
   const [claimed] = await db.update(decks).set({ lastAttemptAt: now })
     .where(and(eq(decks.id, deckId), eq(decks.isStarter, d.isStarter), d.isStarter ? or(isNull(decks.lastAttemptAt), lt(decks.lastAttemptAt, cooled)) : isNull(decks.lastAttemptAt))).returning({ id: decks.id })
@@ -141,9 +147,22 @@ async function maybeRedraftStarter(deps: Deps, deckId: string, utteranceId: stri
     const ctx = await planningContext(deps, d.classId, d.forDate)
     const { drills: out, cause } = await llmDrills(deps, ctx, d.forDate)
     if (cause) return { result: deckId, output: { drills: out }, ...degraded(cause), summary: 'Planner unavailable — starter plan kept' }
+    const skipped = { result: deckId, summary: `Re-draft of ${d.forDate} skipped`, reason: 'class started', output: null }
+    if (await isStarted(db, deckId)) return skipped // the class started during the slow LLM call
     const old = await db.select({ id: drills.id }).from(drills).where(eq(drills.deckId, deckId))
-    await db.insert(drills).values(out.map((x, i) => ({ ...x, deckId, position: i + 1 }))) // insert first: a failure leaves the starter intact
-    if (old.length) await db.delete(drills).where(inArray(drills.id, old.map(o => o.id)))
+    const added = await db.insert(drills).values(out.map((x, i) => ({ ...x, deckId, position: i + 1 }))).returning({ id: drills.id }) // insert first: a failure leaves the starter intact
+    // Guarded delete (no interactive transactions on neon-http): only removes old drills while no session exists and none has started.
+    if (old.length) {
+      await db.delete(drills).where(and(
+        inArray(drills.id, old.map(o => o.id)), isNull(drills.startedAt),
+        sql`not exists (select 1 from ${sessions} where ${sessions.deckId} = ${deckId})`,
+      ))
+      const [left] = await db.select({ id: drills.id }).from(drills).where(inArray(drills.id, old.map(o => o.id))).limit(1)
+      if (left) { // a session/drill started between the check and the delete: restore the old plan
+        await db.delete(drills).where(inArray(drills.id, added.map(a => a.id)))
+        return skipped
+      }
+    }
     await db.update(decks).set({ isStarter: false }).where(eq(decks.id, deckId))
     return { result: deckId, summary: `Re-drafted ${d.forDate} ${ctx.mode.planUnit.toLowerCase()} (was starter): ${out.length} ${ctx.mode.planItem}s, ${totalMinutes(out)} min (${ctx.theme})`, reason: 'starter plan self-healed', output: { drills: out } }
   })

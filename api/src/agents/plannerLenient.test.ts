@@ -16,6 +16,13 @@ const raw = (name: string, over: Partial<RawDrill> = {}): RawDrill => ({
   name, minutes: 5, kind: 'drill', cues: ['a'], focusStudentIds: [], rationale: 'why', ...over,
 })
 
+/** draftDeck, then waits for the background re-draft it may have deferred. */
+async function heal(deps: ReturnType<typeof makeDeps>, classId: string) {
+  const id = await draftDeck(deps, classId, '2026-10-19')
+  await deps.flush()
+  return id
+}
+
 async function world(mode: 'martial_arts' | 'tutoring' = 'martial_arts') {
   const db = await makeTestDb()
   const [ins] = await db.insert(instructors).values({ name: 'Coach', email: 'c@example.com' }).returning()
@@ -193,7 +200,7 @@ describe('planner with real-world output', () => {
       expect(run).toMatchObject({ status: 'error', summary: 'Planner unavailable — starter plan used', reason: 'daily AI budget reached' })
       expect((await w.db.select().from(decks))[0]!.isStarter).toBe(true)
 
-      await draftDeck(makeDeps(w.db, { llm: w.llm, now: at(11) }), w.classId, '2026-10-19')
+      await heal(makeDeps(w.db, { llm: w.llm, now: at(11) }), w.classId)
       const [deck] = await w.db.select().from(decks)
       expect(deck!.isStarter).toBe(false)
       const rows = await w.db.select().from(drills).where(eq(drills.deckId, w.deckId))
@@ -204,8 +211,8 @@ describe('planner with real-world output', () => {
     it('within 10 minutes of the last attempt there is no LLM call', async () => {
       const w = await starterWorld()
       expect(w.calls()).toBe(1)
-      await draftDeck(makeDeps(w.db, { llm: w.llm, now: at(5) }), w.classId, '2026-10-19')
-      await draftDeck(makeDeps(w.db, { llm: w.llm, now: at(9) }), w.classId, '2026-10-19')
+      await heal(makeDeps(w.db, { llm: w.llm, now: at(5) }), w.classId)
+      await heal(makeDeps(w.db, { llm: w.llm, now: at(9) }), w.classId)
       expect(w.calls()).toBe(1)
       expect((await w.db.select().from(decks))[0]!.isStarter).toBe(true)
     })
@@ -213,22 +220,41 @@ describe('planner with real-world output', () => {
     it('a failed re-draft keeps the starter deck, logs again, and is throttled', async () => {
       const w = await starterWorld()
       const failing = fakeLlm(() => { throw new Error('provider down') })
-      await draftDeck(makeDeps(w.db, { llm: failing, now: at(11) }), w.classId, '2026-10-19')
+      await heal(makeDeps(w.db, { llm: failing, now: at(11) }), w.classId)
       const runs = await w.db.select().from(agentRuns)
       expect(runs).toHaveLength(2)
       expect(runs[1]).toMatchObject({ status: 'error', reason: 'provider down' })
       expect((await w.db.select().from(decks))[0]!.isStarter).toBe(true)
       expect(await w.db.select().from(drills).where(eq(drills.deckId, w.deckId))).toHaveLength(starterDeck('tutoring').length)
-      await draftDeck(makeDeps(w.db, { llm: w.llm, now: at(15) }), w.classId, '2026-10-19')
+      await heal(makeDeps(w.db, { llm: w.llm, now: at(15) }), w.classId)
       expect(w.calls()).toBe(1)
     })
 
     it('never replaces a starter deck whose session has started', async () => {
       const w = await starterWorld()
       await w.db.insert(sessions).values({ classId: w.classId, deckId: w.deckId, forDate: '2026-10-19', startedAt: T0 })
-      await draftDeck(makeDeps(w.db, { llm: w.llm, now: at(60) }), w.classId, '2026-10-19')
+      await heal(makeDeps(w.db, { llm: w.llm, now: at(60) }), w.classId)
       expect(w.calls()).toBe(1)
       expect((await w.db.select().from(decks))[0]!.isStarter).toBe(true)
+    })
+
+    it('does not block draftDeck, and a class that starts during the slow re-draft keeps its drills', async () => {
+      const w = await starterWorld()
+      let release!: () => void
+      const gate = new Promise<void>(r => { release = r })
+      const slow = fakeLlm(async () => { await gate; return good() }) as unknown as Llm
+      const llm: Llm = { object: async a => { await gate; return slow.object(a) } }
+      const deps = makeDeps(w.db, { llm, now: at(11) })
+      await draftDeck(deps, w.classId, '2026-10-19') // returns while the re-draft is pending
+      await new Promise(r => setTimeout(r, 50))
+      await w.db.insert(sessions).values({ classId: w.classId, deckId: w.deckId, forDate: '2026-10-19', startedAt: at(11)() })
+      release()
+      await deps.flush()
+      const rows = await w.db.select().from(drills).where(eq(drills.deckId, w.deckId))
+      expect(rows.map(d => d.name).sort()).toEqual(starterDeck('tutoring').map(d => d.name).sort())
+      expect((await w.db.select().from(decks))[0]!.isStarter).toBe(true)
+      const runs = await w.db.select().from(agentRuns)
+      expect(runs.at(-1)).toMatchObject({ trigger: 'redraft', reason: 'class started' })
     })
 
     it('waits until the deck is 2 minutes old (young deck, never attempted)', async () => {
@@ -237,9 +263,9 @@ describe('planner with real-world output', () => {
       await w.db.insert(drills).values(starterDeck('tutoring').map((d, i) => ({ ...d, deckId: deck!.id, position: i + 1 })))
       let calls = 0
       const llm = fakeLlm(() => { calls++; return good() })
-      await draftDeck(makeDeps(w.db, { llm, now: at(1) }), w.classId, '2026-10-19')
+      await heal(makeDeps(w.db, { llm, now: at(1) }), w.classId)
       expect(calls).toBe(0)
-      await draftDeck(makeDeps(w.db, { llm, now: at(3) }), w.classId, '2026-10-19')
+      await heal(makeDeps(w.db, { llm, now: at(3) }), w.classId)
       expect(calls).toBe(1)
     })
   })
@@ -252,8 +278,8 @@ describe('planner with real-world output', () => {
     let calls = 0
     const llm = fakeLlm(() => { calls++; return { drills: Array.from({ length: 6 }, (_, i) => raw(`Fresh ${i}`)) } })
     const later = (m: number) => () => new Date(T0.getTime() + m * 60_000)
-    await draftDeck(makeDeps(w.db, { llm, now: later(5) }), w.classId, '2026-10-19')
-    await draftDeck(makeDeps(w.db, { llm, now: later(30) }), w.classId, '2026-10-19')
+    await heal(makeDeps(w.db, { llm, now: later(5) }), w.classId)
+    await heal(makeDeps(w.db, { llm, now: later(30) }), w.classId)
     expect(calls).toBe(1)
     expect((await w.db.select().from(drills).where(eq(drills.deckId, deck!.id))).map(d => d.name).sort()[0]).toBe('Fresh 0')
   })
