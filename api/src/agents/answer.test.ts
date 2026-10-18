@@ -80,7 +80,7 @@ describe('class questions', () => {
     const { llm, calls } = routerOnly("Who hasn't gotten feedback today?")
     const r = await ask(makeDeps(w.db, { llm }), w, "who hasn't gotten feedback today")
     expect(r.brief?.lines).toEqual(['No observation yet: Leo, Sam'])
-    expect(calls).toEqual(['router'])
+    expect(calls).toEqual([]) // F20: recognized before the router, zero model calls
   })
 
   it('how many are here comes from attendance', async () => {

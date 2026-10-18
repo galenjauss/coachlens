@@ -8,7 +8,8 @@ import { safeDefer, withRun } from '../agents/runs'
 import { draftParentEmail } from '../agents/parentEmail'
 import { acceptDiff, autoAdjustNextDeck, markAutonomy, nextDeckFor, suggestDiff } from '../agents/planner'
 import { resolveName } from '../logic/names'
-import { parseAttendance, type RollCall } from '../logic/attendance'
+import type { RollCall } from '../logic/attendance'
+import { detectCommand } from '../logic/commands'
 import { isRecurring, RECURRING_WINDOW_DAYS } from '../logic/recurring'
 import { countsAsConcern, effectiveValence, inferValence, isPositive } from '../logic/valence'
 import { buildCardLines, type CardAction } from '../logic/cardLines'
@@ -22,6 +23,8 @@ import { detectOnAttendance } from './insights'
 import { answerQuestion } from '../agents/answer'
 
 const DAY = 86_400_000
+export const NOTHING_HINT_NOTE = 'Try a name + what you saw'
+export const NOTHING_HINT_ATTENDANCE = "Try 'everyone except …'"
 const first = (name: string) => name.split(' ')[0]!
 
 export async function handleUtterance(
@@ -36,10 +39,22 @@ export async function handleUtterance(
   let disambiguation: Disambiguation | null = null
   let brief: Brief | null = null
 
-  const parsed = input.mode === 'attendance' ? parseAttendance(input.transcript) : null
-  if (parsed) {
-    const rc = await applyRollCall(deps, ctx, utteranceId, parsed)
-    if (rc) actions.push(rc)
+  // Obvious commands first, in any capture mode and with no model call: a roll call, or a question the class data
+  // answers deterministically ("how many are here?", "who hasn't been noted yet?").
+  const command = detectCommand(input.transcript)
+  if (command) {
+    await withRun(deps, { agent: 'router', trigger: 'deterministic', sessionId: ctx.sessionId, utteranceId }, async () => ({
+      result: command.kind,
+      summary: `Recognized "${input.transcript.slice(0, 60)}" as ${command.kind === 'rollcall' ? 'roll call' : 'a class question'} (no AI call)`,
+      reason: `deterministic ${command.kind === 'rollcall' ? 'roll-call phrasing' : 'question'} · capture mode: ${input.mode}`,
+    }))
+  }
+  if (command?.kind === 'rollcall') {
+    actions.push(await applyRollCall(deps, ctx, utteranceId, command.parsed))
+  } else if (command?.kind === 'question') {
+    const r = await applyQuestion(deps, ctx, utteranceId, input.transcript)
+    actions.push(...r.actions)
+    brief = r.brief ?? null
   } else {
     const intents = await routeUtterance(deps, { sessionId: ctx.sessionId, utteranceId, transcript: input.transcript, roster: ctx.roster, drillName: ctx.drill?.name ?? null, theme: ctx.theme, mode: ctx.mode })
     if (!intents) {
@@ -53,6 +68,8 @@ export async function handleUtterance(
       brief ??= r.brief ?? null
     }
   }
+  // Nothing saved or changed (no intents, or every intent skipped): say so, with the way out.
+  if (!actions.length && !brief && !disambiguation) actions.push({ kind: 'nothing_changed', hint: input.mode === 'attendance' ? NOTHING_HINT_ATTENDANCE : NOTHING_HINT_NOTE })
   const { coverage, next } = await coverageAndNext(db, ctx, deps.now())
   const attendanceChanged = actions.some(a => a.kind === 'attendance' || a.kind === 'marked')
   return {
@@ -67,11 +84,11 @@ export async function handleUtterance(
   }
 }
 
-async function applyRollCall(deps: Deps, ctx: SessionContext, utteranceId: string, parsed: RollCall): Promise<CardAction | null> {
+async function applyRollCall(deps: Deps, ctx: SessionContext, utteranceId: string, parsed: RollCall): Promise<CardAction> {
   const run = { agent: 'attendance', trigger: 'roll_call', sessionId: ctx.sessionId, utteranceId }
   if (await getAutonomy(deps.db, 'attendance') === 'off') {
     await withRun(deps, run, async () => ({ result: false, summary: 'Roll call skipped (off)', reason: 'autonomy: off — voice attendance is turned off in Settings' }))
-    return null
+    return { kind: 'nothing_changed', hint: 'Voice attendance is off' }
   }
   const named = new Map<string, string>()
   const unresolved: string[] = []
@@ -113,7 +130,7 @@ async function applyIntent(deps: Deps, ctx: SessionContext, utteranceId: string,
     case 'billing': return applyBilling(deps, ctx, utteranceId, intent)
     case 'metric': return applyMetric(deps, ctx, utteranceId, intent)
     case 'student_query': return applyStudentQuery(deps, ctx, utteranceId, intent)
-    case 'question': return applyQuestion(deps, ctx, utteranceId, intent)
+    case 'question': return applyQuestion(deps, ctx, utteranceId, intent.question?.trim() || intent.content.trim() || 'question')
     case 'attendance': return applyAttendanceIntent(deps, ctx, utteranceId, intent)
     case 'plan_request': {
       safeDefer(deps, 'plan_request', (async () => {
@@ -248,7 +265,7 @@ async function applyBilling(deps: Deps, ctx: SessionContext, utteranceId: string
   const urgency = intent.urgency ?? 'med'
   if (await getAutonomy(deps.db, 'billing') === 'off') {
     await withRun(deps, { agent: 'billing', trigger: 'billing', sessionId: ctx.sessionId, utteranceId }, async () => ({ result: false, summary: 'Billing flag skipped (off)', reason: 'autonomy: off — billing flags are turned off in Settings' }))
-    return { actions: [], disambiguation: null }
+    return { actions: [{ kind: 'nothing_changed', hint: 'Billing flags are off' }], disambiguation: null }
   }
   const [flag] = await deps.db.insert(billingFlags).values({ studentId: student?.id ?? null, utteranceId, urgency, note: intent.content, amount: intent.amount }).returning({ id: billingFlags.id })
   const links = { billingFlagId: flag!.id, ...(student ? { studentId: student.id } : {}) }
@@ -263,11 +280,11 @@ async function applyAttendanceIntent(deps: Deps, ctx: SessionContext, utteranceI
   const status = intent.attendanceStatus ?? 'present'
   if (await getAutonomy(deps.db, 'attendance') === 'off') {
     await withRun(deps, { agent: 'attendance', trigger: 'voice', sessionId: ctx.sessionId, utteranceId }, async () => ({ result: false, summary: 'Attendance update skipped (off)', reason: 'autonomy: off — voice attendance is turned off in Settings' }))
-    return { actions: [], disambiguation: null }
+    return { actions: [{ kind: 'nothing_changed', hint: 'Voice attendance is off' }], disambiguation: null }
   }
   for (const heard of intent.studentNames) {
     const m = resolveName(heard, ctx.roster)
-    if (m.kind !== 'match') continue
+    if (m.kind !== 'match') { actions.push({ kind: 'name_unclear', name: heard }); continue }
     await withRun(deps, { agent: 'attendance', trigger: 'voice', sessionId: ctx.sessionId, utteranceId, links: { studentId: m.student.id } }, async () => {
       await deps.db.insert(attendance).values({ sessionId: ctx.sessionId, studentId: m.student.id, status, source: 'voice' })
         .onConflictDoUpdate({ target: [attendance.sessionId, attendance.studentId], set: { status, source: 'voice' } })
@@ -275,7 +292,7 @@ async function applyAttendanceIntent(deps: Deps, ctx: SessionContext, utteranceI
     })
     actions.push({ kind: 'marked', name: first(m.student.name), status })
   }
-  if (status === 'present' && actions.length) await detectOnAttendance(deps, ctx)
+  if (status === 'present' && actions.some(a => a.kind === 'marked')) await detectOnAttendance(deps, ctx)
   return { actions, disambiguation: null }
 }
 
@@ -330,8 +347,7 @@ async function applyStudentQuery(deps: Deps, ctx: SessionContext, utteranceId: s
 }
 
 /** "Who is forgetting to keep their guard up?": no writes; the answer rides the brief field (titled ANSWER on the lens). */
-async function applyQuestion(deps: Deps, ctx: SessionContext, utteranceId: string, intent: Intent): Promise<Applied> {
-  const question = (intent.question?.trim() || intent.content.trim() || 'question')
+async function applyQuestion(deps: Deps, ctx: SessionContext, utteranceId: string, question: string): Promise<Applied> {
   const lines = await answerQuestion(deps, { sessionId: ctx.sessionId, drillId: ctx.drill?.id ?? null, utteranceId, question })
   if (!lines) return { actions: [{ kind: 'answer_failed' }], disambiguation: null }
   return { actions: [{ kind: 'question', question }], disambiguation: null, brief: { name: ANSWER_BRIEF_NAME, lines } }

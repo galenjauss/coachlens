@@ -4,7 +4,8 @@ import { HTTPException } from 'hono/http-exception'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { AgentTask, InsightsQuery, DeckPatch, ReplaceDeckRequest, VoicePlanRequest, SettingsPatch, ExtractRequest, MAX_ALIASES, MetricCreate, MAX_IMAGE_BASE64, MAX_ONBOARDING_TEXT, OnboardingCommit, RedraftRequest, StudentPatch, TranscribeForm, UtteranceForm } from '@matside/shared'
-import type { Deps } from './deps'
+import { SttUnavailableError, type Deps } from './deps'
+import { getStatus } from './services/status'
 import { attendance, billingFlags, enrollments, instructors, notes, sessions, students, classes, utterances } from './db/schema'
 import { hashToken } from './http/auth'
 import { timingSafeEqual } from 'node:crypto'
@@ -100,6 +101,9 @@ export function createApp(deps: Deps) {
   })
 
 
+  /** Degraded-mode status: AI calls left today (Anthropic calls only) and whether speech-to-text is configured. */
+  app.get('/v1/status', async c => c.json(await getStatus(deps)))
+
   app.post('/v1/sessions', async c => {
     const { classId } = await json(c.req.raw, z.object({ classId: z.string().min(1) }))
     return c.json(await startSession(deps, classId))
@@ -156,7 +160,14 @@ export function createApp(deps: Deps) {
     }
     return { str, audio }
   }
-  const transcribe = async (audio: File, hints: string[]) => (await deps.stt.transcribe(new Uint8Array(await audio.arrayBuffer()), hints)).trim()
+  const transcribe = async (audio: File, hints: string[]) => {
+    try {
+      return (await deps.stt.transcribe(new Uint8Array(await audio.arrayBuffer()), hints)).trim()
+    } catch (e) {
+      if (e instanceof SttUnavailableError) throw new HTTPException(503, { message: 'stt_not_configured' })
+      throw e
+    }
+  }
 
   app.post('/v1/utterance', async c => {
     const { str, audio } = await audioUpload(c, 'utt')

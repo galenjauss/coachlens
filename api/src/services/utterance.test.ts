@@ -103,8 +103,9 @@ describe('handleUtterance', () => {
     expect(rows.filter(x => x.status === 'present')).toHaveLength(3)
     const unclear = await handleUtterance(deps, { sessionId: w.sessionId, drillId: null, mode: 'attendance', transcript: 'only Priya and Zed are here' })
     expect(unclear.cardLines[0]).toBe("Didn't catch: Zed")
-    const [run] = await w.db.select().from(agentRuns).where(eq(agentRuns.utteranceId, r.utteranceId))
-    expect(run).toMatchObject({ agent: 'attendance', status: 'ok' })
+    const runs = await w.db.select().from(agentRuns).where(eq(agentRuns.utteranceId, r.utteranceId))
+    expect(runs.find(x => x.agent === 'attendance')).toMatchObject({ status: 'ok' })
+    expect(runs.find(x => x.agent === 'router')).toMatchObject({ trigger: 'deterministic' })
   })
 
   it('aliases on the roster resolve STT spellings', async () => {

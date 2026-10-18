@@ -440,3 +440,24 @@ export const InsightsQuery = z.object({
   sessionId: z.string().min(1).max(64).optional(),
 })
 export type InsightsQuery = z.input<typeof InsightsQuery>
+
+// ---- Degraded-mode status (F20) ----
+/**
+ * GET /v1/status. `ai` counts Anthropic model calls only (failed calls included) against the daily cap; it is not a
+ * token, transcription, email or hosting budget. dailyCap null = no cap configured.
+ */
+export const DegradedReason = z.enum(['ai_budget_reached', 'speech_to_text_unconfigured'])
+export type DegradedReason = z.infer<typeof DegradedReason>
+export const StatusResponse = z.object({
+  ai: z.object({
+    counts: z.literal('anthropic_calls'),
+    day: z.string(),
+    dailyCap: z.number().int().nullable(),
+    usedToday: z.number().int(),
+    remainingToday: z.number().int().nullable(),
+    exhausted: z.boolean(),
+  }),
+  stt: z.object({ configured: z.boolean() }),
+  degraded: z.array(DegradedReason),
+})
+export type StatusResponse = z.infer<typeof StatusResponse>

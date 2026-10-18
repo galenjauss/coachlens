@@ -23,6 +23,8 @@ export type CardAction =
   | { kind: 'saved_unsorted' }
   | { kind: 'rollcall_unclear'; names: string[] }
   | { kind: 'name_unclear'; name: string }
+  /** Nothing was saved or changed; `hint` is the recovery path. Never an empty card. */
+  | { kind: 'nothing_changed'; hint: string }
 
 const MAX_LINES = 4
 const MAX_CHARS = 38
@@ -62,6 +64,7 @@ function linesFor(a: CardAction): string[] {
     case 'urgent_unassigned': return ['! urgent · pick student']
     case 'saved_unsorted': return ['● Saved · sorting failed, see Review']
     case 'name_unclear': return [`? Didn't catch "${a.name}" · say again`]
+    case 'nothing_changed': return ['● Nothing changed', a.hint]
     case 'rollcall_unclear': return [`Didn't catch: ${a.names.join(', ')}`, 'Say it again or use phone roster']
   }
 }
