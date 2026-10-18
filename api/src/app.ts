@@ -3,7 +3,7 @@ import { cors } from 'hono/cors'
 import { HTTPException } from 'hono/http-exception'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { AgentTask, DeckPatch, ReplaceDeckRequest, VoicePlanRequest, SettingsPatch, ExtractRequest, MAX_ALIASES, MetricCreate, MAX_IMAGE_BASE64, MAX_ONBOARDING_TEXT, OnboardingCommit, RedraftRequest, StudentPatch, TranscribeForm, UtteranceForm } from '@matside/shared'
+import { AgentTask, InsightsQuery, DeckPatch, ReplaceDeckRequest, VoicePlanRequest, SettingsPatch, ExtractRequest, MAX_ALIASES, MetricCreate, MAX_IMAGE_BASE64, MAX_ONBOARDING_TEXT, OnboardingCommit, RedraftRequest, StudentPatch, TranscribeForm, UtteranceForm } from '@matside/shared'
 import type { Deps } from './deps'
 import { attendance, billingFlags, enrollments, instructors, notes, sessions, students, classes, utterances } from './db/schema'
 import { hashToken } from './http/auth'
@@ -34,6 +34,7 @@ import { extractOnboarding } from './agents/onboarding'
 import { BudgetExceededError } from './agents/budget'
 import { getSettings, patchSettings, SettingsError } from './services/settings'
 import { commitOnboarding, onboardingStatus, OnboardingError } from './services/onboarding'
+import { acceptInsight, dismissInsight, insightsOnAttendance, InsightsError, listInsights, runInsights, type InsightActResult } from './services/insights'
 
 type Vars = { Variables: { instructorId: string } }
 const MAX_AUDIO_BYTES = 2_000_000
@@ -107,13 +108,14 @@ export function createApp(deps: Deps) {
   app.post('/v1/sessions/:id/attendance', async c => {
     const { presentIds } = await json(c.req.raw, z.object({ presentIds: z.array(z.string()) }))
     const sessionId = c.req.param('id')
-    await requireSession(db, sessionId)
+    const session = await requireSession(db, sessionId)
     const ctx = await loadSessionContext(db, sessionId, null)
     for (const s of ctx.roster) {
       const status = presentIds.includes(s.id) ? 'present' : 'absent'
       await db.insert(attendance).values({ sessionId, studentId: s.id, status, source: 'phone' })
         .onConflictDoUpdate({ target: [attendance.sessionId, attendance.studentId], set: { status, source: 'phone' } })
     }
+    if (!session.endedAt) insightsOnAttendance(deps, { sessionId, classId: session.classId, forDate: session.forDate })
     return c.json(await computeCoverage(db, ctx))
   })
 
@@ -291,7 +293,9 @@ export function createApp(deps: Deps) {
         console.error('[jobs/plan] class failed', cl.id, e)
       }
     }
-    return c.json({ drafted, failed })
+    // Daily opportunistic pass (after the plans, so a plan_focus auto action finds next class's deck).
+    const insights = await runInsights(deps, { trigger: 'cron' }).then(r => r.length).catch(e => { console.error('[jobs/plan] insights failed', e); return 0 })
+    return c.json({ drafted, failed, insights })
   })
 
   app.get('/v1/decks/:id', async c => c.json(await guard(getDeck(db, c.req.param('id')))))
@@ -386,6 +390,28 @@ export function createApp(deps: Deps) {
     } else ids = (await listStudents(db)).map(s => s.id)
     deps.defer(runReportCards(deps, studentIds ? ids : undefined).catch(e => console.error('[report-cards]', e)))
     return c.json({ started: ids.length })
+  })
+
+  // ---- Opportunistic insights (lens + phone) ----
+  const insightFail = (r: Extract<InsightActResult, { ok: false }>) =>
+    new HTTPException(r.code === 'not_found' ? 404 : r.code === 'not_pending' ? 409 : 502, { message: r.error })
+  app.get('/v1/insights', async c => {
+    const q = InsightsQuery.safeParse({ scope: c.req.query('scope') || undefined, classId: c.req.query('classId') || undefined, sessionId: c.req.query('sessionId') || undefined })
+    if (!q.success) throw new HTTPException(400, { message: 'bad insights query' })
+    try { return c.json({ insights: await listInsights(deps, q.data) }) } catch (e) {
+      if (e instanceof InsightsError) throw new HTTPException(e.code === 'not_found' ? 404 : 400, { message: e.message })
+      throw e
+    }
+  })
+  app.post('/v1/insights/:id/accept', async c => {
+    const r = await acceptInsight(deps, c.req.param('id'))
+    if (!r.ok) throw insightFail(r)
+    return c.json({ ok: true, outcome: r.outcome })
+  })
+  app.post('/v1/insights/:id/dismiss', async c => {
+    const r = await dismissInsight(deps, c.req.param('id'))
+    if (!r.ok) throw insightFail(r)
+    return c.json({ ok: true })
   })
 
   // ---- Settings: per-agent autonomy + custom vocabulary ----

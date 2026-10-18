@@ -2,6 +2,7 @@ import {
   Alternatives, AgentRunDetail, AgentRunView, AgentsSummary, AgentTaskRun, RedraftResponse, type AgentTask, Coverage, Deck, ModeId, NextStudent, ReviewItem, RosterStudent, StartSessionResponse, StudentDetail, StudentMetric,
   SuggestResponse, Today, TranscribeResponse, VoicePlanResponse, type ReplaceSource, UtteranceResponse, WrapUp, type DeckPatch,
   SettingsResponse, type SettingsPatch,
+  InsightsResponse, InsightAcceptResponse, type InsightsQuery,
   ExtractResponse, OnboardingCommitResponse, OnboardingStatus, type ExtractRequest, type OnboardingCommit,
 } from '@matside/shared'
 import { z } from 'zod'
@@ -145,6 +146,15 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
     deleteMetric: (id: string) => req(`/v1/metrics/${id}`, { method: 'DELETE' }, ok),
     settings: () => req('/v1/settings', {}, SettingsResponse),
     patchSettings: (patch: SettingsPatch) => req('/v1/settings', { method: 'PATCH', json: patch }, SettingsResponse),
+    /** New insights; in a live session only its high items. scope=class needs a classId (or a sessionId). */
+    insights: (params: InsightsQuery = {}) => {
+      const q = new URLSearchParams()
+      for (const [k, v] of Object.entries(params)) if (v) q.set(k, v)
+      const qs = q.toString()
+      return req(`/v1/insights${qs ? `?${qs}` : ''}`, {}, InsightsResponse)
+    },
+    acceptInsight: (id: string) => post(`/v1/insights/${encodeURIComponent(id)}/accept`, {}, InsightAcceptResponse),
+    dismissInsight: (id: string) => post(`/v1/insights/${encodeURIComponent(id)}/dismiss`, {}, ok),
     runReportCards: (studentIds?: string[]) => post('/v1/report-cards/run', { studentIds }, z.object({ started: z.number() })),
     onboardingStatus: () => req('/v1/onboarding/status', {}, OnboardingStatus),
     onboardingExtract: (body: ExtractRequest) => post('/v1/onboarding/extract', body, ExtractResponse),

@@ -7,6 +7,8 @@ import { agentRuns, billingFlags, classes, decks, drills, notes, outbox, session
 import { upcomingClassDate } from '../logic/dates'
 import { draftDeck } from '../agents/planner'
 import { computeCoverage, loadSessionContext, nextStudentFor } from './context'
+import { safeDefer } from '../agents/runs'
+import { runInsights } from './insights'
 
 export async function requireSession(db: Db, id: string) {
   const [s] = await db.select().from(sessions).where(eq(sessions.id, id))
@@ -55,6 +57,8 @@ export async function endSession(deps: Deps, sessionId: string): Promise<WrapUp>
     await db.update(sessions).set({ endedAt: now }).where(eq(sessions.id, sessionId))
     await db.update(decks).set({ status: 'done' }).where(eq(decks.id, s.deckId))
     await db.update(drills).set({ endedAt: now }).where(and(eq(drills.deckId, s.deckId), isNotNull(drills.startedAt), isNull(drills.endedAt)))
+    // The class just finished: look over its roster for things worth surfacing (background).
+    safeDefer(deps, 'insights', runInsights(deps, { trigger: 'session_end', sessionId, classId: s.classId, today: s.forDate }))
   }
   const ctx = await loadSessionContext(db, sessionId, null)
   const coverage = await computeCoverage(db, ctx)

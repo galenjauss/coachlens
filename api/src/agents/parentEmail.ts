@@ -47,6 +47,7 @@ export type EmailTrigger =
   | { kind: 'request'; content: string } // explicit "email Priya's mom that…": always drafts
   | { kind: 'urgent'; content: string } // injury / safety / serious behavior: always drafts
   | { kind: 'recurring'; tag: SkillTag } // automatic, non-urgent: subject to the cooldown
+  | { kind: 'insight'; content: string } // an accepted (or auto-run) insight: drafts like a request, autonomy applies
 
 /** True when the student already got a non-urgent automatic email inside the cooldown window. */
 export async function inEmailCooldown(deps: Deps, studentId: string): Promise<boolean> {
@@ -88,7 +89,9 @@ export async function draftParentEmail(
       ? `Recurring focus area: ${mode.tagLabels[a.trigger.tag] ?? a.trigger.tag}`
       : a.trigger.kind === 'urgent'
         ? `URGENT — coach logged this today and ${reader} should hear it now (observation only, no diagnosis): ${a.trigger.content}`
-        : `Coach asked to tell ${reader}: ${a.trigger.content}`
+        : a.trigger.kind === 'insight'
+          ? `Coach wants to reach out to ${reader} about this (keep it factual, no pressure): ${a.trigger.content}`
+          : `Coach asked to tell ${reader}: ${a.trigger.content}`
     const who = toClient
       ? [`Client: ${firstName} (writing to them directly)`]
       : [`${mode.person === 'student' ? 'Student' : 'Person'}: ${firstName}${mode.id === 'martial_arts' ? ` (${s.belt} belt)` : ''}`, `Parent: ${g.name}`]

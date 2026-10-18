@@ -5,7 +5,7 @@ import {
 } from '@matside/shared'
 import type { Db } from '../db/client'
 import type { Deps } from '../deps'
-import { agentRuns, billingFlags, deckDiffs, notes, outbox, students, utterances } from '../db/schema'
+import { agentRuns, billingFlags, deckDiffs, insights, notes, outbox, students, utterances } from '../db/schema'
 import { localDate } from '../logic/dates'
 
 type RunRow = typeof agentRuns.$inferSelect
@@ -13,7 +13,7 @@ type RunRow = typeof agentRuns.$inferSelect
 // Each topic tile is fed by the agent names its runs are logged under (the agent name equals the task).
 const TASK_AGENTS: Record<AgentTask, string[]> = {
   progress: ['progress'], parent_email: ['parent_email'], report_card: ['report_card'],
-  billing: ['billing'], planner: ['planner'], attendance: ['attendance'],
+  billing: ['billing'], planner: ['planner'], attendance: ['attendance'], insights: ['insights'],
 }
 const taskOf = (agent: string): AgentTask | null =>
   (AgentTask.options.find(t => TASK_AGENTS[t].includes(agent)) ?? null)
@@ -54,7 +54,7 @@ async function withColors(db: Db, rows: RunRow[]): Promise<AgentTaskRun[]> {
 
 async function pendingCounts(db: Db): Promise<Record<AgentTask, { pending: number; urgent: number }>> {
   const n = (rows: { n: number }[]) => rows[0]?.n ?? 0
-  const [pe, peU, rc, bi, biU, pl, loose] = await Promise.all([
+  const [pe, peU, rc, bi, biU, pl, loose, ins] = await Promise.all([
     db.select({ n: count() }).from(outbox).where(and(eq(outbox.kind, 'parent_email'), eq(outbox.status, 'pending_review'))),
     db.select({ n: count() }).from(outbox).where(and(eq(outbox.kind, 'parent_email'), eq(outbox.status, 'pending_review'), eq(outbox.trigger, 'urgent'))),
     db.select({ n: count() }).from(outbox).where(and(eq(outbox.kind, 'report_card'), eq(outbox.status, 'pending_review'))),
@@ -62,6 +62,7 @@ async function pendingCounts(db: Db): Promise<Record<AgentTask, { pending: numbe
     db.select({ n: count() }).from(billingFlags).where(and(eq(billingFlags.status, 'open'), eq(billingFlags.urgency, 'high'))),
     db.select({ n: count() }).from(deckDiffs).where(eq(deckDiffs.status, 'pending')),
     db.select({ n: count() }).from(notes).where(isNull(notes.studentId)),
+    db.select({ n: count() }).from(insights).where(eq(insights.status, 'new')),
   ])
   return {
     progress: { pending: n(loose), urgent: 0 },
@@ -70,6 +71,7 @@ async function pendingCounts(db: Db): Promise<Record<AgentTask, { pending: numbe
     billing: { pending: n(bi), urgent: n(biU) },
     planner: { pending: n(pl), urgent: 0 },
     attendance: { pending: 0, urgent: 0 },
+    insights: { pending: n(ins), urgent: 0 }, // new insights waiting: amber
   }
 }
 

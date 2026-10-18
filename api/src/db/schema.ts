@@ -1,5 +1,5 @@
 import { pgTable, text, integer, real, timestamp, jsonb, primaryKey, uniqueIndex, index, boolean, date, doublePrecision } from 'drizzle-orm/pg-core'
-import type { ModeId, SkillTag, Urgency, DeckDiff, DrillDraft, ReportCardContent, AgentRunLinks } from '@matside/shared'
+import type { ModeId, SkillTag, Urgency, DeckDiff, DrillDraft, ReportCardContent, AgentRunLinks, InsightAction, InsightKind, InsightStatus, InsightUrgency } from '@matside/shared'
 
 const id = () => text('id').primaryKey().$defaultFn(() => crypto.randomUUID())
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' })
@@ -130,3 +130,19 @@ export const studentMetrics = pgTable('student_metrics', {
   num: doublePrecision('num'), unit: text('unit'), recordedAt: createdAt('recorded_at'),
   source: text('source').$type<'voice' | 'phone' | 'seed'>().notNull(), utteranceId: text('utterance_id'),
 }, t => [index('student_metrics_student_key').on(t.studentId, t.key, t.recordedAt)])
+// Opportunistic insights: detector findings the coach can accept or dismiss. dedupe_key = kind:student:ISO week.
+// session_id: the live session a finding was made in (the lens shows only that session's high items).
+export const insights = pgTable('insights', {
+  id: id(), kind: text('kind').$type<InsightKind>().notNull(),
+  studentId: text('student_id'), classId: text('class_id'), sessionId: text('session_id'),
+  title: text('title').notNull(), detail: text('detail').notNull(),
+  urgency: text('urgency').$type<InsightUrgency>().notNull(),
+  action: jsonb('action').$type<InsightAction>().notNull(),
+  status: text('status').$type<InsightStatus>().notNull().default('new'),
+  outcome: text('outcome'),
+  dedupeKey: text('dedupe_key').notNull(), createdAt: createdAt(), actedAt: ts('acted_at'),
+}, t => [uniqueIndex('insights_dedupe_key').on(t.dedupeKey), index('insights_status_created').on(t.status, t.createdAt)])
+// Tiny key/value store for best-effort bookkeeping (e.g. when the insights detectors last ran).
+export const kv = pgTable('kv', {
+  key: text('key').primaryKey(), value: text('value').notNull(), updatedAt: createdAt('updated_at'),
+})

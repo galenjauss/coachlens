@@ -4,7 +4,7 @@ import { isRealDate, type Brief, type Disambiguation, type Intent, type Utteranc
 import type { Deps } from '../deps'
 import { attendance, billingFlags, drills, issues, notes, students, utterances } from '../db/schema'
 import { routeUtterance } from '../agents/router'
-import { withRun } from '../agents/runs'
+import { safeDefer, withRun } from '../agents/runs'
 import { draftParentEmail } from '../agents/parentEmail'
 import { acceptDiff, autoAdjustNextDeck, markAutonomy, nextDeckFor, suggestDiff } from '../agents/planner'
 import { resolveName } from '../logic/names'
@@ -17,11 +17,9 @@ import { applyRank, recordMetric } from './metrics'
 import { isGradeMetric, metricPhrase, normalizeKey, shortDate } from '../logic/metrics'
 import { localDate } from '../logic/dates'
 import { coverageAndNext, loadSessionContext, markPresent, type SessionContext } from './context'
+import { insightsOnAttendance } from './insights'
 
 const DAY = 86_400_000
-function safeDefer(deps: Deps, label: string, p: Promise<unknown>) {
-  deps.defer(p.catch(e => { console.error(`[defer:${label}]`, e) }))
-}
 const first = (name: string) => name.split(' ')[0]!
 
 export async function handleUtterance(
@@ -95,6 +93,7 @@ async function applyRollCall(deps: Deps, ctx: SessionContext, utteranceId: strin
       .values(ctx.roster.map(s => ({ sessionId: ctx.sessionId, studentId: s.id, status: absent.has(s.id) ? 'absent' as const : 'present' as const, source: 'voice' as const })))
       .onConflictDoUpdate({ target: [attendance.sessionId, attendance.studentId], set: { status: sql`excluded.status`, source: 'voice' } })
   }
+  insightsOnAttendance(deps, ctx)
   await withRun(deps, run, async () => ({
     result: true, summary: `${ctx.roster.length - absent.size} present, absent: ${[...absent.values()].join(', ') || 'none'}`, reason: parsed.kind === 'present' ? 'voice roll call (named present)' : 'voice roll call',
   }))
@@ -247,6 +246,7 @@ async function applyAttendanceIntent(deps: Deps, ctx: SessionContext, utteranceI
     })
     actions.push({ kind: 'marked', name: first(m.student.name), status })
   }
+  if (status === 'present' && actions.length) insightsOnAttendance(deps, ctx)
   return { actions, disambiguation: null }
 }
 

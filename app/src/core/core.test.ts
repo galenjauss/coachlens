@@ -187,6 +187,26 @@ describe('api bad responses', () => {
   })
 })
 
+describe('api insights', () => {
+  const mk = (body: unknown, seen: { url: string; method: string }[]) => createApi('http://x', async () => null, ((url: string, init: RequestInit) => {
+    seen.push({ url, method: init.method ?? 'GET' })
+    return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: JSON_HDR }))
+  }) as unknown as typeof fetch)
+  const item = { id: 'i1', kind: 'returning_student', studentId: 's1', studentName: 'Jake Ross', classId: 'c1', title: "Jake's back after 3 missed", detail: 'Missed 3 classes in a row', urgency: 'high', status: 'new', createdAt: '2026-10-20T00:00:00Z', actionLabel: 'Draft welcome email' }
+  it('GET /v1/insights builds the query from the set params only', async () => {
+    const seen: { url: string; method: string }[] = []
+    await expect(mk({ insights: [item] }, seen).insights({ scope: 'class', sessionId: 'se 1' })).resolves.toEqual({ insights: [item] })
+    await mk({ insights: [] }, seen).insights()
+    expect(seen.map(s => s.url)).toEqual(['http://x/v1/insights?scope=class&sessionId=se+1', 'http://x/v1/insights'])
+  })
+  it('accept and dismiss POST to the insight', async () => {
+    const seen: { url: string; method: string }[] = []
+    await expect(mk({ ok: true, outcome: 'Email drafted for review' }, seen).acceptInsight('i/1')).resolves.toEqual({ ok: true, outcome: 'Email drafted for review' })
+    await expect(mk({ ok: true }, seen).dismissInsight('i1')).resolves.toEqual({ ok: true })
+    expect(seen).toEqual([{ url: 'http://x/v1/insights/i%2F1/accept', method: 'POST' }, { url: 'http://x/v1/insights/i1/dismiss', method: 'POST' }])
+  })
+})
+
 describe('api.utteranceRuns', () => {
   const mk = (resp: Response, seen: string[] = []) => createApi('http://x', async () => null, ((url: string) => { seen.push(url); return Promise.resolve(resp) }) as unknown as typeof fetch)
   it('parses the runs list from GET /v1/utterances/:id/runs', async () => {
