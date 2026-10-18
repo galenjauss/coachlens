@@ -65,4 +65,7 @@ Reviewer rubric checks:
 
 ## 5. Even Hub: submit for review
 
+**SUBMITTED Oct 17, 2026 11:57 PM PT:** v0.1.0 is In review (submitted by Claude with Galen's explicit OK). Even emails noreply@evenrealities.com when there's a decision; read the outcome in the dev portal inbox.
+
+
 👤 **Explicit OK needed.** Moving Test → **Submitted** puts the build in Even's review queue. It can't be edited or withdrawn without support, and once approved, the version is permanent and public. Only do this after the beta checks in §3 pass on real hardware.
