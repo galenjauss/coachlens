@@ -84,11 +84,11 @@ describe('F15 · Today insights are scoped to the selected class', () => {
 
 describe('C5 · status line for the phone', () => {
   it('names degraded states plainly', () => {
-    const base = { ai: { counts: 'anthropic_calls' as const, day: '2026-10-18', dailyCap: 200, usedToday: 12, remainingToday: 188, exhausted: false }, stt: { configured: true }, degraded: [] }
+    const base = { aiCallsToday: 12, aiDailyCap: 200, sttConfigured: true, mailMode: 'review' as const, degraded: false, degradedReasons: [], aiCallsRemaining: 188, aiCallsCounted: 'anthropic' as const, day: '2026-10-18' }
     expect(parseStatus(base)).toEqual({ ok: true, lines: ['AI calls today: 12 of 200'] })
-    expect(parseStatus({ ...base, stt: { configured: false }, degraded: ['speech_to_text_unconfigured' as const] }).lines).toContain('Speech-to-text is not set up on the server: voice notes wait in the queue')
-    expect(parseStatus({ ...base, ai: { ...base.ai, exhausted: true, remainingToday: 0 }, degraded: ['ai_budget_reached' as const] }))
-      .toEqual({ ok: false, lines: ['AI calls today: 12 of 200', 'Daily AI limit reached: notes still save, sorting resumes tomorrow'] })
+    expect(parseStatus({ ...base, sttConfigured: false, degraded: true, degradedReasons: ['speech_to_text_unconfigured' as const] }).lines).toContain('Speech-to-text is not set up on the server: voice notes wait in the queue')
+    expect(parseStatus({ ...base, aiCallsToday: 200, aiCallsRemaining: 0, degraded: true, degradedReasons: ['ai_budget_reached' as const] }))
+      .toEqual({ ok: false, lines: ['AI calls today: 200 of 200', 'Daily AI limit reached: notes still save, sorting resumes tomorrow'] })
   })
 })
 

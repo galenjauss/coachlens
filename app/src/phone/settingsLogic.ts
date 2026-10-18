@@ -16,8 +16,9 @@ export async function writeDisplayMode(kv: KV, mode: DisplayMode): Promise<void>
 
 /** C5 / F20: the server's degraded-mode status in plain lines; ok=false when something is degraded. */
 export function parseStatus(s: StatusResponse): { ok: boolean; lines: string[] } {
-  const lines = [s.ai.dailyCap != null ? `AI calls today: ${s.ai.usedToday} of ${s.ai.dailyCap}` : `AI calls today: ${s.ai.usedToday} (no daily cap)`]
-  if (s.degraded.includes('ai_budget_reached') || s.ai.exhausted) lines.push('Daily AI limit reached: notes still save, sorting resumes tomorrow')
-  if (s.degraded.includes('speech_to_text_unconfigured') || !s.stt.configured) lines.push('Speech-to-text is not set up on the server: voice notes wait in the queue')
+  const lines = [s.aiDailyCap != null ? `AI calls today: ${s.aiCallsToday} of ${s.aiDailyCap}` : `AI calls today: ${s.aiCallsToday} (no daily cap)`]
+  const reasons = s.degradedReasons ?? []
+  if (reasons.includes('ai_budget_reached') || (s.aiDailyCap != null && s.aiCallsToday >= s.aiDailyCap)) lines.push('Daily AI limit reached: notes still save, sorting resumes tomorrow')
+  if (reasons.includes('speech_to_text_unconfigured') || !s.sttConfigured) lines.push('Speech-to-text is not set up on the server: voice notes wait in the queue')
   return { ok: lines.length === 1, lines }
 }
