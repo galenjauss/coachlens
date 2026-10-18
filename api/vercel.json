@@ -1,0 +1,9 @@
+{
+  "framework": null,
+  "buildCommand": "npm run build",
+  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
+  "crons": [
+    { "path": "/jobs/plan", "schedule": "0 9 * * *" },
+    { "path": "/jobs/report-cards", "schedule": "0 13 1 * *" }
+  ]
+}
