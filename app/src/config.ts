@@ -35,5 +35,7 @@ export const PLAN_MAX_MS: number = 180_000
 export const INSIGHT_GLYPH: string = '💡'
 /** In-session insight poll: GET /v1/insights?scope=class&sessionId=… this often while class runs. */
 export const INSIGHT_POLL_MS: number = 30_000
+/** After a reply that changed attendance (roll call, "mark present"), one insight poll this soon (the returning-student 💡). */
+export const INSIGHT_AFTER_ATTENDANCE_MS: number = 1_500
 /** A new high-urgency insight shows atop peek this long, then collapses to the status-row suffix. */
 export const INSIGHT_BANNER_MS: number = 8_000

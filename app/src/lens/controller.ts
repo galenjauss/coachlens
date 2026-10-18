@@ -1,5 +1,5 @@
 import { ImuReportPace, OsEventTypeList, type EvenAppBridge } from '@evenrealities/even_hub_sdk'
-import { INSIGHT_POLL_MS, MIC_DUAL_START } from '../config'
+import { INSIGHT_AFTER_ATTENDANCE_MS, INSIGHT_POLL_MS, MIC_DUAL_START } from '../config'
 import { ApiError, NetworkError, TRANSCRIBE_TIMEOUT_MS, type Api } from '../core/api'
 import { MAX_RECORD_MS, Recorder, type MicSource, type StopResult } from '../core/audio'
 import { bus } from '../core/bus'
@@ -15,7 +15,7 @@ import { createPlanListen } from './planListen'
 import { initialState, reduce } from './reducer'
 import { MIC_TICK_MS, render } from './render'
 import type { Effect, LensEvent, LensState } from './state'
-import type { Insight } from '@matside/shared'
+import type { Insight, UtteranceResponse } from '@matside/shared'
 
 /**
  * While `peek` or `recording` is visible, re-render this often. Only changed containers are sent:
@@ -77,6 +77,11 @@ function kvGet(kv: KV, key: string, ms = 3000): Promise<string | null> {
 
 async function readFirstRunSeen(kv: KV): Promise<boolean> {
   try { return Boolean(await kv.get(KEYS.firstRunSeen)) } catch (e) { console.error('[lens] kv read failed', e); return false }
+}
+
+/** The reply changed attendance: the api's flag, or (older api) a roll-call / "marked present" card line. */
+export function attendanceChanged(res: Pick<UtteranceResponse, 'cardLines' | 'attendanceChanged'>): boolean {
+  return res.attendanceChanged ?? res.cardLines.some(l => /^\d+ present$|^✓ .+ marked (present|absent)$/.test(l))
 }
 
 export async function startLens(d: LensDeps): Promise<LensHandle> {
@@ -145,6 +150,15 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     if (!sessionId || classOver() || suspended || exited || insightsMissingFor === sessionId) return timers.insightPoll.clear()
     if (timers.insightPoll.active) return
     timers.insightPoll.set(INSIGHT_POLL_MS, () => { void pollInsightsOnce(sessionId) })
+  }
+  /**
+   * A reply that changed attendance: one poll INSIGHT_AFTER_ATTENDANCE_MS from now in place of the pending regular one
+   * (which re-arms after it), so a returning-student banner lands within seconds.
+   */
+  function insightPollSoon(): void {
+    const sessionId = state.session?.id
+    if (!sessionId || classOver() || suspended || exited || insightsMissingFor === sessionId) return
+    timers.insightPoll.set(INSIGHT_AFTER_ATTENDANCE_MS, () => { void pollInsightsOnce(sessionId) })
   }
   async function pollInsightsOnce(sessionId: string): Promise<void> {
     if (state.session?.id !== sessionId || classOver() || suspended || exited) return
@@ -220,6 +234,14 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     audio: i.form.audioB64 ? new Blob([fromB64(i.form.audioB64) as BlobPart], { type: 'audio/wav' }) : null,
   })
 
+  /** The reply to the note just recorded: show it, then follow up on what it changed. */
+  function onResult(res: UtteranceResponse): void {
+    dispatch({ type: 'utteranceResult', res })
+    // A spoken "add drill" changes today's deck: refresh it.
+    if (res.cardLines.some(l => l.startsWith('✓ Added'))) void run({ type: 'loadToday' })
+    if (attendanceChanged(res)) insightPollSoon()
+  }
+
   /** Flush the outbox; when `currentId` is the note just recorded, report its outcome to the lens. */
   async function flush(currentId: string | null): Promise<void> {
     let r: FlushResult
@@ -232,12 +254,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     }
     if (!currentId) return
     const res = r.results.get(currentId)
-    if (res) {
-      dispatch({ type: 'utteranceResult', res })
-      // A spoken "add drill" changes today's deck: refresh it.
-      if (res.cardLines.some(l => l.startsWith('✓ Added'))) void run({ type: 'loadToday' })
-      return
-    }
+    if (res) return onResult(res)
     if (r.delivered.has(currentId)) return dispatch({ type: 'utteranceDelivered' }) // saved; reply unreadable
     // Dropped = the server rejected it (422 empty transcript, other 4xx, or retries exhausted): nothing was saved.
     if (r.dropped.has(currentId)) return dispatch({ type: 'utteranceEmpty', reason: 'not_understood' })
@@ -289,7 +306,9 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
       // Storage failed: try once directly so the note is not silently lost.
       console.error('[outbox] enqueue failed', err)
       dispatch({ type: 'sendStarted' })
-      try { return dispatch({ type: 'utteranceResult', res: await sendItem({ id: 'direct', createdAt: Date.now(), attempts: 0, form: audio }) }) } catch { return dispatch({ type: 'utteranceEmpty', reason: 'not_understood' }) }
+      let res: UtteranceResponse
+      try { res = await sendItem({ id: 'direct', createdAt: Date.now(), attempts: 0, form: audio }) } catch { return dispatch({ type: 'utteranceEmpty', reason: 'not_understood' }) }
+      return onResult(res)
     }
     if (tryText) {
       const heard = await transcriptFirst(wav, base.sessionId)

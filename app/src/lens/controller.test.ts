@@ -8,9 +8,9 @@ import { KEYS, memoryKV } from '../core/storage'
 import { CLASS_ID_KEY } from '../phone/classPref'
 import { RUNS_MAX_MS, RUNS_POLL_MS } from './agentRuns'
 import { AudioInputSource } from '@evenrealities/even_hub_sdk'
-import { KEEP_WARM_MS, MIC_FALLBACK_MS, MIC_METER_MS, OUTBOX_RETRY_MS, startLens, STOP_DEBOUNCE_MS, TICK_MS, type LensBridge, type LensHandle } from './controller'
+import { attendanceChanged, KEEP_WARM_MS, MIC_FALLBACK_MS, MIC_METER_MS, OUTBOX_RETRY_MS, startLens, STOP_DEBOUNCE_MS, TICK_MS, type LensBridge, type LensHandle } from './controller'
 import { NetworkError, TRANSCRIBE_TIMEOUT_MS } from '../core/api'
-import { INSIGHT_BANNER_MS, INSIGHT_GLYPH, INSIGHT_POLL_MS, PLAN_CHUNK_MS, PLAN_MAX_MS, QUEUED_GLYPH } from '../config'
+import { INSIGHT_AFTER_ATTENDANCE_MS, INSIGHT_BANNER_MS, INSIGHT_GLYPH, INSIGHT_POLL_MS, PLAN_CHUNK_MS, PLAN_MAX_MS, QUEUED_GLYPH } from '../config'
 import { PLAN_TRANSCRIBE_TIMEOUT_MS } from './planListen'
 import { STATUS_MS } from './reducer'
 
@@ -1050,6 +1050,64 @@ describe('lens controller · insights', () => {
     b.emit(dbl); await flush()
     b.emit(tap); await flush()
     expect(b.sent.join('\n')).toContain('Missed: nobody!') // the wrap-up still shows, without an insight row
+  })
+})
+
+describe('lens controller · insight poll right after attendance changes', () => {
+  let lens: LensHandle | null = null
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-20T17:00:00Z')) })
+  afterEach(() => { lens?.stop(); lens = null; vi.useRealTimers() })
+  const back = { id: 'back', kind: 'returning_student', studentId: 'j', studentName: 'Jake', classId: 'c1', title: "Jake's back after 2 missed", detail: 'd', urgency: 'high', status: 'new', createdAt: '2026-10-20T17:00:10Z', actionLabel: null }
+  const res = (o: Record<string, unknown>) => ({ utteranceId: 'u1', transcript: 'x', cardLines: ['✓ Priya · guard'], coverage: cov, nextStudent: null, disambiguation: null, ...o })
+  async function toPeek(api: Api) {
+    const kv = memoryKV(); await kv.set(KEYS.firstRunSeen, '1')
+    const b = fakeBridge()
+    lens = await startLens({ bridge: b.bridge, api, kv, outbox: new Outbox(kv), nod: NOD })
+    await flush()
+    b.emit(tap); await flush(); b.emit(tap); await flush(); b.emit(dbl); await flush()
+    return b
+  }
+  async function say(b: Awaited<ReturnType<typeof toPeek>>) {
+    b.emit(tap); await flush() // recording
+    for (let i = 0; i < 20; i++) b.emit(pcm())
+    await vi.advanceTimersByTimeAsync(STOP_DEBOUNCE_MS)
+    b.emit(tap); await flush() // send → card
+  }
+  const sessionCalls = (fn: ReturnType<typeof vi.fn>) => fn.mock.calls.filter(c => (c[0] as { sessionId?: string }).sessionId).length
+
+  it('a voice "mark present" polls insights once 1.5 s later, then the regular 30 s cadence resumes', async () => {
+    const insights = vi.fn(async (p: { sessionId?: string }) => ({ insights: p.sessionId ? [back] : [] }))
+    const utterance = vi.fn(async () => res({ cardLines: ['✓ Jake marked present'], attendanceChanged: true }))
+    const b = await toPeek(fakeApi({ insights, utterance }))
+    await say(b)
+    expect(b.sent.join('\n')).toContain('Jake marked present')
+    expect(sessionCalls(insights)).toBe(0)
+    await vi.advanceTimersByTimeAsync(INSIGHT_AFTER_ATTENDANCE_MS - 100)
+    expect(sessionCalls(insights)).toBe(0)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(sessionCalls(insights)).toBe(1)
+    await vi.advanceTimersByTimeAsync(INSIGHT_POLL_MS - 100)
+    expect(sessionCalls(insights)).toBe(1) // no extra poll in between
+    await vi.advanceTimersByTimeAsync(100)
+    expect(sessionCalls(insights)).toBe(2)
+  })
+
+  it('any other reply adds no poll: the first one still comes 30 s after class start', async () => {
+    const insights = vi.fn(async () => ({ insights: [] }))
+    const b = await toPeek(fakeApi({ insights, utterance: vi.fn(async () => res({})) }))
+    await say(b)
+    await vi.advanceTimersByTimeAsync(INSIGHT_AFTER_ATTENDANCE_MS * 2)
+    expect(sessionCalls(insights)).toBe(0)
+    await vi.advanceTimersByTimeAsync(INSIGHT_POLL_MS)
+    expect(sessionCalls(insights)).toBe(1)
+  })
+
+  it('attendanceChanged: the api flag wins; an older api is read from roll-call / marked card lines', () => {
+    expect(attendanceChanged({ cardLines: ['11 present', 'absent: Mia'] })).toBe(true)
+    expect(attendanceChanged({ cardLines: ['✓ Jake marked present'] })).toBe(true)
+    expect(attendanceChanged({ cardLines: ['✓ Priya · guard', '? Who is here today'] })).toBe(false)
+    expect(attendanceChanged({ cardLines: ['✓ Priya · guard'], attendanceChanged: true })).toBe(true)
+    expect(attendanceChanged({ cardLines: ['11 present'], attendanceChanged: false })).toBe(false)
   })
 })
 
