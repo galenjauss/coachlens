@@ -14,20 +14,20 @@ It is **eyes-up, phone-free capture**, not hands-free. The coach taps the temple
 |---|---|
 | Even Hub store | v0.1.0 was **submitted to Even Hub review** on Oct 17 at 11:57 PM PT. **No approval has been confirmed**, so it is not publicly available on the store. |
 | Installed Beta on physical G2 | **The gate is still open.** We tested earlier QR/sideload builds on a real G2 during development. We have **not** completed the installed-Beta checks (5-minute lock, permission denial, system exit, Conversate relaunch). The procedure is in [`docs/beta-acceptance.md`](docs/beta-acceptance.md). |
-| Live service (`coachlens-api.vercel.app`) | This is a **single-coach demonstration deployment** that holds only **synthetic demo data**. It does not separate one instructor's data from another's. Do not enter real student data. |
+| Live service (`coachlens-api.vercel.app`) | Runs the remediated code (all four batches; migrations 0013 to 0015 applied). It is a **demonstration deployment** that holds only **synthetic demo data** (1 instructor, 23 students, 4 classes), reseeded on Oct 18, with all outgoing mail redirected to one demo inbox. Instructors are isolated from each other, but use only synthetic or consented data. |
 | Demo film | The film sequences real simulator renders at authored timings. It is not a latency measurement and not an uncut hardware recording. |
-| Audit remediation | We **implemented the fixes for the Oct 18 audit in source and verified them locally** (list below). **Production has not been redeployed.** The live service and the submitted v0.1.0 build still run the old behavior. |
+| Audit remediation | The fixes for the Oct 18 audit were verified locally and **deployed on Oct 18**: the API at `coachlens-api.vercel.app` and the phone app at `coachlens-phone.vercel.app`. The **Even Hub v0.1.0 build under review contains none of them** and still runs the old client; a v0.1.1 package (`app/coachlens-0.1.1.ehpk`) exists locally and has **not** been uploaded. A Beta install from the portal therefore still runs old client code. For developer-mode demos, the QR in `docs/screens/demo-qr-0.1.1.png` opens the remediated phone app. Nothing has been tested on G2 hardware since the fixes. |
 
-These changes are in source and **not deployed**:
+These changes are live on the deployed API and phone app (not in the Even Hub v0.1.0 build):
 
-- **Complete Undo.** Undo reverses notes, billing flags, attendance, metrics, rank, issues, drills and plan changes. It also cancels pending email drafts and deferred agent work. Sent email cannot be recalled, and the card says so. In the deployed version, Undo removes only the note and any billing flags.
-- **Idempotent retries.** If a retried upload follows a lost response, the server returns the original result instead of saving the note a second time. In the deployed version, a lost response can produce a duplicate note.
-- **Failed-note retention.** A note that keeps failing stays on the phone with Retry and Discard controls instead of being dropped. In the deployed version, a note can be dropped after five failed attempts.
-- **Multi-instructor isolation.** Every query is scoped to the signed-in instructor, and each instructor has their own pairing code.
-- **Token expiry and Unpair.** Tokens expire after 90 days, and "Unpair this phone" revokes the token on the server. The deployed version uses one reusable pairing code, and uninstalling does not revoke the server token.
-- **Quiet display mode (the default).** During class, the idle display hides after 8 s, result cards dismiss after 6 s, and a tap always records. In the deployed version, the drill, timer and cards stay on screen until dismissed.
-- **Praise stays praise.** Each note keeps whether it is a concern, praise or improvement, and only current concerns count toward a recurring issue. Class questions follow the question's meaning ("who has excellent guard" lists praise). In the deployed version, recurring-issue counting does not tell praise from a problem (audit F01).
-- **Roll call anywhere.** "Everyone except Jake and Mia" works as an ordinary note too, and a sentence that changes nothing says "Nothing changed" with a hint. In the deployed version, an all-except roll call is reliable only in the dedicated roll-call step (audit F04).
+- **Complete Undo.** Undo reverses notes, billing flags, attendance, metrics, rank, issues, drills and plan changes. It also cancels pending email drafts and deferred agent work. Sent email cannot be recalled, and the card says so.
+- **Idempotent retries.** If a retried upload follows a lost response, the server returns the original result instead of saving the note a second time.
+- **Failed-note retention.** A note that keeps failing stays on the phone with Retry and Discard controls instead of being dropped.
+- **Multi-instructor isolation.** Every query is scoped to the signed-in instructor, and each instructor has their own pairing code. Codes are stored hashed (peppered with `PAIRING_PEPPER`).
+- **Token expiry and Unpair.** Tokens expire after 90 days, and "Unpair this phone" revokes the token on the server. Uninstalling alone does not revoke the server token; use Unpair first. The phone also has "Sign out other phones".
+- **Quiet display mode (the default).** During class, the idle display hides after 8 s, result cards dismiss after 6 s, and a tap always records.
+- **Praise stays praise.** Each note keeps whether it is a concern, praise or improvement, and only current concerns count toward a recurring issue. Class questions follow the question's meaning ("who has excellent guard" lists praise).
+- **Roll call anywhere.** "Everyone except Jake and Mia" works as an ordinary note too, and a sentence that changes nothing says "Nothing changed" with a hint.
 - **Zero model calls for simple commands.** Roll call, "how many are here" and "who hasn't been noted yet" are handled before the model.
 - **Insights are review prompts.** "Ready to test" became "review for next rank", which lists the evidence present and what is not tracked and drafts no email. A quiet issue now asks the coach to check it next class; an issue is marked resolved only after praise or improvement and an explicit accept. The mid-class "no observation yet" reminder is one class-level item instead of one per student.
 - **Urgent notes get a factual email.** The subject names the observation, with no tips or progress filler, and Review lists urgent drafts first.
@@ -61,7 +61,7 @@ CoachLens is more than a note-taker. Each note is tied to a student and drives f
 - A metric ("Maria hit 225 on deadlift") becomes a PR on her profile.
 - A question ("how's Priya doing?") returns a profile brief on the lens.
 - A class question ("who is forgetting to keep their guard up?") returns an ANSWER card built from the class's notes, for example `Guard: Priya (3), Leo (2)`. See [Class questions](#class-questions).
-- A roll call ("everyone except Jake and Mia") marks attendance, which feeds the insights agent. In the deployed version, use the roll-call step for this; in source it also works as an ordinary note.
+- A roll call ("everyone except Jake and Mia") marks attendance, which feeds the insights agent. It also works as an ordinary note.
 
 ## The lens flow
 
@@ -75,35 +75,35 @@ CoachLens is more than a note-taker. Each note is tied to a student and drives f
 
 - **Planning listen.** In the lobby, the coach double-taps and talks the plan through with their assistant instructor. The planner agent reshapes the drills, and the lens shows a diff summary (`+ Partner sparring 6m`, `- Kata 2`, `~ Warm-up 10→5m`). Double-tap undoes it.
 - **Agent card.** After the coach speaks, the card shows what they said and live agent progress, for example `√ Maria · deadlift 225 lb (PR +10)`. For a question, it shows the student's brief instead: rank and time in rank, attendance dots (`●●○●●●`), last notes and latest metric.
-- **Voice roll call.** "Everyone except Jake and Mia" or "Present: Priya, Leo, Maya". Use the roll-call step in the deployed version.
+- **Voice roll call.** "Everyone except Jake and Mia" or "Present: Priya, Leo, Maya".
 - **End-of-class summary.** Minutes, drills, note coverage and who has no note yet, agent actions, items to review, and the top insight. A tap puts the students without notes first in the next class. Note coverage counts recorded notes. It is a proxy and does not prove that feedback was given.
 
 ## Class questions
 
 The coach can tap and ask the lens about the whole class, not just one student. The answer appears as an ANSWER card:
 
-- "Who is forgetting to keep their guard up?" shows `Guard: Priya (3), Leo (2)`. In source the answer follows the question's meaning: concerns for a problem question, praise for "who has excellent guard?". The deployed version counts tagged notes and does not separate praise from problems (audit F01).
+- "Who is forgetting to keep their guard up?" shows `Guard: Priya (3), Leo (2)`. The answer follows the question's meaning: concerns for a problem question, praise for "who has excellent guard?".
 - "Who hasn't been noted yet?" lists the students with no notes so far.
-- "How many are here?" is answered from attendance by deterministic code. In source, roll call, counts and coverage questions make **zero** model calls. The deployed version makes one routing model call first.
+- "How many are here?" is answered from attendance by deterministic code. Roll call, counts and coverage questions make **zero** model calls.
 - "What should I focus on next drill?" uses the fast model, grounded only in this class's data. When there are too few notes, it says "Not enough notes yet" instead of guessing.
 
 ## Opportunistic insights agent
 
-Agents also act without being asked. The table describes the source version; differences in the deployed version are noted. Deterministic detectors (no LLM) run when a session ends, when attendance changes and nightly. An insight check runs right after roll call, so a returning-student banner can appear shortly afterwards:
+Agents also act without being asked. Deterministic detectors (no LLM) run when a session ends, when attendance changes and nightly. An insight check runs right after roll call, so a returning-student banner can appear shortly afterwards:
 
 | Detector | Fires when | One-tap action |
 |---|---|---|
 | Attendance decline | Absent in 2 of the last 3 sessions, or attendance halved | Draft email |
 | Returning student | Present today after 2+ consecutive absences | Shown mid-class: `★ Jake's back after 3 missed` |
 | No notes | Present 3 sessions running with no notes | Put first next class |
-| Review for next rank | Martial arts: 90+ days in rank and no open issues (thresholds configurable per school in source) | Shows the evidence present and what is not tracked (curriculum, your assessment); no email. The deployed version calls this "ready to test" and offers a draft email. |
+| Review for next rank | Martial arts: 90+ days in rank and no open issues (thresholds configurable per school) | Shows the evidence present and what is not tracked (curriculum, your assessment); no email. |
 | New PR | Personal training: a PR in the last 7 days | Draft praise email |
 | Grade drop | Tutoring: latest test 10+ points below the previous one | Draft email |
 | Issue quiet | No new notes on an open issue for 21 days | "Check next class". No notes is not evidence of improvement, so the issue stays open. |
 | Issue improving | Praise or improvement noted since the issue opened | "Mark resolved", only on the coach's explicit accept. |
 | Repeated billing | 2+ open billing flags for one student | Draft email |
 
-**Display policy.** Insights appear in the lobby and the end-of-class summary. Mid-class, only high-urgency items appear, such as a returning student or a kid who still has no note late in class. They show as a ★ banner, in the style of Even's Conversate AI insights. In the deployed version, the drill, timer and cards stay on screen until dismissed, and a tap while a banner is showing dismisses the banner. The Quiet mode in source changes both (see Status).
+**Display policy.** Insights appear in the lobby and the end-of-class summary. Mid-class, only high-urgency items appear, such as a returning student or a kid who still has no note late in class. They show as a ★ banner, in the style of Even's Conversate AI insights. Quiet mode is the default: the idle display hides after 8 s, cards dismiss after 6 s, and a tap always records, even over a banner (see Status). Standard mode keeps them on screen.
 
 ## Agents and autonomy
 
@@ -125,7 +125,7 @@ Every agent has an **Auto / Review / Off** setting on the phone. Emails default 
 - **Transcript first.** What the coach said appears on the lens before the agents finish.
 - **Dual-mic start.** The glasses and phone mics open together. CoachLens uses the glasses audio when it delivers enough audio, and otherwise the phone's.
 - **Keep-warm.** The API is pinged during a session to avoid cold starts mid-class.
-- **Offline queue.** Notes are saved on the phone first, including the audio, which is held temporarily, and sync later. The lens shows `↑ 2 queued`, and the phone offers Retry now. See Status for how the deployed version handles retries and duplicates.
+- **Offline queue.** Notes are saved on the phone first, including the audio, which is held temporarily, and sync later. The lens shows `↑ 2 queued`, and the phone offers Retry now. Retries are idempotent, so a lost response does not duplicate a note.
 
 We have not measured end-to-end latency on physical G2. Small audit probes measured roughly 1–3 s for the server step on text and about 1.6 s for one clean speech-to-text call. These are not end-to-end numbers.
 
@@ -219,15 +219,15 @@ We did not run migrations, seeding or model calls in this check, because they ne
 
 The app talks to `http://localhost:8787` in dev and to the production API in a build. Set `VITE_API_URL` to override this. To run on real glasses over the LAN, use `cd app && npx evenhub qr --url http://<your-lan-ip>:5173`. To package for the Even Hub portal, run `cd app && npm run build && npx evenhub pack app.json dist -o coachlens.ehpk`, and set the `network` whitelist in `app/app.json` to your API origin.
 
-**The deployed code supports one coach per deployment.** Pairing maps to the first instructor in the database. Multi-instructor isolation is implemented in source and verified locally, but it is not deployed. Until it is, run one deployment per coach and use only synthetic or consented data.
+**Multi-instructor isolation is deployed.** Every query is scoped to the signed-in instructor, and each instructor has their own pairing code. The live service still holds only synthetic demo data, so use only synthetic or consented data. For multi-coach use, also set `AI_INSTRUCTOR_DAILY_CAP`; unset, it equals the global cap and gives no per-coach fairness.
 
 ## Budget and degraded mode
 
 `AI_DAILY_CAP` (default 400 per America/Los_Angeles day) counts **Anthropic model calls only**, including failed ones. It does **not** cap tokens, OpenAI speech-to-text, email, database or hosting costs, so it is not a complete spending cap; set limits with each provider as well.
 
-When the cap is reached, the service runs in **degraded mode**. Model-backed agents fail soft with "Daily AI budget reached". Transcripts that the router cannot sort are still saved as unsorted notes for review, and deterministic features (briefs, metrics, insights) keep working. In source, roll call, attendance counts and coverage questions ("who hasn't been noted yet") make zero model calls, so they keep working past the cap and do not use it up; tag questions still use one routing call.
+When the cap is reached, the service runs in **degraded mode**. Model-backed agents fail soft with "Daily AI budget reached". Transcripts that the router cannot sort are still saved as unsorted notes for review, and deterministic features (briefs, metrics, insights) keep working. Roll call, attendance counts and coverage questions ("who hasn't been noted yet") make zero model calls, so they keep working past the cap and do not use it up; tag questions still use one routing call.
 
-In source, `GET /v1/status` reports Anthropic calls used and left today against the cap (failed calls included), whether speech-to-text is configured, and a list of degraded reasons (`ai_budget_reached`, `speech_to_text_unconfigured`). This is not deployed.
+`GET /v1/status` reports Anthropic calls used and left today against the cap (failed calls included), whether speech-to-text is configured, and a list of degraded reasons (`ai_budget_reached`, `speech_to_text_unconfigured`).
 
 ## Architecture
 
@@ -263,7 +263,7 @@ Every screen fits about three glanceable rows within the SDK's container limits.
 
 ### Quiet by Design
 *"Does the technology appear when it is useful and stay out of the way when it isn't?"*
-Insights wait for the lobby and the end-of-class summary, and mid-class only high-urgency items appear. Emails default to Review. To be clear about the current state: the deployed build keeps the drill, timer and cards on screen until dismissed. The Quiet mode in source, which is the default there, hides the idle display after 8 s and dismisses cards after 6 s. It is not deployed yet.
+Insights wait for the lobby and the end-of-class summary, and mid-class only high-urgency items appear. Emails default to Review. Quiet mode is the default on the deployed phone app: the idle display hides after 8 s and cards dismiss after 6 s. The Even Hub v0.1.0 build under review still keeps the drill, timer and cards on screen until dismissed.
 
 ### Originality
 *"Does the idea open up a new moment or use case for Even Hub?"*
@@ -271,7 +271,7 @@ We claim a specific combination: observations that the teacher speaks during a l
 
 ### Experience & Polish
 *"Is it clear, natural, and easy to use?"*
-Plain speech, no syntax. The transcript shows first, the agent card confirms, and double-tap undoes. Undo is complete in source; in the deployed version it removes only notes and billing flags. The coach can ask the class a question and get an ANSWER card. Lens text is clipped at word boundaries. Setup is a quiz that reads a photo of the roster.
+Plain speech, no syntax. The transcript shows first, the agent card confirms, and double-tap undoes. Undo is complete on the deployed service and phone app; the Even Hub v0.1.0 client predates the fix and is not verified against it. The coach can ask the class a question and get an ANSWER card. Lens text is clipped at word boundaries. Setup is a quiz that reads a photo of the roster.
 
 ### Execution
 *"Can a judge put on G2 and experience the core idea right now?"*
@@ -284,7 +284,7 @@ Yes, on the loaner, which is paired at the table. We ran development builds on a
 - **Synthetic data.** Every student, parent and class in the demo is a seeded fake.
 - **Injuries are logged as observations**, never diagnosed.
 - **CORS is `*` on purpose.** The Even WebView sends a custom-scheme or null origin. Every `/v1/*` call needs a bearer token from pairing, and no cookies are used.
-- **Pairing in the deployed version** uses one reusable code. Tokens are stored hashed, and uninstalling does not revoke the server token. Per-instructor codes, 90-day expiry and Unpair are in source, not deployed. See [`docs/privacy.md`](docs/privacy.md).
+- **Pairing** uses per-instructor codes stored hashed, tokens expire after 90 days, and Unpair revokes the server token. Uninstalling alone does not revoke it. This is deployed; the Even Hub v0.1.0 build under review has no Unpair control. See [`docs/privacy.md`](docs/privacy.md).
 - Secrets live only in Vercel environment variables. The app bundle holds no keys.
 
 ## Research

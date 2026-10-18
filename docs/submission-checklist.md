@@ -2,7 +2,7 @@
 
 Each step marked 👤 needs you.
 
-**Status after the Oct 18 audit:** Even Hub v0.1.0 is submitted and in review (no approval confirmed). The **installed-Beta gate is OPEN**: run [`beta-acceptance.md`](beta-acceptance.md) on physical G2 and attach evidence before any copy says the installed Beta is verified. Production has not been redeployed with the remediation. Public copy that needs replacing is listed in [`claims-to-update.md`](claims-to-update.md).
+**Status after the Oct 18 audit:** Even Hub v0.1.0 is submitted and in review (no approval confirmed). The **installed-Beta gate is OPEN**: run [`beta-acceptance.md`](beta-acceptance.md) on physical G2 and attach evidence before any copy says the installed Beta is verified. The API and phone app with the remediation were deployed on Oct 18, but the Even Hub v0.1.0 build under review does not contain it (`app/coachlens-0.1.1.ehpk` is not uploaded). Public copy that needs replacing is listed in [`claims-to-update.md`](claims-to-update.md).
 
 ## 1. Devpost (LA Hacks, deadline Sun 12:00 PM PT)
 
@@ -25,9 +25,11 @@ Each step marked 👤 needs you.
 
 ## 2. Before recording
 
-1. 👤 Reseed: `npm run seed -w api` with the production env. **This wipes all data**; a backup of the earlier data is in `~/lahacks-backups/`.
-2. Re-pair the phone with the pairing code.
-3. Don't rehearse the roll call (insights only fire once per student per week).
+1. Reseed: done on Oct 18 (synthetic data: 1 instructor, 23 students, 4 classes, 39 notes). The earlier data is backed up in `~/lahacks-backups/prod-before-remediation-deploy-20261018-0836`. Re-run `npm run seed -w api` only if you need a clean slate; it wipes all data.
+2. Pair the phone with the usual pairing code (the server holds it from `PAIRING_CODE`).
+3. For developer-mode demos, scan `docs/screens/demo-qr-0.1.1.png`; it opens `https://coachlens-phone.vercel.app/?v=0.1.1` (the remediated client). A Beta install from the Even Hub portal still runs the old v0.1.0 client.
+4. All outgoing mail goes to the demo inbox (`DEMO_EMAIL_OVERRIDE`), not to guardians.
+5. Don't rehearse the roll call (insights only fire once per student per week).
 
 ## 3. Even Hub: Beta (required for judging)
 

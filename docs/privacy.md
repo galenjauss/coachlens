@@ -57,13 +57,14 @@ Audio waiting in the offline queue stays on your phone only until it is delivere
 
 ## Pairing and access
 
-- **How pairing works today (the live service):** the phone pairs by entering a pairing code that the developer gives you in person. This code is **reusable**: it is the same code each time, not a one-time code. After pairing, the phone holds an access token, and the server stores only a hash of it.
-- **Uninstalling does not revoke access on the server.** Deleting the app removes the token from your phone, but the server-side token stays valid. To revoke it today, contact the developer via the Even Hub listing.
-- **In the next version (implemented in source and verified locally, not yet deployed):** each instructor has their own pairing code, which the service operator can rotate; codes are stored hashed; access tokens expire after 90 days; and an **Unpair this phone** control revokes the phone's token on the server. Until that version is deployed and released, the live service behaves as described in the first two points.
+- **How pairing works:** the phone pairs by entering a pairing code that the developer gives you in person. Each instructor has their own code, which the service operator can rotate. Codes are stored hashed on the server. After pairing, the phone holds an access token, and the server stores only a hash of it.
+- **Tokens expire after 90 days.** An **Unpair this phone** control revokes the phone's token on the server, and **Sign out other phones** revokes the others.
+- **Uninstalling alone does not revoke access on the server.** Deleting the app removes the token from your phone, but the server-side token stays valid until it expires. Use Unpair before you delete the app, or contact the developer via the Even Hub listing.
+- **Version note:** these controls are live on the deployed service and phone app (Oct 18, 2026). The Even Hub v0.1.0 build under review predates them and has no Unpair control.
 
 ## Current deployment limits
 
-The live service is a **single-coach demonstration deployment**. It holds one instructor's synthetic demo data (no real students), and it does not yet separate data between independent instructors. Please do not enter real student information into it. Isolation between instructors is implemented in source and verified locally, but it is not deployed. This section will be updated when it is.
+The live service is a **demonstration deployment**. It holds one instructor's synthetic demo data (no real students). Data is separated between instructors: every request is scoped to the signed-in instructor. Please still do not enter real student information into it. All outgoing email from the demo goes to a single demo inbox.
 
 ## Security
 

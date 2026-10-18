@@ -139,12 +139,13 @@ th,td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;verti
 <p>Audio waiting in the offline queue stays on your phone only until it is delivered. Removing the app removes the queue and the pairing token from your phone.</p>
 <h2>Pairing and access</h2>
 <ul>
-<li><strong>How pairing works today (the live service):</strong> the phone pairs by entering a pairing code that the developer gives you in person. This code is <strong>reusable</strong>: it is the same code each time, not a one-time code. After pairing, the phone holds an access token, and the server stores only a hash of it.</li>
-<li><strong>Uninstalling does not revoke access on the server.</strong> Deleting the app removes the token from your phone, but the server-side token stays valid. To revoke it today, contact the developer via the Even Hub listing.</li>
-<li><strong>In the next version (implemented in source and verified locally, not yet deployed):</strong> each instructor has their own pairing code, which the service operator can rotate; codes are stored hashed; access tokens expire after 90 days; and an <strong>Unpair this phone</strong> control revokes the phone&#39;s token on the server. Until that version is deployed and released, the live service behaves as described in the first two points.</li>
+<li><strong>How pairing works:</strong> the phone pairs by entering a pairing code that the developer gives you in person. Each instructor has their own code, which the service operator can rotate. Codes are stored hashed on the server. After pairing, the phone holds an access token, and the server stores only a hash of it.</li>
+<li><strong>Tokens expire after 90 days.</strong> An <strong>Unpair this phone</strong> control revokes the phone&#39;s token on the server, and <strong>Sign out other phones</strong> revokes the others.</li>
+<li><strong>Uninstalling alone does not revoke access on the server.</strong> Deleting the app removes the token from your phone, but the server-side token stays valid until it expires. Use Unpair before you delete the app, or contact the developer via the Even Hub listing.</li>
+<li><strong>Version note:</strong> these controls are live on the deployed service and phone app (Oct 18, 2026). The Even Hub v0.1.0 build under review predates them and has no Unpair control.</li>
 </ul>
 <h2>Current deployment limits</h2>
-<p>The live service is a <strong>single-coach demonstration deployment</strong>. It holds one instructor&#39;s synthetic demo data (no real students), and it does not yet separate data between independent instructors. Please do not enter real student information into it. Isolation between instructors is implemented in source and verified locally, but it is not deployed. This section will be updated when it is.</p>
+<p>The live service is a <strong>demonstration deployment</strong>. It holds one instructor&#39;s synthetic demo data (no real students). Data is separated between instructors: every request is scoped to the signed-in instructor. Please still do not enter real student information into it. All outgoing email from the demo goes to a single demo inbox.</p>
 <h2>Security</h2>
 <p>Requests are sent over HTTPS. Access tokens are stored hashed on the server. AI provider keys stay on the server and are never included in the app package.</p>
 <h2>Changes</h2>
