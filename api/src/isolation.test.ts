@@ -4,7 +4,8 @@ import { resetRateLimits } from './http/rateLimit'
 import { makeTestDb, makeDeps, fakeLlm } from './test/helpers'
 import { makeTenant, pairWith, seedCurriculum } from './test/tenants'
 import { createApp } from './app'
-import { apiTokens, notes, outbox, students } from './db/schema'
+import { AgentTask } from '@matside/shared'
+import { agentRuns, apiTokens, attendance, classes, insights, llmUsageInstructor, notes, outbox, students } from './db/schema'
 
 /** C4 isolation: two instructors, separate classes, students and notes. */
 async function world() {
@@ -181,5 +182,85 @@ describe('C4 isolation: writes', () => {
     expect(bo!.status).toBe('pending_review')
     expect(w.deps.sent).toHaveLength(0)
     expect((await w.db.select().from(notes).where(eq(notes.id, B.looseNoteId))).length).toBe(1)
+  })
+})
+
+describe('C4 isolation: review round 1 gaps', () => {
+  beforeEach(() => resetRateLimits())
+
+  it('transcribe, utterance drill, assignment, remind and attendance reject or drop the other instructor ids', async () => {
+    const w = await world()
+    const { A, B } = w
+    const wav = (o: Record<string, string>) => { const f = new FormData(); for (const [k, v] of Object.entries(o)) f.set(k, v); f.set('audio', new File([new Uint8Array(10)], 'a.wav', { type: 'audio/wav' })); return f }
+    for (const scope of [{ sessionId: B.sessionId }, { classId: B.classId }] as Record<string, string>[]) {
+      expect((await w.app.request('/v1/transcribe', { method: 'POST', headers: { Authorization: w.a.h.Authorization }, body: wav(scope) })).status).toBe(404)
+    }
+    const f = new FormData(); f.set('sessionId', A.sessionId); f.set('drillId', B.drillId); f.set('mode', 'note'); f.set('text', 'Alphia great stance')
+    expect((await w.app.request('/v1/utterance', { method: 'POST', headers: { Authorization: w.a.h.Authorization }, body: f })).status).toBe(400)
+    expect((await send(w, 'POST', `/v1/notes/${A.looseNoteId}/assign`, { studentId: B.studentIds[0] })).status).toBe(400)
+    expect((await send(w, 'PATCH', `/v1/students/${A.studentIds[0]}`, { classIds: [B.classId] })).status).toBe(404)
+    expect((await send(w, 'POST', `/v1/sessions/${A.sessionId}/remind`, { studentIds: [B.studentIds[0], A.studentIds[1]] })).status).toBe(200)
+    expect((await w.db.select().from(classes).where(eq(classes.id, A.classId)))[0]!.remindIds).toEqual([A.studentIds[1]])
+    expect((await send(w, 'POST', `/v1/sessions/${A.sessionId}/attendance`, { presentIds: [B.studentIds[0], A.studentIds[0]] })).status).toBe(200)
+    expect((await w.db.select().from(attendance).where(eq(attendance.studentId, B.studentIds[0]!))).length).toBe(0)
+  })
+
+  it('every /v1/agents/:task lists only the caller runs', async () => {
+    const w = await world()
+    for (const task of AgentTask.options) {
+      await w.db.insert(agentRuns).values({ agent: task, trigger: 't', sessionId: w.B.sessionId, summary: `Bravo ${task}`, reason: 'r', status: 'ok', ms: 1, instructorId: w.B.instructorId })
+      const rows = await (await get(w, `/v1/agents/${task}`)).json() as { summary: string }[]
+      expect([task, rows.some(r => r.summary.startsWith('Bravo'))]).toEqual([task, false])
+    }
+  })
+
+  it('/v1/status shows only the caller AI calls', async () => {
+    const w = await world()
+    await w.db.insert(llmUsageInstructor).values({ instructorId: w.B.instructorId, day: '2026-10-19', calls: 99 })
+    const st = await (await get(w, '/v1/status')).json() as { aiCallsToday: number }
+    expect(st.aiCallsToday).toBe(0)
+  })
+
+  it('onboarding/commit never matches or edits the other instructor classes or students', async () => {
+    const w = await world()
+    const commit = {
+      basics: { coachName: 'Coach A', schoolName: 'A Dojo', timeZone: 'America/Los_Angeles' }, mode: 'martial_arts',
+      classes: [{ name: 'Bravo Kids', weekday: 2, startTime: '16:00', mode: 'martial_arts' }],
+      students: [{ name: 'Bravaia One', nickname: null, age: null, level: 'black', guardianName: null, guardianEmail: null, classNames: ['Bravo Kids'] }],
+      curriculum: [],
+    }
+    const r = await send(w, 'POST', '/v1/onboarding/commit', commit)
+    expect(r.status).toBe(200)
+    expect(((await r.json()) as { created: { classes: number; students: number } }).created).toMatchObject({ classes: 1, students: 1 })
+    expect((await w.db.select().from(classes).where(eq(classes.id, w.B.classId)))[0]).toMatchObject({ startTime: '17:00', instructorId: w.B.instructorId })
+    expect((await w.db.select().from(students).where(eq(students.id, w.B.studentIds[0]!)))[0]!.belt).toBe('yellow')
+  })
+
+  it('/jobs/plan and /jobs/report-cards run per instructor: runs are tagged with the owner and follow that owner settings', async () => {
+    const w = await world()
+    await send(w, 'PATCH', '/v1/settings', { autonomy: { report_card: 'off' } })
+    const cron = { Authorization: 'Bearer cron' }
+    expect((await w.app.request('/jobs/plan', { headers: cron })).status).toBe(200)
+    const runs = await w.db.select().from(agentRuns).where(eq(agentRuns.agent, 'planner'))
+    expect(runs.length).toBeGreaterThan(0)
+    expect(runs.every(r => r.instructorId === w.A.instructorId || r.instructorId === w.B.instructorId)).toBe(true)
+    expect((await w.app.request('/jobs/report-cards', { headers: cron })).status).toBe(200)
+    const cards = await w.db.select().from(agentRuns).where(eq(agentRuns.agent, 'report_card'))
+    const mine = cards.filter(r => r.instructorId === w.A.instructorId)
+    const theirs = cards.filter(r => r.instructorId === w.B.instructorId)
+    expect(mine.length).toBe(2)
+    expect(mine.every(r => /skipped \(off\)/.test(r.summary))).toBe(true)
+    expect(theirs.length).toBe(2)
+    expect(theirs.some(r => /skipped \(off\)/.test(r.summary))).toBe(false)
+  })
+
+  it('insights: another tenant with many rows cannot crowd out the caller (filtered before the limit)', async () => {
+    const w = await world()
+    await w.db.insert(insights).values(Array.from({ length: 60 }, (_, i) => ({
+      kind: 'no_feedback' as const, studentId: w.B.studentIds[0]!, classId: w.B.classId, title: `Bravo ${i}`, detail: 'd', urgency: 'high' as const,
+      action: { type: 'none', label: null } as never, dedupeKey: `bravo:${i}`, createdAt: new Date('2026-10-20T00:20:00Z'),
+    })))
+    const list = await (await get(w, '/v1/insights')).json() as { insights: { id: string }[] }
+    expect(list.insights.map(i => i.id)).toContain(w.A.insightId)
   })
 })
