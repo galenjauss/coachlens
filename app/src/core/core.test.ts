@@ -3,7 +3,7 @@ import { pcmToWav, toB64, fromB64 } from './wav'
 import { Outbox } from './outbox'
 import { memoryKV } from './storage'
 import { ApiError, NetworkError, createApi } from './api'
-import { LOUD_RMS, levelOf, NOISE_FLOOR_RMS, Recorder, rms, waveform, WAVE_BARS, WAVE_GLYPHS } from './audio'
+import { Recorder } from './audio'
 
 const form = { sessionId: 's', drillId: null, mode: 'note' as const, audioB64: null, text: 'hi' }
 const res = (id: string) => ({ utteranceId: id, transcript: 'hi', cardLines: [], coverage: { covered: 0, present: 0 }, nextStudent: null, disambiguation: null })
@@ -140,15 +140,46 @@ describe('outbox persistence failure', () => {
   })
 })
 
+const JSON_HDR = { 'content-type': 'application/json; charset=utf-8' }
+
 describe('api bad responses', () => {
   const mk = (resp: Response) => createApi('http://x', async () => null, (() => Promise.resolve(resp)) as unknown as typeof fetch)
   it('maps a schema failure on 2xx to ApiError 502', async () => {
-    const api = mk(new Response(JSON.stringify({ nope: 1 }), { status: 200 }))
+    const api = mk(new Response(JSON.stringify({ nope: 1 }), { status: 200, headers: JSON_HDR }))
     await expect(api.today()).rejects.toMatchObject({ status: 502, message: 'bad_response' })
   })
-  it('maps a non-JSON 2xx to ApiError 502', async () => {
-    const api = mk(new Response('<html>', { status: 200 }))
-    await expect(api.today()).rejects.toMatchObject({ status: 502 })
+  it('a non-JSON 2xx (captive-portal HTML, empty, wrong content-type) is a retryable NetworkError, never "delivered"', async () => {
+    const { NonJsonResponseError, BadResponseError } = await import('./api')
+    const cases = [
+      new Response('<html>Sign in to Wi-Fi</html>', { status: 200, headers: { 'content-type': 'text/html' } }),
+      new Response('', { status: 200, headers: JSON_HDR }),
+      new Response('<html>', { status: 200, headers: JSON_HDR }), // claims JSON, isn't
+      new Response('{"nope":1}', { status: 200, headers: { 'content-type': 'text/html' } }), // JSON-ish body from a proxy page
+    ]
+    for (const r of cases) {
+      const e = await mk(r).today().catch(x => x)
+      expect(e).toBeInstanceOf(NonJsonResponseError)
+      expect(e).toBeInstanceOf(NetworkError)
+      expect(e).not.toBeInstanceOf(BadResponseError)
+    }
+  })
+  it('the outbox keeps a note whose reply was captive-portal HTML (not delivered, not dropped, not counted)', async () => {
+    const kv = memoryKV()
+    const ob = new Outbox(kv)
+    const a = await ob.enqueue(form)
+    const api = mk(new Response('<html>portal</html>', { status: 200, headers: { 'content-type': 'text/html' } }))
+    const r = await ob.flush(i => api.utterance({ sessionId: i.form.sessionId, drillId: i.form.drillId, mode: i.form.mode, text: i.form.text, audio: null }))
+    expect(r.delivered.has(a.id)).toBe(false)
+    expect(r.dropped.has(a.id)).toBe(false)
+    expect((await ob.list()).map(i => [i.id, i.attempts])).toEqual([[a.id, 0]])
+  })
+  it('a JSON 2xx with the wrong shape is still BadResponseError (delivered): the outbox removes it', async () => {
+    const ob = new Outbox(memoryKV())
+    const a = await ob.enqueue(form)
+    const api = mk(new Response('{"nope":1}', { status: 200, headers: JSON_HDR }))
+    const r = await ob.flush(i => api.utterance({ sessionId: i.form.sessionId, drillId: i.form.drillId, mode: i.form.mode, text: i.form.text, audio: null }))
+    expect(r.delivered.has(a.id)).toBe(true)
+    expect(await ob.list()).toEqual([])
   })
   it('survives a literal null error body', async () => {
     const api = mk(new Response('null', { status: 500 }))
@@ -161,13 +192,13 @@ describe('api.utteranceRuns', () => {
   it('parses the runs list from GET /v1/utterances/:id/runs', async () => {
     const seen: string[] = []
     const runs = [{ agent: 'router', summary: 'sorted', status: 'ok', createdAt: '2026-10-20T00:00:00Z' }]
-    await expect(mk(new Response(JSON.stringify(runs), { status: 200 }), seen).utteranceRuns('u 1')).resolves.toEqual(runs)
+    await expect(mk(new Response(JSON.stringify(runs), { status: 200, headers: JSON_HDR }), seen).utteranceRuns('u 1')).resolves.toEqual(runs)
     expect(seen).toEqual(['http://x/v1/utterances/u%201/runs'])
   })
   it('404 (endpoint not deployed yet) → null; other errors throw; bad shape → 502', async () => {
     await expect(mk(new Response('{"error":"not_found"}', { status: 404 })).utteranceRuns('u')).resolves.toBeNull()
     await expect(mk(new Response('{}', { status: 500 })).utteranceRuns('u')).rejects.toMatchObject({ status: 500 })
-    await expect(mk(new Response('[{"agent":1}]', { status: 200 })).utteranceRuns('u')).rejects.toMatchObject({ status: 502 })
+    await expect(mk(new Response('[{"agent":1}]', { status: 200, headers: JSON_HDR })).utteranceRuns('u')).rejects.toMatchObject({ status: 502 })
   })
 })
 
@@ -225,50 +256,17 @@ describe('recorder', () => {
     r.push(new Uint8Array(1000))
     expect(await r.stop()).toEqual({ wav: null, bytes: 1000, reason: 'too_short' })
   })
-  it('switchToPhone opens the phone mic once; wave() reflects arriving audio', async () => {
+  it('switchToPhone opens the phone mic once; bytes reflect arriving audio', async () => {
     const calls: unknown[][] = []
     const r = new Recorder({ audioControl: async (...a: unknown[]) => { calls.push(a); return true } })
     await r.start()
-    expect(r.wave()).toBe('')
+    expect(r.bytes).toBe(0)
     expect(await r.switchToPhone()).toBe(true)
     expect(await r.switchToPhone()).toBe(false)
     expect(r.source).toBe('phone')
     expect(calls).toEqual([[true, 'glasses'], [false], [true, 'phone']]) // glasses mic closed BEFORE the phone mic opens
-    const loud = new Uint8Array(3200); const v = new DataView(loud.buffer)
-    for (let i = 0; i < 1600; i++) v.setInt16(i * 2, i % 2 ? 4000 : -4000, true)
-    r.push(loud)
-    expect(r.wave()).toBe(`${'▁'.repeat(WAVE_BARS - 1)}${WAVE_GLYPHS[levelOf(4000)]}`)
-  })
-})
-
-describe('waveform mic indicator', () => {
-  const tone = (amp: number, n = 1600) => { const b = new Uint8Array(n * 2); const v = new DataView(b.buffer); for (let i = 0; i < n; i++) v.setInt16(i * 2, i % 2 ? amp : -amp, true); return b }
-  it('maps RMS to 8 levels with a soft noise floor (log-spaced, clamped)', () => {
-    expect(rms(tone(1000))).toBeCloseTo(1000)
-    expect(levelOf(0)).toBe(0)
-    expect(levelOf(NOISE_FLOOR_RMS)).toBe(0) // at the floor: silent
-    expect(levelOf(NOISE_FLOOR_RMS * 1.2)).toBe(0) // just above: still the lowest bar
-    expect(levelOf(LOUD_RMS)).toBe(7)
-    expect(levelOf(30000)).toBe(7)
-    const ladder = [200, 400, 800, 1600, 3200, 6000].map(levelOf)
-    expect(ladder).toEqual([...ladder].sort((a, b) => a - b)) // monotonic
-    expect(new Set(ladder).size).toBeGreaterThan(4)
-  })
-  it('scrolls: newest bar on the right, oldest drop off the left, padded with ▁', () => {
-    expect(waveform([7], 4)).toBe('▁▁▁█')
-    expect(waveform([0, 1, 2, 3, 4, 5, 6, 7], 4)).toBe('▅▆▇█')
-    expect([...waveform([3, 3, 3])].length).toBe(WAVE_BARS)
-  })
-  it('the recorder adds one bar per chunk and scrolls left as audio arrives', async () => {
-    const r = new Recorder({ audioControl: async () => true })
-    await r.start()
-    r.push(tone(LOUD_RMS))
-    const first = r.wave()
-    expect([...first].at(-1)).toBe('█')
-    r.push(tone(10))
-    const second = [...r.wave()]
-    expect(second.at(-1)).toBe('▁')
-    expect(second.at(-2)).toBe('█') // the loud bar moved one step left
+    r.push(new Uint8Array(3200))
+    expect(r.bytes).toBe(3200)
   })
 })
 
@@ -293,7 +291,7 @@ describe('imu readout flag (KV)', () => {
 describe('api errors', () => {
   it('schema failure on a 2xx is a BadResponseError (ApiError 502, delivered)', async () => {
     const { BadResponseError } = await import('./api')
-    const api = createApi('http://x', async () => null, (() => Promise.resolve(new Response('{"nope":1}', { status: 200 }))) as unknown as typeof fetch)
+    const api = createApi('http://x', async () => null, (() => Promise.resolve(new Response('{"nope":1}', { status: 200, headers: JSON_HDR }))) as unknown as typeof fetch)
     const e = await api.today().catch(x => x)
     expect(e).toBeInstanceOf(BadResponseError)
     expect(e).toMatchObject({ status: 502, delivered: true })

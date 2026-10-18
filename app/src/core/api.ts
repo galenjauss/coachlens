@@ -12,12 +12,21 @@ export class ApiError extends Error {
 }
 export class NetworkError extends Error {}
 /**
- * A 2xx whose body didn't match the schema: the server DID the work (e.g. saved the note), we just
- * can't read the reply. Never retry it (that would duplicate the work): `delivered` is true.
+ * A 2xx JSON reply that didn't match the schema: our server DID the work (e.g. saved the note), we
+ * just can't read the reply. Never retry it (that would duplicate the work): `delivered` is true.
+ * Only thrown when the body really was JSON with a JSON content-type; anything else is NonJsonResponseError.
  */
 export class BadResponseError extends ApiError {
   readonly delivered = true
   constructor() { super(502, 'bad_response') }
+}
+
+/**
+ * A 2xx that was NOT our API's JSON (captive-portal HTML, an empty body, a proxy page): the request
+ * likely never reached the server, so it is a network failure — retryable, and the outbox keeps the note.
+ */
+export class NonJsonResponseError extends NetworkError {
+  constructor() { super('non_json_response') }
 }
 
 export type Api = ReturnType<typeof createApi>
@@ -42,11 +51,13 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
     const timer = setTimeout(() => ctl.abort(), REQUEST_TIMEOUT_MS)
     let res: Response
     let raw: unknown
+    let isJson = false
     try {
       try { res = await fetchImpl(`${baseUrl}${path}`, { ...init, headers, body, signal: ctl.signal }) } catch (e) {
         throw new NetworkError(ctl.signal.aborted ? 'timeout' : e instanceof Error ? e.message : 'network')
       }
-      raw = await res.json().catch(() => undefined)
+      const text = await res.text().catch(() => '')
+      try { raw = text ? JSON.parse(text) : undefined; isJson = text !== '' } catch { raw = undefined }
     } finally { clearTimeout(timer) }
     if (!res.ok) {
       const msg = raw && typeof raw === 'object' ? (raw as { error?: unknown }).error : undefined
@@ -54,6 +65,8 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
       throw new ApiError(res.status, typeof msg === 'string' ? msg : res.statusText)
     }
     if (!schema) return (raw ?? {}) as T
+    const jsonType = /\bjson\b/i.test(res.headers.get('content-type') ?? '')
+    if (!isJson || !jsonType) throw new NonJsonResponseError() // not our API's reply: retry later, never "delivered"
     const parsed = schema.safeParse(raw)
     if (!parsed.success) throw new BadResponseError()
     return parsed.data

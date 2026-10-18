@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { Today } from '@matside/shared'
-import { render, minutesLeft, bar, clock, wrap } from './render'
-import { SAID_COLS, transcriptPages } from './text'
+import { render, minutesLeft, bar, clock, wrap, micLine, stageLine, peekFit, type PageSpec } from './render'
+import { SAID_COLS, classHeader, clip, colsFor, rowsFor, transcriptPages } from './text'
 import { initialState } from './reducer'
 import type { LensState, Screen } from './state'
 
@@ -16,7 +16,7 @@ const s: LensState = {
   session: { id: 's', startedAt: 0 }, active: { drillId: 'd1', startedAt: 0 },
   coverage: { covered: 3, present: 12 }, nextStudent: { id: 'p', name: 'Priya', reason: 'guard' },
 }
-const ALL: Screen[] = ['firstRun', 'home', 'attendance', 'attendanceDone', 'dark', 'peek', 'deck', 'recording', 'sending', 'card', 'disambiguation', 'confirmEnd', 'wrapup']
+const ALL: Screen[] = ['firstRun', 'home', 'attendance', 'attendanceDone', 'dark', 'peek', 'deck', 'drillDetail', 'recording', 'sending', 'card', 'disambiguation', 'confirmEnd', 'wrapup']
 
 describe('minutesLeft', () => {
   it('whole minutes left, <1m, and minutes over', () => {
@@ -50,6 +50,20 @@ describe('minutesLeft', () => {
     expect(wrap('one two three four five six seven eight nine ten eleven twelve thirteen', 12).join(' ')).toBe('one two three four five six seven eight nine ten eleven twelve thirteen')
     expect(wrap('supercalifragilisticexpialidocious', 10)).toEqual(['supercalif', 'ragilistic', 'expialidoc', 'ious'])
     expect(wrap('', 10, 3)).toEqual([])
+    expect(wrap('Warm-up: Solve one-step equations', 28, 1)).toEqual(['Warm-up: Solve one-step…']) // never "equat…"
+    expect(clip('LINEAR EQUATIONS · TUTORING WEDNESDAY', 28)).toBe('LINEAR EQUATIONS · TUTORING…')
+  })
+  it('budgets come from container size (~14.5 px/char, ~30 px/line)', () => {
+    expect(colsFor(576)).toBe(39)
+    expect(colsFor(576, true)).toBe(38)
+    expect(rowsFor(40)).toBe(1)
+    expect(rowsFor(164, true)).toBe(5)
+  })
+  it('class header: theme first, then class; drops the mode word, then the class tail; never mid-word', () => {
+    expect(classHeader('Linear Equations', 'Algebra · Wed 4:00', 'Tutoring', 39)).toBe('LINEAR EQUATIONS · Algebra · Wed 4:00')
+    expect(classHeader('Linear Equations', 'Tutoring Wednesday · Algebra', 'Tutoring', 30)).toBe('LINEAR EQUATIONS · Wednesday')
+    expect(classHeader('Linear Equations', 'Algebra · Wed 4:00', 'Tutoring', 27)).toBe('LINEAR EQUATIONS · Algebra')
+    expect(classHeader('Linear Equations', 'Algebra · Wed 4:00', 'Tutoring', 20)).toBe('LINEAR EQUATIONS')
   })
   it('bar fills proportionally and clamps', () => {
     expect(bar(0.5, 10)).toBe('━━━━━─────')
@@ -68,10 +82,10 @@ describe('render', () => {
   })
   it('peek layout: header, drill name, dedicated partial clock, boxed bar+cue with capture, next line', () => {
     const p = render(s, 79_000)
-    expect(p.key).toBe('peek')
-    expect(p.texts.find(t => t.name === 'hdrL')?.content).toBe('STANCES · Kids · Tue')
-    expect(p.texts.find(t => t.name === 'hdrR')?.content).toBe('Feedback 3/12')
-    expect(p.texts.find(t => t.name === 'drill')?.content).toBe('HORSE STANCE HOLDS')
+    expect(p.key).toBe('peek2')
+    expect(p.texts.find(t => t.name === 'hdr')?.content).toBe('STANCES · Kids · Tue')
+    expect(p.texts.find(t => t.name === 'cov')?.content).toBe('Feedback 3/12')
+    expect(p.texts.find(t => t.name === 'drill')?.content).toBe('Horse stance holds')
     expect(p.texts.find(t => t.name === 'timer')).toMatchObject({ content: '2:41 left', capture: false })
     const box = p.texts.find(t => t.name === 'box')!
     expect(box).toMatchObject({ border: true, capture: true })
@@ -141,10 +155,12 @@ describe('render', () => {
     const p = render(long, 0)
     expect(p.texts.find(t => t.name === 'next')?.content.replace(/\n/g, ' ')).toBe('> Next feedback: Priyanka Venkataraman (guard drops on the rear hand)')
     expect(p.texts.find(t => t.name === 'box')?.content.replace(/\n/g, ' ')).toContain('cue: keep the rear heel light · hands high')
+    expect(p.texts.find(t => t.name === 'box')?.content).not.toContain('━') // the bar yields to the cue
     const wrap2 = { sessionId: 's', minutes: 45, drillsRun: 5, coverage: { covered: 4, present: 12 }, agentActions: 4, pendingReview: 2,
       missed: ['Alexander', 'Benjamin', 'Charlotte', 'Dominique', 'Evangeline', 'Francesca', 'Gabriella'].map((name, i) => ({ id: `${i}`, name })) }
     const body = render({ ...s, screen: 'wrapup', wrapup: wrap2 }, 0).texts.find(t => t.name === 'body')!.content
-    expect(body.replace(/\n/g, ' ')).toContain('missed: Alexander, Benjamin, Charlotte, Dominique, Evangeline, Francesca, Gabriella')
+    expect(body.split('\n')[0]).toBe('Missed: Alexander, Benjamin,')
+    expect(body.split('\n')[1]).toMatch(/^Charlotte, .*…$/) // two lines max, cut between names
     const att = render({ ...s, screen: 'attendanceDone', attendanceLines: ['11 present', 'absent: Jake Thompson, Mia Rodriguez-Lopez'] }, 0)
     expect(att.texts.find(t => t.name === 'body')?.content.replace(/\n/g, ' ')).toContain('absent: Jake Thompson, Mia Rodriguez-Lopez')
   })
@@ -167,29 +183,56 @@ describe('render', () => {
     expect(p.texts.find(t => t.name === 'body')?.content).toBe('PT · Sam\nPersonal training\n\nLoading class…')
     expect(render({ ...s, screen: 'home' }, 0).texts.find(t => t.name === 'foot')?.content).toBe('2×: exit')
   })
-  it('recording panel: drill + time header, listening body with the (wrapping) next-feedback line', () => {
-    const rec = { ...s, screen: 'recording' as const, pending: { mode: 'note' as const, returnTo: 'peek' as const, viaLongPress: false, at: 79_000 }, mic: { seconds: 0, wave: '', source: 'glasses' as const } }
+  it('recording panel: drill + time header, "speak, then tap" hint with the next-feedback line, live mic line', () => {
+    const rec = { ...s, screen: 'recording' as const, pending: { mode: 'note' as const, returnTo: 'peek' as const, viaLongPress: false, at: 79_000 }, mic: { tick: 0, audio: false, source: 'glasses' as const } }
     const p = render(rec, 79_000)
     expect(p.texts.find(t => t.name === 'hdr')?.content).toBe('HORSE STANCE HOLDS · 3m left')
-    expect(p.texts.find(t => t.name === 'body')?.content).toBe('● Listening… speak, then tap\n\n> Next feedback: Priya (guard)')
-    expect(p.texts.find(t => t.name === 'mic')?.content).toBe('waiting for audio… 0s')
+    expect(p.texts.find(t => t.name === 'body')?.content).toBe('speak, then tap\n\n> Next feedback: Priya (guard)')
+    expect(p.texts.find(t => t.name === 'mic')?.content).toBe('○ waiting for mic…')
     // static time: minutes later the header still shows the time from when recording started
     expect(render(rec, 79_000 + 120_000).texts.find(t => t.name === 'hdr')?.content).toBe('HORSE STANCE HOLDS · 3m left')
-    expect(render({ ...rec, mic: { seconds: 3, wave: '▂▅▇▃▆█▄▂▁▃▁▁▂▃', source: 'glasses' } }, 0).texts.find(t => t.name === 'mic')?.content).toBe('▂▅▇▃▆█▄▂▁▃▁▁▂▃ 3s')
-    expect(render({ ...rec, mic: { seconds: 2, wave: '▁▂▃', source: 'phone' } }, 0).texts.find(t => t.name === 'mic')?.content).toBe('▁▂▃ 2s · Using phone mic')
+    expect(render({ ...rec, mic: { tick: 8, audio: true, source: 'glasses' } }, 0).texts.find(t => t.name === 'mic')?.content).toBe('● LISTENING  0:04')
+  })
+  it('mic line: waiting until audio, then a ●/○ pulse per 500 ms tick with m:ss counting up; says (phone) after the fallback', () => {
+    expect(micLine(null)).toBe('')
+    expect(micLine({ tick: 3, audio: false, source: 'glasses' })).toBe('○ waiting for mic…')
+    expect(micLine({ tick: 3, audio: false, source: 'phone' })).toBe('○ waiting for phone mic…')
+    expect(micLine({ tick: 8, audio: true, source: 'glasses' })).toBe('● LISTENING  0:04')
+    expect(micLine({ tick: 9, audio: true, source: 'glasses' })).toBe('○ LISTENING  0:04')
+    expect(micLine({ tick: 10, audio: true, source: 'glasses' })).toBe('● LISTENING  0:05')
+    expect(micLine({ tick: 8, audio: true, source: 'phone' })).toBe('● LISTENING (phone)  0:04')
+    expect(micLine({ tick: 150, audio: true, source: 'glasses' })).toBe('● LISTENING  1:15')
+    for (const tick of [0, 1, 2, 3]) expect(micLine({ tick, audio: true, source: 'glasses' })).not.toMatch(/[▁▂▃▄▅▆▇█✓]/) // no waveform, no ✓
+  })
+  it('thinking stage line: current stage in caps with a 1–3 dot cycle; fits the box', () => {
+    expect(stageLine({ stage: 'heard', tick: 0, since: 0 })).toBe('HEARD· > sending > thinking > agents')
+    expect(stageLine({ stage: 'sending', tick: 1, since: 0 })).toBe('heard > SENDING·· > thinking > agents')
+    expect(stageLine({ stage: 'thinking', tick: 5, since: 3 })).toBe('heard > sending > THINKING··· > agents')
+    expect(stageLine({ stage: 'thinking', tick: 6, since: 3 })).toBe('heard > sending > THINKING· > agents')
+    expect(stageLine({ stage: 'thinking', tick: 5, since: 3 }).length).toBeLessThanOrEqual(colsFor(576, true))
+    const p = render({ ...s, screen: 'sending', pending: { mode: 'note', returnTo: 'peek', viaLongPress: false, at: 0 }, thinking: { stage: 'sending', tick: 0, since: 0 } }, 0)
+    expect(p.texts.find(t => t.name === 'body')?.content).toBe('heard > SENDING· > thinking > agents')
   })
   it('long-press recording says speak, then release', () => {
     const p = render({ ...s, screen: 'recording', pending: { mode: 'note', returnTo: 'dark', viaLongPress: true, at: 0 } }, 0)
-    expect(p.texts.find(t => t.name === 'body')?.content.split('\n')[0]).toBe('● Listening… speak, then release')
+    expect(p.texts.find(t => t.name === 'body')?.content.split('\n')[0]).toBe('speak, then release')
+  })
+  it('wrap-up says who was missed and what tap and 2x do', () => {
+    const w = { sessionId: 's', minutes: 45, drillsRun: 5, coverage: { covered: 9, present: 12 }, agentActions: 4, pendingReview: 2,
+      missed: ['Jake', 'Leo', 'Mia'].map((name, i) => ({ id: `${i}`, name })) }
+    const p = render({ ...s, screen: 'wrapup', wrapup: w }, 0)
+    expect(p.texts.find(t => t.name === 'body')?.content.split('\n')[0]).toBe('Missed: Jake, Leo, Mia')
+    expect(p.texts.find(t => t.name === 'foot')?.content).toBe('Tap = coach them first next class\n2x = done')
+    expect(render({ ...s, screen: 'wrapup', wrapup: { ...w, missed: [] } }, 0).texts.find(t => t.name === 'foot')?.content).toBe('Tap = done')
   })
   it('deck uses a capturing list with ≤64-char items and the planUnit header', () => {
     const p = render({ ...s, screen: 'deck' }, 0)
     expect(p.list?.items[0]).toBe('Horse stance holds · 4m')
-    expect(p.texts.find(t => t.name === 'hdr')?.content).toBe('DRILL DECK · 1 · tap to run')
+    expect(p.texts.find(t => t.name === 'hdr')?.content).toBe('DRILL DECK · 1 · tap to view')
     expect(p.texts.every(t => !t.capture)).toBe(true)
   })
   it('list items are capped at 20 × 64 chars and never empty', () => {
-    const many = Array.from({ length: 25 }, (_, i) => ({ ...drill, id: `d${i}`, name: 'x'.repeat(80) }))
+    const many = Array.from({ length: 25 }, (_, i) => ({ ...drill, id: `d${i}`, name: 'word '.repeat(16).trim() }))
     const p = render({ ...s, screen: 'deck', today: { ...today, deck: { ...today.deck, drills: many } } }, 0)
     expect(p.list?.items).toHaveLength(20)
     expect(p.list?.items.every(i => i.length <= 64)).toBe(true)
@@ -211,21 +254,38 @@ describe('render', () => {
     const p = render({ ...s, screen: 'home', starting: true }, 0)
     expect(p.texts.find(t => t.name === 'body')?.content).toContain('Starting')
   })
-  it('peek clips only the one-line header; a long cue wraps to at most two lines', () => {
-    const long = {
-      ...s,
-      today: { ...today, theme: 'Advanced competition sparring footwork', className: 'Adult black belt · Saturday morning',
-        deck: { ...today.deck, drills: [{ ...drill, cues: ['keep the rear heel light and ready', 'hands high at all times please'] }] } },
-    } as LensState
-    const p = render(long, 0)
-    const hdrL = p.texts.find(t => t.name === 'hdrL')!.content
-    expect(hdrL.length).toBeLessThanOrEqual(28)
-    expect(hdrL.endsWith('…')).toBe(true)
-    const cue = p.texts.find(t => t.name === 'box')!.content.split('\n').slice(1)
-    expect(cue).toHaveLength(2)
-    expect(cue[0]!.startsWith('cue:')).toBe(true)
-    for (const l of cue) expect(l.length).toBeLessThanOrEqual(40)
-    expect(render(s, 0).texts.find(t => t.name === 'hdrL')!.content).toBe('STANCES · Kids · Tue')
+  it('peek shrinks in order: drop the bar → drop later cues → move the next line → point to the deck detail', () => {
+    expect(peekFit(['knees out'])).toMatchObject({ bar: true, nextRows: 2, more: false })
+    expect(peekFit(['keep the rear heel light and ready', 'hands high at all times please'])).toMatchObject({ bar: false, nextRows: 2, more: false })
+    const third = peekFit(['keep the rear heel light and ready at all times', 'hands high at all times please, both of them'])
+    expect(third).toMatchObject({ bar: false, nextRows: 2, more: false })
+    expect(third.cues.join(' ')).toBe('cue: keep the rear heel light and ready at all times')
+    const moved = peekFit(['keep the rear heel light and ready at all times while you circle your partner slowly'])
+    expect(moved).toMatchObject({ bar: false, nextRows: 1, more: false })
+    const last = peekFit(['x '.repeat(80).trim() + ' end'])
+    expect(last).toMatchObject({ nextRows: 1, more: true })
+    const s2 = { ...s, today: { ...today, deck: { ...today.deck, drills: [{ ...drill, cues: ['keep the rear heel light and ready at all times while you circle your partner slowly'] }] } } } as LensState
+    const p = render(s2, 0)
+    expect(p.key).toBe('peek1')
+    expect(p.texts.find(t => t.name === 'next')?.content).toBe('> Next: Priya')
+  })
+  it('the tutoring Wednesday plan shows whole on the peek (instructor case)', () => {
+    const tut = { ...s, today: { ...today, theme: 'Linear Equations', className: 'Algebra · Wed 4:00', modeLabel: 'Tutoring',
+      deck: { ...today.deck, drills: [{ ...drill, name: 'Warm-up: Solve one-step equations', cues: ['undo the operation', 'check by substituting'] }] } } } as LensState
+    const p = render(tut, 0)
+    expect(p.texts.find(t => t.name === 'hdr')?.content).toBe('LINEAR EQUATIONS · Algebra · Wed 4:00')
+    expect(p.texts.find(t => t.name === 'drill')?.content).toBe('Warm-up: Solve one-step\nequations')
+  })
+  it('deck item detail shows the full name and every cue (paged with swipe when long)', () => {
+    const name = 'Warm-up: Solve one-step equations with a partner, then swap and check each other'
+    const st = { ...s, screen: 'drillDetail' as const, detail: { index: 0, page: 0 }, today: { ...today, deck: { ...today.deck, drills: [{ ...drill, name, cues: ['undo the operation on both sides', 'check by substituting'] }] } } } as LensState
+    const p = render(st, 0)
+    expect(p.texts.find(t => t.name === 'hdr')?.content).toBe('1/1 · 4m · running')
+    expect(p.texts.find(t => t.name === 'body')?.content.replace(/\n+/g, ' ')).toBe(`${name} cue: undo the operation on both sides cue: check by substituting`)
+    expect(p.texts.find(t => t.name === 'foot')?.content).toBe('tap: start · 2×: back')
+    const deckItem = render({ ...st, screen: 'deck' }, 0).list!.items[0]!
+    expect(deckItem.endsWith('… · 4m')).toBe(true)
+    expect(deckItem.length).toBeLessThanOrEqual(64)
   })
 
   it('every page has exactly one capturing container, ≤8 texts, names ≤16 chars', () => {
@@ -240,6 +300,71 @@ describe('render', () => {
         if (p.list) expect(p.list.name.length).toBeLessThanOrEqual(16)
         for (const t of p.texts) expect(t.x + t.w).toBeLessThanOrEqual(576)
         for (const t of p.texts) expect(t.y + t.h).toBeLessThanOrEqual(288)
+      }
+    }
+  })
+})
+
+/*
+ * Layout budget: across every screen, with realistic long tutoring inputs, no rendered line exceeds its
+ * container's char budget (from its width, ~14.5 px/char), no container shows more lines than fit, and
+ * no word of the plan is split mid-word.
+ */
+describe('layout budget', () => {
+  const LONG_NAME = 'Warm-up: Solve one-step equations'
+  const tut: Today = { ...today, className: 'Algebra · Wed 4:00', theme: 'Linear Equations', modeLabel: 'Tutoring', planUnit: 'Lesson plan',
+    focus: [{ label: 'Sign errors when moving terms across the equals sign', studentIds: [] } as unknown as Today['focus'][number]],
+    deck: { ...today.deck, drills: [
+      { ...drill, id: 'd1', name: LONG_NAME, minutes: 5, cues: ['undo the operation on both sides', 'check by substituting back in'] },
+      { ...drill, id: 'd2', name: 'Two-step equations: isolate the variable, then divide both sides by the coefficient', minutes: 12, cues: ['inverse operations in reverse order of operations', 'keep the equation balanced', 'circle the variable first'], focusStudentIds: ['a', 'b'] },
+    ] } } as Today
+  const words = new Set([LONG_NAME, 'Linear Equations', 'Algebra · Wed 4:00', ...tut.deck.drills.flatMap(d => [d.name, ...d.cues])]
+    .flatMap(x => x.split(/\s+/)).map(w => w.toUpperCase().replace(/[^A-Z0-9-]/g, '')).filter(w => w.length > 2))
+  const base: LensState = { ...s, today: tut, nextStudent: { id: 'p', name: 'Priyanka Venkataraman', reason: 'sign errors moving terms' },
+    pending: { mode: 'note', returnTo: 'peek', viaLongPress: false, at: 0 }, mic: { tick: 9, audio: true, source: 'phone' },
+    thinking: { stage: 'thinking', tick: 5, since: 3 }, detail: { index: 1, page: 0 },
+    card: { lines: ['✓ Priyanka · sign errors moving terms across'], transcript: 'Priyanka keeps flipping the sign when she moves the constant to the other side of the equation', utteranceId: 'u', runs: null, runsFinal: false, page: 0 },
+    disambiguation: { noteId: 'n', heard: 'Priya', options: [{ id: 'a', name: 'Priyanka Venkataraman' }, { id: 'b', name: 'Priya Ramaswamy-Okonkwo' }] },
+    wrapup: { sessionId: 's', minutes: 50, drillsRun: 2, coverage: { covered: 10, present: 12 }, agentActions: 7, pendingReview: 3, missed: [{ id: 'j', name: 'Jake' }, { id: 'l', name: 'Leo' }, { id: 'm', name: 'Mia' }] },
+    attendanceLines: ['11 present', 'absent: Jake Thompson, Mia Rodriguez-Lopez'],
+    classes: [{ id: 'c', name: 'Algebra · Wed 4:00', modeLabel: 'Tutoring' }, { id: 'c2', name: 'Geometry · Thu 5:30', modeLabel: 'Tutoring' }] }
+  const norm = (w: string) => w.toUpperCase().replace(/[^A-Z0-9-]/g, '')
+  /** A cut word: a token shown with an ellipsis that is only a prefix of a plan word, or a plan word hard-broken across two lines. */
+  const cutWords = (lines: string[]): string[] => {
+    const bad: string[] = []
+    lines.forEach((l, i) => {
+      for (const raw of l.split(/\s+/)) {
+        const tok = norm(raw)
+        if (raw.endsWith('…') && tok && !words.has(tok) && [...words].some(w => w.startsWith(tok))) bad.push(raw)
+      }
+      const next = lines[i + 1]
+      if (next) {
+        const [tail, head] = [norm(l.split(/\s+/).at(-1) ?? ''), norm(next.split(/\s+/)[0] ?? '')]
+        if (tail && head && words.has(tail + head)) bad.push(`${l} | ${next}`)
+      }
+    })
+    return bad
+  }
+  const check = (p: PageSpec, where: string) => {
+    for (const t of p.texts) {
+      const lines = t.content ? t.content.split('\n') : []
+      expect(lines.length, `${where}/${t.name} rows: ${t.content}`).toBeLessThanOrEqual(rowsFor(t.h, t.border))
+      for (const l of lines) expect(l.length, `${where}/${t.name}: "${l}"`).toBeLessThanOrEqual(colsFor(t.w, t.border))
+      expect(cutWords(lines), `${where}/${t.name}`).toEqual([])
+    }
+    if (p.list) for (const i of p.list.items) {
+      expect(i.length, `${where}/list: "${i}"`).toBeLessThanOrEqual(Math.min(64, colsFor(p.list.w)))
+      expect(cutWords([i]), `${where}/list`).toEqual([])
+    }
+  }
+  it('no line overflows its container and no plan word is cut, on every screen', () => {
+    expect(cutWords(['Warm-up: Solve one-step equat…'])).toEqual(['equat…']) // the detector catches the old bug
+    expect(cutWords(['Warm-up: Solve one-step equ', 'ations'])).toHaveLength(1)
+    for (const screen of ALL) {
+      for (const active of ['d1', 'd2']) {
+        const st = { ...base, screen, active: { drillId: active, startedAt: 0 }, detail: { index: active === 'd1' ? 0 : 1, page: 0 } }
+        check(render(st, 61_000), `${screen}:${active}`)
+        check(render({ ...st, status: 'Time · next: Two-step equations: isolate the variable' }, 61_000), `${screen}:${active}:status`)
       }
     }
   })

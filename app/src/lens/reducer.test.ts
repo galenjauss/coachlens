@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Today } from '@matside/shared'
-import { STATUS_MS, initialState, reduce } from './reducer'
+import { STATUS_MS, THINK_AFTER_TICKS, initialState, reduce, remindedStatus } from './reducer'
 import type { LensEvent, LensState } from './state'
 
 const today: Today = {
@@ -119,7 +119,7 @@ describe('lens reducer', () => {
     expect(r.effects).toContainEqual({ type: 'expireStatus', ms: STATUS_MS })
     r = run(r.state, { type: 'statusExpired' })
     expect(r.state).toMatchObject({ screen: 'peek', status: null })
-    r = run(inDark(), { type: 'swipeDown' }, { type: 'listSelect', index: 1, now: 5 }, { type: 'timerEnded' })
+    r = run(inDark(), { type: 'swipeDown' }, { type: 'listSelect', index: 1 }, { type: 'tap', now: 5 }, { type: 'timerEnded' })
     expect(r.state.status).toBe('Time · next: wrap up')
   })
 
@@ -174,13 +174,30 @@ describe('lens reducer', () => {
   it('recording keeps a start time (static header) and a live mic indicator; micLevel only applies while recording', () => {
     let r = run(inPeek(), { type: 'tap', now: 5000 })
     expect(r.state.pending?.at).toBe(5000)
-    expect(r.state.mic).toEqual({ seconds: 0, wave: '', source: 'glasses' })
-    r = run(r.state, { type: 'micLevel', seconds: 2, wave: '▂▅▇', source: 'phone' })
-    expect(r.state.mic).toEqual({ seconds: 2, wave: '▂▅▇', source: 'phone' })
-    const same = reduce(r.state, { type: 'micLevel', seconds: 2, wave: '▂▅▇', source: 'phone' })
+    expect(r.state.mic).toEqual({ tick: 0, audio: false, source: 'glasses' })
+    r = run(r.state, { type: 'micLevel', tick: 4, audio: true, source: 'phone' })
+    expect(r.state.mic).toEqual({ tick: 4, audio: true, source: 'phone' })
+    const same = reduce(r.state, { type: 'micLevel', tick: 4, audio: true, source: 'phone' })
     expect(same.state).toBe(r.state)
     const p = inPeek()
-    expect(reduce(p, { type: 'micLevel', seconds: 1, wave: '▁', source: 'glasses' }).state).toBe(p)
+    expect(reduce(p, { type: 'micLevel', tick: 1, audio: true, source: 'glasses' }).state).toBe(p)
+  })
+
+  it('thinking stages advance on real events: heard (stop) → sending (request out) → thinking after 1.5 s pending', () => {
+    let r = run(inPeek(), { type: 'tap' }, { type: 'tap' })
+    expect(r.state.thinking).toEqual({ stage: 'heard', tick: 0, since: 0 })
+    r = run(r.state, { type: 'thinkingTick' })
+    expect(r.state.thinking).toMatchObject({ stage: 'heard', tick: 1 }) // ticks only move the dots
+    r = run(r.state, { type: 'sendStarted' })
+    expect(r.state.thinking).toMatchObject({ stage: 'sending', since: 1 })
+    for (let i = 1; i < THINK_AFTER_TICKS; i++) r = run(r.state, { type: 'thinkingTick' })
+    expect(r.state.thinking?.stage).toBe('sending')
+    r = run(r.state, { type: 'thinkingTick' })
+    expect(r.state.thinking?.stage).toBe('thinking')
+    expect(reduce(r.state, { type: 'sendStarted' }).state).toBe(r.state) // never goes back
+    const p = inPeek()
+    expect(reduce(p, { type: 'thinkingTick' }).state).toBe(p)
+    expect(reduce(p, { type: 'sendStarted' }).state).toBe(p)
   })
 
   it('runsLoaded updates only the matching card', () => {
@@ -234,6 +251,10 @@ describe('lens reducer', () => {
     let r = run(inDark(), { type: 'swipeDown' })
     expect(r.state.screen).toBe('deck')
     r = run(r.state, { type: 'listSelect', index: 1 })
+    expect(r.state).toMatchObject({ screen: 'drillDetail', detail: { index: 1, page: 0 } }) // full name + cues first
+    expect(r.effects).toEqual([])
+    expect(run(r.state, { type: 'doubleTap' }).state.screen).toBe('deck')
+    r = run(r.state, { type: 'tap' })
     expect(r.state.screen).toBe('peek')
     expect(r.state.active?.drillId).toBe('d2')
     expect(r.effects).toContainEqual({ type: 'logDrill', sessionId: 's1', drillId: 'd2', event: 'start' })
@@ -250,10 +271,39 @@ describe('lens reducer', () => {
     expect(r.effects).toContainEqual({ type: 'endSession', sessionId: 's1' })
     r = run(r.state, { type: 'wrapupLoaded', wrapup: { sessionId: 's1', minutes: 47, drillsRun: 7, coverage: { covered: 9, present: 12 }, missed: [{ id: 'j', name: 'Jake' }], agentActions: 11, pendingReview: 3 } })
     expect(r.state.screen).toBe('wrapup')
+    const wrapped = r.state
     r = run(r.state, { type: 'tap' })
-    expect(r.effects).toContainEqual({ type: 'remind', sessionId: 's1', studentIds: ['j'] })
+    expect(r.effects).toContainEqual({ type: 'remind', sessionId: 's1', studentIds: ['j'], names: ['Jake'] })
     expect(r.state.screen).toBe('home')
     expect(r.state.session).toBeNull()
+    r = run(r.state, { type: 'remindResult', ok: true, names: ['Jake'] })
+    expect(r.state.status).toBe('ok · Jake first next class')
+    expect(r.effects).toContainEqual({ type: 'expireStatus', ms: STATUS_MS })
+    const done = run(wrapped, { type: 'doubleTap' })
+    expect(done.effects.some(x => (x as { type: string }).type === 'remind')).toBe(false)
+    expect(done.state.screen).toBe('home')
+  })
+
+  it('reminder confirmation names the kids and fits one footer line', () => {
+    expect(remindedStatus(['Jake', 'Leo', 'Mia'])).toBe('ok · Jake, Leo, Mia first next class')
+    const many = remindedStatus(['Alexander', 'Benjamin', 'Charlotte', 'Dominique'])
+    expect(many).toMatch(/^ok · Alexander \+3 first next class$/)
+    expect(many.length).toBeLessThanOrEqual(39)
+    expect(run(inPeek(), { type: 'remindResult', ok: false, names: ['Jake'] }).state.status).toBe('Reminder not saved · check connection')
+  })
+
+  it('drill detail pages long text with swipe (clamped)', () => {
+    const longDrill = { ...today.deck.drills[0]!, name: 'Warm-up: Solve one-step equations with a partner', cues: Array.from({ length: 6 }, (_, i) => `cue number ${i + 1} is a fairly long reminder line`) }
+    const t2 = { ...today, deck: { ...today.deck, drills: [longDrill] } } as Today
+    let s2 = run(inPeek(), { type: 'todayLoaded', today: t2 }, { type: 'swipeDown' }, { type: 'listSelect', index: 0 }).state
+    expect(s2.screen).toBe('drillDetail')
+    s2 = run(s2, { type: 'swipeDown' }).state
+    expect(s2.detail?.page).toBe(1)
+    s2 = run(s2, { type: 'swipeDown' }, { type: 'swipeDown' }, { type: 'swipeDown' }).state
+    const last = s2.detail!.page
+    expect(last).toBeGreaterThan(0)
+    expect(reduce(s2, { type: 'swipeDown' }).state).toBe(s2) // clamped at the last page
+    expect(run(s2, { type: 'swipeUp' }).state.detail?.page).toBe(last - 1)
   })
 
   const resumeRes = { sessionId: 's1', startedAt: '2026-10-20T00:00:00Z', coverage: cov, nextStudent: null }

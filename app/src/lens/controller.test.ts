@@ -140,7 +140,8 @@ describe('lens controller', () => {
   async function toDrill(api = fakeApi(), opts: Parameters<typeof boot>[2] = {}) {
     const b = await toPeek(api, opts)
     b.emit(swipe); await flush()
-    b.emit({ listEvent: {} }); await flush()
+    b.emit({ listEvent: {} }); await flush() // drill detail
+    b.emit(tap); await flush() // start it
     return b
   }
 
@@ -263,6 +264,7 @@ describe('lens controller', () => {
     await vi.advanceTimersByTimeAsync(400) // the drill starts 400 ms into a tick period
     b.emit(swipe); await flush()
     b.emit({ listEvent: {} }); await flush()
+    b.emit(tap); await flush()
     const n = b.sent.length
     await vi.advanceTimersByTimeAsync(990)
     expect(b.sent.slice(n)).toEqual([]) // no tick lands mid-second
@@ -307,6 +309,33 @@ describe('lens controller', () => {
     await vi.advanceTimersByTimeAsync(STOP_DEBOUNCE_MS)
     b.emit(tap); await flush()
     expect(b.sent.join('\n')).toContain("Didn't catch that")
+  })
+
+  it('host exit events turn the IMU off; resume re-arms it; stop() turns it off', async () => {
+    for (const ev of [OsEventTypeList.FOREGROUND_EXIT_EVENT, OsEventTypeList.ABNORMAL_EXIT_EVENT, OsEventTypeList.SYSTEM_EXIT_EVENT]) {
+      const b = await toPeek()
+      b.raw.imuControl.mockClear()
+      b.emit({ sysEvent: { eventType: ev } }); await flush()
+      expect(b.raw.imuControl).toHaveBeenCalledWith(false)
+      b.emit({ sysEvent: { eventType: OsEventTypeList.FOREGROUND_ENTER_EVENT } }); await flush()
+      expect(b.raw.imuControl).toHaveBeenLastCalledWith(true, ImuReportPace.P100)
+      lens!.stop(); await flush()
+      expect(b.raw.imuControl).toHaveBeenLastCalledWith(false)
+      lens = null
+    }
+  })
+
+  it('wrap-up tap queues the missed kids and confirms by name once saved', async () => {
+    const missed = { ...wrap, missed: [{ id: 'j', name: 'Jake' }, { id: 'l', name: 'Leo' }, { id: 'm', name: 'Mia' }] }
+    const remind = vi.fn(async () => ({ ok: true }))
+    const b = await toPeek(fakeApi({ endSession: vi.fn(async () => missed), remind }))
+    b.emit(dbl); await flush()
+    b.emit(tap); await flush()
+    expect(b.sent.join('\n')).toContain('Missed: Jake, Leo, Mia')
+    expect(b.sent.join('\n')).toContain('Tap = coach them first next class\n2x = done')
+    b.emit(tap); await flush()
+    expect(remind).toHaveBeenCalledWith('s1', ['j', 'l', 'm'])
+    expect(b.sent.join('\n')).toContain('ok · Jake, Leo, Mia first next class')
   })
 
   it('resume re-arms the IMU and an open mic', async () => {
@@ -438,14 +467,42 @@ describe('lens controller', () => {
       expect(b.sent.slice(m).filter(x => x.startsWith('upgrade:timer=')).length).toBe(2)
     })
 
-    it('mic line updates at most every 500 ms and shows audio arriving', async () => {
+    it('mic line: waiting until audio arrives, then ● LISTENING pulsing ●/○ once per 500 ms tick with m:ss counting up', async () => {
       const b = await toPeek()
       b.emit(tap); await flush()
+      expect(b.sent.at(-1)).toContain('○ waiting for mic…')
       const n = b.sent.length
-      for (let i = 0; i < 10; i++) { b.emit(pcm(3200)); await vi.advanceTimersByTimeAsync(100) }
+      await vi.advanceTimersByTimeAsync(100)
+      b.emit(pcm(3200))
+      for (let i = 0; i < 40; i++) { b.emit(pcm(3200)); await vi.advanceTimersByTimeAsync(100) } // 4.1 s in
       const mic = b.sent.slice(n).filter(x => x.startsWith('upgrade:mic='))
-      expect(mic.length).toBeLessThanOrEqual(1000 / MIC_METER_MS)
-      expect(mic.at(-1)).toMatch(/^upgrade:mic=[▁▂▃▄▅▆▇█]{14} 1s$/)
+      expect(b.sent.slice(n).every(x => x.startsWith('upgrade:mic='))).toBe(true) // the only lens update while recording
+      expect(mic.length).toBeLessThanOrEqual(4100 / MIC_METER_MS) // ≤ 1 update per 500 ms
+      expect(mic.slice(0, 4)).toEqual(['upgrade:mic=○ LISTENING  0:00', 'upgrade:mic=● LISTENING  0:01', 'upgrade:mic=○ LISTENING  0:01', 'upgrade:mic=● LISTENING  0:02'])
+      expect(mic.at(-1)).toBe('upgrade:mic=● LISTENING  0:04')
+    })
+
+    it('thinking stage line: heard → sending (request out) → thinking after 1.5 s, dots cycle per 500 ms; then the card', async () => {
+      let answer: (v: unknown) => void = () => {}
+      const okRes = { utteranceId: 'u1', transcript: 'Priya guard up', cardLines: ['✓ Priya · guard'], coverage: { covered: 1, present: 12 }, nextStudent: null, disambiguation: null }
+      const utterance = vi.fn(() => new Promise(r => { answer = r }))
+      const b = await toPeek(fakeApi({ utterance }))
+      b.emit(tap); await flush()
+      for (let i = 0; i < 20; i++) b.emit(pcm())
+      await vi.advanceTimersByTimeAsync(STOP_DEBOUNCE_MS)
+      const n = b.sent.length
+      b.emit(tap); await flush()
+      const body = () => b.sent.slice(n).filter(x => x.includes('> agents')).map(x => x.split(/[|=]/).find(seg => seg.includes('> agents')))
+      expect(body()).toEqual(['HEARD· > sending > thinking > agents', 'heard > SENDING· > thinking > agents']) // stop, then the request goes out
+      expect(utterance).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(MIC_METER_MS * 4)
+      expect(body()).toEqual(['HEARD· > sending > thinking > agents', 'heard > SENDING· > thinking > agents', 'heard > SENDING·· > thinking > agents', 'heard > SENDING··· > thinking > agents',
+        'heard > sending > THINKING· > agents', 'heard > sending > THINKING·· > agents'])
+      answer(okRes); await flush()
+      expect(b.sent.slice(n).join('\n')).toContain('Priya guard up')
+      const m = b.sent.length
+      await vi.advanceTimersByTimeAsync(MIC_METER_MS * 4)
+      expect(b.sent.slice(m).some(x => x.includes('> agents'))).toBe(false) // ticks stop with the card
     })
 
     it('no glasses audio within 1.5 s → switches to the phone mic and says so', async () => {
@@ -455,7 +512,8 @@ describe('lens controller', () => {
       expect(b.raw.audioControl).not.toHaveBeenCalledWith(true, AudioInputSource.Phone)
       await vi.advanceTimersByTimeAsync(200)
       expect(b.raw.audioControl).toHaveBeenLastCalledWith(true, AudioInputSource.Phone)
-      expect(b.sent.at(-1)).toContain('Using phone mic')
+      await vi.advanceTimersByTimeAsync(MIC_METER_MS)
+      expect(b.sent.at(-1)).toBe('upgrade:mic=○ waiting for phone mic…')
     })
 
     it('the switch closes the glasses mic first; a late glasses chunk after it is ignored, phone audio counts', async () => {
@@ -466,10 +524,10 @@ describe('lens controller', () => {
       expect(b.raw.audioControl.mock.calls).toEqual([[false], [true, AudioInputSource.Phone]])
       b.emit({ audioEvent: { audioPcm: new Uint8Array(3200).fill(200), source: AudioInputSource.Glasses } }) // late glasses audio
       await vi.advanceTimersByTimeAsync(MIC_METER_MS)
-      expect(b.sent.at(-1)).toMatch(/^upgrade:mic=waiting for audio… \ds · Using phone mic$/)
+      expect(b.sent.at(-1)).toBe('upgrade:mic=○ waiting for phone mic…')
       b.emit({ audioEvent: { audioPcm: new Uint8Array(3200).fill(200), source: AudioInputSource.Phone } })
       await vi.advanceTimersByTimeAsync(MIC_METER_MS)
-      expect(b.sent.at(-1)).toMatch(/^upgrade:mic=[▁▂▃▄▅▆▇█]{13}█ \ds · Using phone mic$/)
+      expect(b.sent.at(-1)).toMatch(/^upgrade:mic=[●○] LISTENING \(phone\) {2}0:0\d$/)
     })
 
     it('glasses audio arriving in time → no phone fallback', async () => {

@@ -1,9 +1,12 @@
 import type { EmptyReason } from '../core/audio'
 import type { Effect, LensEvent, LensState, Mode, Screen } from './state'
-import { transcriptPages } from './text'
+import { detailPages } from './render'
+import { colsFor, transcriptPages } from './text'
 
 /** How long a one-line status (e.g. "Saved · will sync") stays on the peek before the next-kid line returns. */
 export const STATUS_MS = 5000
+/** While a note is pending, the stage line moves from "sending" to "thinking" after this many 500 ms ticks (1.5 s). */
+export const THINK_AFTER_TICKS = 3
 type R = { state: LensState; effects: Effect[] }
 const done = (state: LensState, ...effects: Effect[]): R => ({ state, effects })
 const ROLL_NOT_SAVED = 'Roll call not saved · use phone roster'
@@ -13,7 +16,7 @@ export function initialState(firstRunSeen: boolean): LensState {
   return {
     screen: firstRunSeen ? 'home' : 'firstRun', today: null, classes: [], selectedClassId: null, session: null, active: null,
     coverage: { covered: 0, present: 0 }, nextStudent: null, card: null, disambiguation: null, wrapup: null,
-    pending: null, mic: null, darkFrom: null, attendanceLines: [], status: null, loadError: null, starting: false,
+    pending: null, mic: null, thinking: null, detail: null, darkFrom: null, attendanceLines: [], status: null, loadError: null, starting: false,
   }
 }
 
@@ -57,7 +60,7 @@ function resumeDrill(s: LensState, now: number): R {
 
 function record(s: LensState, mode: Mode, returnTo: Screen, viaLongPress: boolean, now: number): R {
   return done({ ...s, screen: mode === 'attendance' ? 'attendance' : 'recording', pending: { mode, returnTo, viaLongPress, at: now }, darkFrom: null,
-    mic: { seconds: 0, wave: '', source: 'glasses' }, status: null }, { type: 'startMic' })
+    mic: { tick: 0, audio: false, source: 'glasses' }, status: null }, { type: 'startMic' })
 }
 
 /** Why nothing was sent, in words the coach can act on. */
@@ -69,7 +72,7 @@ function emptyStatus(mode: Mode | undefined, reason: EmptyReason): string {
 
 function send(s: LensState): R {
   if (!s.pending || !s.session) return peek({ ...s, pending: null })
-  return done({ ...s, screen: 'sending' }, { type: 'stopMicAndSend', mode: s.pending.mode, sessionId: s.session.id, drillId: s.pending.mode === 'note' ? s.active?.drillId ?? null : null })
+  return done({ ...s, screen: 'sending', thinking: { stage: 'heard', tick: 0, since: 0 } }, { type: 'stopMicAndSend', mode: s.pending.mode, sessionId: s.session.id, drillId: s.pending.mode === 'note' ? s.active?.drillId ?? null : null })
 }
 
 /** Leave a capture flow back to the rest screen (peek), optionally with a status line. */
@@ -135,8 +138,24 @@ function dataEvent(s: LensState, e: LensEvent, now: number): R | null {
     case 'utteranceEmpty': return back(s, emptyStatus(s.pending?.mode, e.reason))
     case 'micLevel': {
       const m = s.mic
-      if ((s.screen !== 'recording' && s.screen !== 'attendance') || (m && m.seconds === e.seconds && m.wave === e.wave && m.source === e.source)) return done(s)
-      return done({ ...s, mic: { seconds: e.seconds, wave: e.wave, source: e.source } })
+      if ((s.screen !== 'recording' && s.screen !== 'attendance') || (m && m.tick === e.tick && m.audio === e.audio && m.source === e.source)) return done(s)
+      return done({ ...s, mic: { tick: e.tick, audio: e.audio, source: e.source } })
+    }
+    case 'sendStarted': {
+      const th = s.thinking
+      if (s.screen !== 'sending' || !th || th.stage !== 'heard') return done(s)
+      return done({ ...s, thinking: { ...th, stage: 'sending', since: th.tick } })
+    }
+    case 'thinkingTick': {
+      const th = s.thinking
+      if (s.screen !== 'sending' || !th) return done(s)
+      const tick = th.tick + 1
+      const late = th.stage === 'sending' && tick - th.since >= THINK_AFTER_TICKS
+      return done({ ...s, thinking: late ? { stage: 'thinking', tick, since: tick } : { ...th, tick } })
+    }
+    case 'remindResult': {
+      const status = e.ok ? remindedStatus(e.names) : 'Reminder not saved · check connection'
+      return done({ ...s, status }, expire)
     }
     case 'utteranceResult': return utteranceResult(s, e)
     case 'runsLoaded': {
@@ -193,9 +212,22 @@ export function reduce(s: LensState, e: LensEvent): R {
       if (e.type === 'tap') return record(s, 'note', 'peek', false, now)
       return restGesture(s, e, now)
     case 'deck':
-      if (e.type === 'listSelect') return startDrill(s, e.index, now)
+      // Selecting an item opens its detail (full name + cues) first; tap there starts it.
+      if (e.type === 'listSelect') return drills(s)[e.index] ? done({ ...s, screen: 'drillDetail', detail: { index: e.index, page: 0 } }) : done(s)
       if (e.type === 'doubleTap') return peek(s)
       return done(s)
+    case 'drillDetail': {
+      const d = s.detail
+      if (!d) return done({ ...s, screen: 'deck' })
+      if (e.type === 'tap') return startDrill({ ...s, detail: null }, d.index, now)
+      if (e.type === 'doubleTap') return done({ ...s, screen: 'deck', detail: null })
+      if (e.type === 'swipeDown' || e.type === 'swipeUp') {
+        const last = detailPages(s).length - 1
+        const page = Math.max(0, Math.min(last, d.page + (e.type === 'swipeDown' ? 1 : -1)))
+        return page === d.page ? done(s) : done({ ...s, detail: { ...d, page } })
+      }
+      return done(s)
+    }
     case 'recording':
       if (e.type === 'tap') return send(s)
       if (e.type === 'longPressRelease' && s.pending?.viaLongPress) return send(s)
@@ -235,7 +267,10 @@ export function reduce(s: LensState, e: LensEvent): R {
       if (!s.wrapup && e.type === 'doubleTap') return peek(s)
       if (!s.wrapup || !s.session) return done(s)
       const reset = { ...s, screen: 'home' as const, darkFrom: null, session: null, active: null, wrapup: null, card: null, status: null, coverage: { covered: 0, present: 0 }, nextStudent: null }
-      if (e.type === 'tap') return done(reset, { type: 'remind', sessionId: s.session.id, studentIds: s.wrapup.missed.map(m => m.id) }, { type: 'loadToday' })
+      if (e.type === 'tap' && s.wrapup.missed.length) {
+        return done(reset, { type: 'remind', sessionId: s.session.id, studentIds: s.wrapup.missed.map(m => m.id), names: s.wrapup.missed.map(m => m.name) }, { type: 'loadToday' })
+      }
+      if (e.type === 'tap') return done(reset, { type: 'loadToday' })
       if (e.type === 'doubleTap') return done(reset, { type: 'loadToday' })
       return done(s)
     }
@@ -248,4 +283,14 @@ function restGesture(s: LensState, e: LensEvent, now: number): R {
   if (e.type === 'swipeUp' || e.type === 'swipeDown') return done({ ...s, screen: 'deck', status: null })
   if (e.type === 'doubleTap') return done({ ...s, screen: 'confirmEnd', status: null })
   return done(s)
+}
+
+const REMIND_SUFFIX = ' first next class'
+/** "ok · Jake, Leo, Mia first next class", with "+N" for names that don't fit one footer line. */
+export function remindedStatus(names: string[]): string {
+  const room = colsFor(576) - 'ok · '.length - REMIND_SUFFIX.length
+  let shown = names.join(', ')
+  for (let k = names.length - 1; shown.length > room && k >= 1; k--) shown = `${names.slice(0, k).join(', ')} +${names.length - k}`
+  if (shown.length > room) shown = `${names.length} kids`
+  return `ok · ${shown}${REMIND_SUFFIX}`
 }

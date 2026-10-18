@@ -2,8 +2,10 @@ import type { Coverage, Disambiguation, NextStudent, StartSessionResponse, Today
 import type { UtteranceRun } from '../core/api'
 import type { EmptyReason, MicSource } from '../core/audio'
 
-export type Screen = 'firstRun' | 'home' | 'attendance' | 'attendanceDone' | 'dark' | 'peek' | 'deck' | 'recording' | 'sending' | 'card' | 'disambiguation' | 'confirmEnd' | 'wrapup'
+export type Screen = 'firstRun' | 'home' | 'attendance' | 'attendanceDone' | 'dark' | 'peek' | 'deck' | 'recording' | 'sending' | 'card' | 'disambiguation' | 'confirmEnd' | 'wrapup' | 'drillDetail'
 export type Mode = 'note' | 'attendance'
+/** heard = recording stopped · sending = request in flight · thinking = still pending after THINK_AFTER_TICKS. */
+export type ThinkStage = 'heard' | 'sending' | 'thinking'
 export type ClassOption = { id: string; name: string; modeLabel: string }
 
 /** The agent card: what the coach said (left) and live agent progress (right). `runs` null = not loaded yet. */
@@ -36,8 +38,15 @@ export interface LensState {
   pending: { mode: Mode; returnTo: Screen; viaLongPress: boolean; at: number } | null
   /** The idle screen a nod turned dark (a nod or tap brings it back). */
   darkFrom: 'home' | 'peek' | 'deck' | null
-  /** Live "hearing you" indicator while recording: seconds, scrolling waveform ('' = no audio yet), which mic. */
-  mic: { seconds: number; wave: string; source: MicSource } | null
+  /**
+   * Live "hearing you" indicator while recording: `tick` = MIC_METER_MS steps since the mic opened
+   * (drives the ●/○ pulse and the m:ss count), `audio` = bytes have arrived, `source` = which mic.
+   */
+  mic: { tick: number; audio: boolean; source: MicSource } | null
+  /** "Thinking" stage line while a note is on its way: advanced by real pipeline events; `tick` drives the dots. */
+  thinking: { stage: ThinkStage; tick: number; since: number } | null
+  /** Deck item detail (full name + cues before starting it); `page` pages through long text. */
+  detail: { index: number; page: number } | null
   attendanceLines: string[]
   status: string | null
   loadError: string | null
@@ -56,7 +65,9 @@ export type LensEvent =
   | { type: 'sessionStarted'; res: StartSessionResponse; resumed: boolean; now: number }
   | { type: 'utteranceResult'; res: UtteranceResponse }
   | { type: 'utteranceQueued' } | { type: 'utteranceDelivered' } | { type: 'utteranceEmpty'; reason: EmptyReason } | { type: 'micFailed' }
-  | { type: 'micLevel'; seconds: number; wave: string; source: MicSource }
+  | { type: 'micLevel'; tick: number; audio: boolean; source: MicSource }
+  | { type: 'sendStarted' } | { type: 'thinkingTick' }
+  | { type: 'remindResult'; ok: boolean; names: string[] }
   | { type: 'coverageUpdated'; coverage: Coverage; nextStudent: NextStudent | null }
   | { type: 'runsLoaded'; utteranceId: string; runs: UtteranceRun[] | null; final: boolean }
   | { type: 'wrapupLoaded'; wrapup: WrapUp }
@@ -78,7 +89,7 @@ export type Effect =
   | { type: 'assignNote'; noteId: string; studentId: string }
   | { type: 'undo'; utteranceId: string }
   | { type: 'endSession'; sessionId: string }
-  | { type: 'remind'; sessionId: string; studentIds: string[] }
+  | { type: 'remind'; sessionId: string; studentIds: string[]; names: string[] }
   | { type: 'pollRuns'; utteranceId: string }
   | { type: 'expireStatus'; ms: number }
   | { type: 'flushOutbox' }
