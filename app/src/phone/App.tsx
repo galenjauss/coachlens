@@ -3,6 +3,7 @@ import { API_URL } from '../config'
 import { KEYS } from '../core/storage'
 import { Agents } from './Agents'
 import { DeckEditor } from './DeckEditor'
+import { Onboarding } from './onboarding/Onboarding'
 import type { PhoneDeps } from './mount'
 import { Pairing } from './Pairing'
 import { Review } from './Review'
@@ -17,17 +18,26 @@ export function App({ api, kv }: PhoneDeps) {
   const [paired, setPaired] = useState<boolean | null>(null)
   const [tab, setTab] = useState<Tab>('today')
   const [deckId, setDeckId] = useState<string | null>(null)
+  const [setup, setSetup] = useState(false)
   useEffect(() => { void kv.get(KEYS.token).then(t => setPaired(Boolean(t)), () => setPaired(false)) }, [kv])
   // Warm the serverless instance; cold starts are slow. Failure is irrelevant.
   useEffect(() => { void fetch(`${API_URL}/health`).catch(() => {}) }, [])
+  // Once paired, open the setup quiz automatically while the school has no classes yet.
+  useEffect(() => {
+    if (paired !== true) return
+    let alive = true
+    void api.onboardingStatus().then(s => { if (alive && s.needsOnboarding) setSetup(true) }, () => {})
+    return () => { alive = false }
+  }, [paired, api])
   const { data: queue } = usePoll(() => api.review(), 20000, [], paired === true)
   const pending = queue?.length ?? 0
   if (paired === null) return null
   if (!paired) return <Pairing api={api} kv={kv} onPaired={() => setPaired(true)} />
+  if (setup) return <Onboarding api={api} kv={kv} onExit={() => setSetup(false)} onDone={() => { setSetup(false); setTab('today') }} />
   if (deckId) return <DeckEditor api={api} deckId={deckId} onClose={() => setDeckId(null)} />
   return (
     <>
-      {tab === 'today' && <Today api={api} kv={kv} onOpenDeck={setDeckId} />}
+      {tab === 'today' && <Today api={api} kv={kv} onOpenDeck={setDeckId} onSetup={() => setSetup(true)} />}
       {tab === 'agents' && <Agents api={api} />}
       {tab === 'review' && <Review api={api} />}
       {tab === 'students' && <Students api={api} />}

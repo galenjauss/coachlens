@@ -6,9 +6,10 @@ import { ClassPicker } from './ClassPicker'
 import { MotionToggle } from './ImuDebug'
 import { CLASS_ID_KEY, MODE_EMOJI } from './classPref'
 import { RosterCheckIn } from './RosterCheckIn'
+import { SetupEntry } from './onboarding/SetupEntry'
 import { usePoll } from './usePoll'
 
-export function Today({ api, kv, onOpenDeck }: { api: Api; kv: KV; onOpenDeck(deckId: string): void }) {
+export function Today({ api, kv, onOpenDeck, onSetup }: { api: Api; kv: KV; onOpenDeck(deckId: string): void; onSetup(): void }) {
   const [classId, setClassId] = useState<string | null | undefined>(undefined) // undefined = KV not read yet
   const [checkIn, setCheckIn] = useState(false)
   const [actionErr, setActionErr] = useState<string | null>(null)
@@ -48,6 +49,7 @@ export function Today({ api, kv, onOpenDeck }: { api: Api; kv: KV; onOpenDeck(de
       {picker}{banner}
       {actionErr && <p className="error" role="alert">{actionErr}</p>}
       {error ? <div className="btns"><button type="button" onClick={reload}>Retry</button></div> : <p className="muted" role="status">Loading…</p>}
+      {error && <SetupEntry onOpen={onSetup} />}
     </main>
   )
 
@@ -83,6 +85,7 @@ export function Today({ api, kv, onOpenDeck }: { api: Api; kv: KV; onOpenDeck(de
             <p className="muted hint">Tap your temple to talk anytime</p>
           </>}
       {actionErr && <p className="error" role="alert">{actionErr}</p>}
+      <SetupEntry onOpen={onSetup} />
       <MotionToggle kv={kv} />
     </main>
   )
