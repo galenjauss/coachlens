@@ -22,6 +22,13 @@
       "when": 1792280273445,
       "tag": "0002_milky_madame_masque",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792281813743,
+      "tag": "0003_lumpy_victor_mancha",
+      "breakpoints": true
     }
   ]
 }

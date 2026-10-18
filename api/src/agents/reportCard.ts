@@ -35,14 +35,20 @@ export async function draftReportCard(deps: Deps, studentId: string, month: stri
     ].join('\n')
     const out = await deps.llm.object({ name: 'report_card', instructions: REPORT_CARD_INSTRUCTIONS, prompt, schema: Out })
     const [o] = await db.insert(outbox).values({ kind: 'report_card', studentId, toEmail: g.email, subject: out.subject, body: out.body }).returning()
-    await db.insert(reportCards).values({ studentId, month, content: out.content, outboxId: o!.id })
+    const won = await db.insert(reportCards).values({ studentId, month, content: out.content, outboxId: o!.id }).onConflictDoNothing().returning()
+    if (won.length === 0) {
+      // A concurrent run drafted this month first: discard our outbox row, return theirs.
+      await db.delete(outbox).where(eq(outbox.id, o!.id))
+      const [theirs] = await db.select().from(reportCards).where(and(eq(reportCards.studentId, studentId), eq(reportCards.month, month)))
+      return { result: theirs!.outboxId, summary: `Report card for ${firstName} already drafted for ${month}`, reason: 'concurrent run won', output: out.content }
+    }
     return { result: o!.id, summary: `Drafted ${month} report card for ${firstName}`, reason: `${recent.length} notes, ${present?.n ?? 0} classes`, output: out.content }
   })
 }
 
 export async function runReportCards(deps: Deps, studentIds?: string[]): Promise<{ drafted: number }> {
   const month = new Intl.DateTimeFormat('en-CA', { timeZone: deps.env.timeZone, year: 'numeric', month: '2-digit' }).format(deps.now())
-  const ids = studentIds ?? (await deps.db.select({ id: students.id }).from(students)).map(r => r.id)
+  const ids = [...new Set(studentIds ?? (await deps.db.select({ id: students.id }).from(students)).map(r => r.id))]
   let drafted = 0
   for (let i = 0; i < ids.length; i += 4) {
     const batch = await Promise.all(ids.slice(i, i + 4).map(id => draftReportCard(deps, id, month)))

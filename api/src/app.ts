@@ -251,8 +251,14 @@ export function createApp(deps: Deps) {
   })
   app.post('/v1/report-cards/run', async c => {
     const { studentIds } = await json(c.req.raw, z.object({ studentIds: z.array(z.string()).max(50).optional() }))
-    deps.defer(runReportCards(deps, studentIds))
-    return c.json({ started: studentIds?.length ?? (await listStudents(db)).length })
+    let ids: string[]
+    if (studentIds) {
+      const uniq = [...new Set(studentIds)]
+      ids = uniq.length ? (await db.select({ id: students.id }).from(students).where(inArray(students.id, uniq))).map(r => r.id) : []
+      if (!ids.length) throw new HTTPException(400, { message: 'no matching students' })
+    } else ids = (await listStudents(db)).map(s => s.id)
+    deps.defer(runReportCards(deps, studentIds ? ids : undefined).catch(e => console.error('[report-cards]', e)))
+    return c.json({ started: ids.length })
   })
 
   return app

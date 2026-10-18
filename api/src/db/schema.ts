@@ -87,7 +87,7 @@ export const outbox = pgTable('outbox', {
 export const reportCards = pgTable('report_cards', {
   id: id(), studentId: text('student_id').notNull(), month: text('month').notNull(),
   content: jsonb('content').$type<ReportCardContent>().notNull(), outboxId: text('outbox_id').notNull(),
-})
+}, t => [uniqueIndex('report_cards_student_month').on(t.studentId, t.month)])
 export const agentRuns = pgTable('agent_runs', {
   id: id(), sessionId: text('session_id'), agent: text('agent').notNull(), trigger: text('trigger').notNull(),
   summary: text('summary').notNull(), reason: text('reason').notNull(), output: jsonb('output'),

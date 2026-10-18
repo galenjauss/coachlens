@@ -23,4 +23,15 @@ describe('report cards', () => {
     expect(detail.age).toBe(2026 - 2018)
     expect((await agentFeed(db, null))[0]!.agent).toBe('report_card')
   })
+
+  it('concurrent drafts for the same student+month yield one card and one outbox row', async () => {
+    const db = await makeTestDb()
+    const [s] = await db.insert(students).values({ name: 'Priya Rao', belt: 'orange', birthYear: 2018 }).returning()
+    await db.insert(guardians).values({ studentId: s!.id, name: 'Anita', email: 'anita@example.com' })
+    const deps = makeDeps(db, { llm: fakeLlm(() => ({ content, subject: "Priya's October report card", body: 'Hi Anita, Priya had a strong October with great energy. We are working on keeping her guard up. Coach' })) })
+    const [a, b] = await Promise.all([draftReportCard(deps, s!.id, '2026-10'), draftReportCard(deps, s!.id, '2026-10')])
+    expect(a).toBe(b)
+    expect(await db.select().from(reportCards)).toHaveLength(1)
+    expect(await db.select().from(outbox)).toHaveLength(1)
+  })
 })

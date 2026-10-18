@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "report_cards_student_month" ON "report_cards" USING btree ("student_id","month");
