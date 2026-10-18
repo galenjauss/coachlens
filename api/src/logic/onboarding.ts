@@ -2,6 +2,7 @@
 import { ClassDraft, CurriculumWeekDraft, StudentDraft, YMD, type ModeId } from '@matside/shared'
 import { z } from 'zod'
 import { weekStart } from './dates'
+import { clip as textClip } from './text'
 
 /** Case/space-insensitive key used for idempotent matching by name. */
 export const nameKey = (s: string): string => s.trim().replace(/\s+/g, ' ').toLowerCase()
@@ -36,9 +37,9 @@ export function normalizeTime(v: string): string | null {
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`
 }
 
-const clip = (s: string | null | undefined, n: number): string | null => {
-  const t = (s ?? '').trim().replace(/\s+/g, ' ')
-  return t ? t.slice(0, n) : null
+const clip = (s: string | null | undefined, n: number, ellipsis = true): string | null => {
+  const t = textClip(s ?? '', n, ellipsis)
+  return t || null
 }
 const isEmail = (s: string) => z.email().safeParse(s).success
 
@@ -84,20 +85,20 @@ export function cleanRoster(raw: z.infer<typeof RawRoster>): Cleaned<StudentDraf
   const dropped: string[] = []
   const seen = new Set<string>()
   for (const s of raw.students.slice(0, 300)) {
-    const name = clip(s.name, 80)
+    const name = clip(s.name, 80, false)
     if (!name) continue
     const key = nameKey(name)
     if (seen.has(key)) continue
     seen.add(key)
-    const email = clip(s.guardianEmail, 120)?.toLowerCase() ?? null
+    const email = clip(s.guardianEmail, 120, false)?.toLowerCase() ?? null
     if (email && !isEmail(email)) dropped.push(`${name}: unreadable email "${email}"`)
     const age = s.age !== null && Number.isInteger(s.age) && s.age >= 2 && s.age <= 99 ? s.age : null
     items.push(StudentDraft.parse({
       name,
-      nickname: clip(s.nickname, 40),
-      level: clip(s.level, 40),
+      nickname: clip(s.nickname, 40, false),
+      level: clip(s.level, 40, false),
       age,
-      guardianName: clip(s.guardianName, 80),
+      guardianName: clip(s.guardianName, 80, false),
       guardianEmail: email && isEmail(email) ? email : null,
       classNames: [...new Set(s.classNames.map(n => clip(n, 60)).filter((n): n is string => Boolean(n)))].slice(0, 30),
     }))

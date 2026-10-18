@@ -12,7 +12,8 @@ export interface RunMeta {
   links?: AgentRunLinks
 }
 
-export interface RunResult<T> { result: T; summary: string; reason: string; output?: unknown; links?: AgentRunLinks }
+/** `status: 'error'` logs a degraded-but-successful run (e.g. a fallback was used) as red/amber in the Agents tab. */
+export interface RunResult<T> { result: T; summary: string; reason: string; output?: unknown; links?: AgentRunLinks; status?: 'ok' | 'error' }
 
 const merged = (a?: AgentRunLinks, b?: AgentRunLinks): AgentRunLinks | null => {
   const l = { ...a, ...b }
@@ -24,7 +25,7 @@ export async function withRun<T>(deps: Deps, meta: RunMeta, fn: () => Promise<Ru
   const base = { agent: meta.agent, trigger: meta.trigger, sessionId: meta.sessionId, utteranceId: meta.utteranceId ?? null }
   try {
     const r = await fn()
-    await deps.db.insert(agentRuns).values({ ...base, links: merged(meta.links, r.links), summary: r.summary, reason: r.reason, output: r.output ?? null, status: 'ok', ms: Date.now() - t0 })
+    await deps.db.insert(agentRuns).values({ ...base, links: merged(meta.links, r.links), summary: r.summary, reason: r.reason, output: r.output ?? null, status: r.status ?? 'ok', ms: Date.now() - t0 })
     return r.result
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)

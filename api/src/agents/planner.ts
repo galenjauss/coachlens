@@ -1,13 +1,14 @@
-import { and, asc, desc, eq, inArray, lt } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or } from 'drizzle-orm'
 import type { Deck, DrillDraft, ModeConfig } from '@matside/shared'
 import type { Db } from '../db/client'
 import type { Deps } from '../deps'
-import { classes, deckDiffs, decks, drills, enrollments, issues, preferences, students } from '../db/schema'
+import { classes, deckDiffs, decks, drills, enrollments, issues, preferences, sessions, students } from '../db/schema'
 import { applyDiff, totalMinutes } from '../logic/deckDiff'
 import { nextDateForWeekday } from '../logic/dates'
 import { findDeck, getDeck } from '../services/decks'
 import { curriculumFor, modeForClass } from '../services/context'
 import { normalizeAlternatives, normalizeDeck, normalizeDiff, RawAlternatives, RawDeckDiff, RawDraftOut, starterDeck } from '../logic/planNormalize'
+import { BudgetExceededError } from './budget'
 import { withRun } from './runs'
 
 const AUDIENCE: Record<ModeConfig['id'], string> = {
@@ -28,10 +29,11 @@ export function plannerInstructions(mode: ModeConfig): string {
 - Shape: ${mode.planShape}. Use the ${mode.weeklyLabel.toLowerCase()} and the ${mode.itemsDueLabel.toLowerCase()} given.
 - kind: pick the closest of warmup, technique, drill, forms, game, sparring for each ${mode.planItem}.
 - Target open issues: include ${mode.planItem}s that fix the most common ones and list those ${mode.people} in focusStudentIds (use the provided ids only).
-- cues: at most 2 short coaching cues (≤40 chars) the coach will read on smart glasses, e.g. "${mode.cueExamples}".
+- name: a short, complete title (aim ≤ 32 chars, never cut off mid-word). Put specifics in the cues, not the name.
+- cues: 1–2 complete short coaching cues (aim ≤ 50 chars each, never cut off mid-word) the coach will read on smart glasses, e.g. "${mode.cueExamples}".
 - rationale: one short sentence on why this ${mode.planItem} is in the plan.
 - Respect the coach's remembered preferences.
-- Keep names ≤40 chars. ${mode.guardrails}`
+- ${mode.guardrails}`
 }
 
 async function planningContext(deps: Deps, classId: string, forDate: string) {
@@ -60,41 +62,90 @@ async function planningContext(deps: Deps, classId: string, forDate: string) {
   return { text, theme: cur?.theme ?? 'General skills', mode, instructions: plannerInstructions(mode), rosterIds: new Set(ids) }
 }
 
+const REDRAFT_MIN_AGE_MS = 2 * 60_000
+const REDRAFT_COOLDOWN_MS = 10 * 60_000
+
+type PlanCtx = Awaited<ReturnType<typeof planningContext>>
+
+/** Asks the LLM for the deck. Never throws: any failure (error, budget, bad output) yields the mode's starter deck plus a cause. */
+async function llmDrills(deps: Deps, ctx: PlanCtx, forDate: string): Promise<{ drills: DrillDraft[]; cause: string | null }> {
+  try {
+    const raw = await deps.llm.object({ name: 'planner.draft', instructions: ctx.instructions, prompt: `Plan the class on ${forDate}.\n${ctx.text}`, schema: RawDraftOut })
+    return { drills: normalizeDeck(raw.drills, ctx.mode.id, ctx.rosterIds), cause: null }
+  } catch (e) {
+    const cause = e instanceof BudgetExceededError ? 'daily AI budget reached' : (e instanceof Error ? e.message : String(e)).slice(0, 200)
+    console.error('[planner] fell back to starter deck:', cause)
+    return { drills: starterDeck(ctx.mode.id), cause }
+  }
+}
+
+const degraded = (cause: string) => ({ summary: 'Planner unavailable — starter plan used', reason: cause, status: 'error' as const })
+
 export async function draftDeck(deps: Deps, classId: string, forDate: string, utteranceId: string | null = null): Promise<string | null> {
   const existing = await findDeck(deps.db, classId, forDate)
   if (existing) {
     const [has] = await deps.db.select({ id: drills.id }).from(drills).where(eq(drills.deckId, existing.id)).limit(1)
-    if (has) return existing.id
+    if (has) {
+      await maybeRedraftStarter(deps, existing.id, utteranceId)
+      return existing.id
+    }
     await deps.db.delete(decks).where(eq(decks.id, existing.id)) // empty leftover from a failed draft
   }
   return withRun(deps, { agent: 'planner', trigger: 'draft', sessionId: null, utteranceId }, async () => {
     const ctx = await planningContext(deps, classId, forDate)
-    // The model gets a loose schema; limits are enforced in code. Any failure (error, budget, bad output)
-    // falls back to the mode's starter deck so Today always has a plan.
-    let fellBack: string | null = null
-    let out: { drills: DrillDraft[] }
-    try {
-      const raw = await deps.llm.object({ name: 'planner.draft', instructions: ctx.instructions, prompt: `Plan the class on ${forDate}.\n${ctx.text}`, schema: RawDraftOut })
-      out = { drills: normalizeDeck(raw.drills, ctx.mode.id, ctx.rosterIds) }
-    } catch (e) {
-      fellBack = e instanceof Error ? e.message : String(e)
-      console.error('[planner] draft fell back to starter deck:', fellBack)
-      out = { drills: starterDeck(ctx.mode.id) }
-    }
-    const [deck] = await deps.db.insert(decks).values({ classId, forDate }).onConflictDoNothing().returning()
+    // The model gets a loose schema; limits are enforced in code. Any failure falls back to the mode's starter deck
+    // (flagged is_starter, logged as an error run) so Today always has a plan and it can self-heal later.
+    const { drills: out, cause } = await llmDrills(deps, ctx, forDate)
+    const now = deps.now()
+    const [deck] = await deps.db.insert(decks).values({ classId, forDate, isStarter: cause !== null, createdAt: now, lastAttemptAt: cause ? now : null }).onConflictDoNothing().returning()
     if (!deck) {
       const raced = await findDeck(deps.db, classId, forDate)
       if (!raced) throw new Error('deck insert conflict but no deck found')
-      return { result: raced.id, summary: `Deck for ${forDate} already drafted`, reason: 'concurrent draft', output: out }
+      return { result: raced.id, summary: `Deck for ${forDate} already drafted`, reason: 'concurrent draft', output: { drills: out } }
     }
     try {
-      await deps.db.insert(drills).values(out.drills.map((d, i) => ({ ...d, deckId: deck.id, position: i + 1 })))
+      await deps.db.insert(drills).values(out.map((d, i) => ({ ...d, deckId: deck.id, position: i + 1 })))
     } catch (e) {
       await deps.db.delete(decks).where(eq(decks.id, deck.id)).catch(() => {})
       throw e
     }
-    if (fellBack) return { result: deck.id, summary: `Starter ${ctx.mode.planUnit.toLowerCase()} for ${forDate}: ${out.drills.length} ${ctx.mode.planItem}s, ${totalMinutes(out.drills)} min`, reason: `fell back to starter deck: ${fellBack.slice(0, 200)}`, output: out }
-    return { result: deck.id, summary: `Drafted ${forDate} ${ctx.mode.planUnit.toLowerCase()}: ${out.drills.length} ${ctx.mode.planItem}s, ${totalMinutes(out.drills)} min (${ctx.theme})`, reason: 'theme + forms cycle + open issues', output: out }
+    if (cause) return { result: deck.id, output: { drills: out }, ...degraded(cause) }
+    return { result: deck.id, summary: `Drafted ${forDate} ${ctx.mode.planUnit.toLowerCase()}: ${out.length} ${ctx.mode.planItem}s, ${totalMinutes(out)} min (${ctx.theme})`, reason: 'theme + forms cycle + open issues', output: { drills: out } }
+  })
+}
+
+/**
+ * Self-heal: a starter deck nobody has started, older than 2 minutes, is re-drafted by the LLM, at most once per 10 minutes
+ * (claimed atomically via last_attempt_at, so polling can't loop LLM calls). On failure the starter deck stays and the run is logged as an error.
+ * A spent daily budget simply fails the attempt (and waits out the cooldown).
+ */
+async function maybeRedraftStarter(deps: Deps, deckId: string, utteranceId: string | null): Promise<void> {
+  const { db } = deps
+  const [d] = await db.select().from(decks).where(eq(decks.id, deckId))
+  if (!d) return
+  // Starter decks self-heal repeatedly (10-min cooldown); decks with names clipped by the old 40-char limit ("…") get exactly one re-draft.
+  const truncated = !d.isStarter && d.lastAttemptAt === null
+    && (await db.select({ name: drills.name }).from(drills).where(eq(drills.deckId, deckId))).some(r => r.name.endsWith('…'))
+  if (!d.isStarter && !truncated) return
+  const now = deps.now()
+  if (now.getTime() - d.createdAt.getTime() < REDRAFT_MIN_AGE_MS) return
+  const [started] = await db.select({ id: sessions.id }).from(sessions).where(eq(sessions.deckId, deckId)).limit(1)
+  if (started) return
+  const [ranDrill] = await db.select({ id: drills.id }).from(drills).where(and(eq(drills.deckId, deckId), isNotNull(drills.startedAt))).limit(1)
+  if (ranDrill) return
+  const cooled = new Date(now.getTime() - REDRAFT_COOLDOWN_MS)
+  const [claimed] = await db.update(decks).set({ lastAttemptAt: now })
+    .where(and(eq(decks.id, deckId), eq(decks.isStarter, d.isStarter), d.isStarter ? or(isNull(decks.lastAttemptAt), lt(decks.lastAttemptAt, cooled)) : isNull(decks.lastAttemptAt))).returning({ id: decks.id })
+  if (!claimed) return
+  await withRun(deps, { agent: 'planner', trigger: 'redraft', sessionId: null, utteranceId }, async () => {
+    const ctx = await planningContext(deps, d.classId, d.forDate)
+    const { drills: out, cause } = await llmDrills(deps, ctx, d.forDate)
+    if (cause) return { result: deckId, output: { drills: out }, ...degraded(cause), summary: 'Planner unavailable — starter plan kept' }
+    const old = await db.select({ id: drills.id }).from(drills).where(eq(drills.deckId, deckId))
+    await db.insert(drills).values(out.map((x, i) => ({ ...x, deckId, position: i + 1 }))) // insert first: a failure leaves the starter intact
+    if (old.length) await db.delete(drills).where(inArray(drills.id, old.map(o => o.id)))
+    await db.update(decks).set({ isStarter: false }).where(eq(decks.id, deckId))
+    return { result: deckId, summary: `Re-drafted ${d.forDate} ${ctx.mode.planUnit.toLowerCase()} (was starter): ${out.length} ${ctx.mode.planItem}s, ${totalMinutes(out)} min (${ctx.theme})`, reason: 'starter plan self-healed', output: { drills: out } }
   })
 }
 

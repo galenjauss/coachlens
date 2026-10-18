@@ -46,12 +46,12 @@ export const DrillKind = z.enum(['warmup', 'technique', 'drill', 'forms', 'game'
 export type DrillKind = z.infer<typeof DrillKind>
 
 export const DrillDraft = z.object({
-  name: z.string().min(1).max(40),
+  name: z.string().min(1).max(80),
   minutes: z.number().int().min(1).max(30),
   kind: DrillKind,
-  cues: z.array(z.string().max(40)).max(2),
+  cues: z.array(z.string().max(90)).max(2),
   focusStudentIds: z.array(z.string()),
-  rationale: z.string().max(160),
+  rationale: z.string().max(240),
 })
 export type DrillDraft = z.infer<typeof DrillDraft>
 
@@ -68,6 +68,8 @@ export const Deck = z.object({
   classId: z.string(),
   forDate: z.string(),
   status: z.enum(['draft', 'active', 'done']),
+  /** True while the deck is the generic fallback plan (the planner was unavailable); it self-heals later. */
+  isStarter: z.boolean().optional(),
   drills: z.array(Drill),
 })
 export type Deck = z.infer<typeof Deck>

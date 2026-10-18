@@ -4,10 +4,10 @@
 import { z } from 'zod'
 import { DrillKind, type DeckDiff, type DrillDraft, type ModeId } from '@matside/shared'
 
-export const NAME_MAX = 40
-export const CUE_MAX = 40
+export const NAME_MAX = 80
+export const CUE_MAX = 90
 export const MAX_CUES = 2
-export const RATIONALE_MAX = 160
+export const RATIONALE_MAX = 240
 export const REASON_MAX = 160
 export const STARTER_RATIONALE = 'Starter plan — regenerate when online'
 
@@ -32,11 +32,8 @@ export const RawDeckDiff = z.object({
   rememberSuggestion: z.string().nullable(),
 })
 
-/** Trims, collapses whitespace and cuts to `max` chars with an ellipsis. */
-export function clip(s: string, max: number): string {
-  const t = s.trim().replace(/\s+/g, ' ')
-  return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t
-}
+import { clip } from './text'
+export { clip }
 
 export function normalizeKind(k: string): DrillKind {
   const parsed = DrillKind.safeParse(k.trim().toLowerCase())

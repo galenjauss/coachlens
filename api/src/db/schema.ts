@@ -48,6 +48,10 @@ export const attendance = pgTable('attendance', {
 export const decks = pgTable('decks', {
   id: id(), classId: text('class_id').notNull(), forDate: text('for_date').notNull(),
   status: text('status').$type<'draft' | 'active' | 'done'>().notNull().default('draft'),
+  // Starter-plan fallback bookkeeping: a starter deck is re-drafted by the LLM later (rate-limited by lastAttemptAt).
+  isStarter: boolean('is_starter').notNull().default(false),
+  createdAt: createdAt(),
+  lastAttemptAt: ts('last_attempt_at'),
 }, t => [uniqueIndex('decks_class_date').on(t.classId, t.forDate)])
 export const drills = pgTable('drills', {
   id: id(), deckId: text('deck_id').notNull(), position: integer('position').notNull(),

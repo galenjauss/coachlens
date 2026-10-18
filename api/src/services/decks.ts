@@ -14,7 +14,7 @@ export async function getDeck(db: Db, deckId: string): Promise<Deck> {
   if (!d) throw new Error(`deck ${deckId} not found`)
   const rows = await db.select().from(drills).where(eq(drills.deckId, deckId)).orderBy(asc(drills.position))
   return {
-    id: d.id, classId: d.classId, forDate: d.forDate, status: d.status,
+    id: d.id, classId: d.classId, forDate: d.forDate, status: d.status, isStarter: d.isStarter,
     drills: rows.map(r => ({
       id: r.id, position: r.position, name: clip(r.name, NAME_MAX) || 'Drill', minutes: clampMinutes(r.minutes), kind: r.kind,
       cues: r.cues.map(c => clip(c, CUE_MAX)).filter(Boolean).slice(0, MAX_CUES),

@@ -142,7 +142,7 @@ describe('handleUtterance', () => {
     expect(r.cardLines[0]).toMatch(/^✓ Added:/)
     const [d] = await w.db.select().from(drills).where(eq(drills.rationale, 'added live by instructor'))
     expect(d!.minutes).toBe(30)
-    expect(d!.name.length).toBeLessThanOrEqual(40)
+    expect(d!.name.length).toBeLessThanOrEqual(80)
     const [dk] = await w.db.select().from(decks)
     expect(Deck.safeParse(await getDeck(w.db, dk!.id)).success).toBe(true)
   })
