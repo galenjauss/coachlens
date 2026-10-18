@@ -23,7 +23,7 @@ export function Pairing({ api, kv, onPaired }: { api: Api; kv: KV; onPaired(): v
   return (
     <main className="screen pairing">
       <p className="brand"><span className="lens-ring" aria-hidden="true" />CoachLens</p>
-      <h1>Coach heads-up.<br />Hands free.</h1>
+      <h1>Coach heads-up.<br />Eyes on the class.</h1>
       <p className="sub">Enter your pairing code to connect this phone and your glasses.</p>
       <form onSubmit={submit}>
         <label className="label" htmlFor="code">Pairing code</label>
