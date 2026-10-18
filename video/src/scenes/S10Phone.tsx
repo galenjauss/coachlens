@@ -58,17 +58,17 @@ export const S10Phone: React.FC = () => {
           const active = frame >= s.at && (!next || frame < next.at)
           const shown = enterAt(frame, fps, s.at + 4)
           return (
-            <div key={s.label} style={{ display: 'flex', gap: 26, opacity: shown * (active ? 1 : 0.38), translate: `${(1 - shown) * 30}px 0` }}>
+            <div key={s.label} style={{ display: 'flex', gap: 26, opacity: shown * (active ? 1 : 0.55), translate: `${(1 - shown) * 30}px 0` }}>
               <div style={{ width: 4, borderRadius: 2, background: active ? C.white : C.hair }} />
               <div>
                 <div style={{ fontFamily: FONT.mono, fontWeight: 500, fontSize: 28, letterSpacing: '0.2em', textTransform: 'uppercase', color: C.muted }}>{s.label}</div>
-                <div style={{ fontFamily: FONT.head, fontWeight: 600, fontSize: 44, letterSpacing: '-0.02em', color: C.white, marginTop: 6 }}>{s.text}</div>
+                <div style={{ fontFamily: FONT.head, fontWeight: 600, fontSize: 44, letterSpacing: '-0.005em', color: C.white, marginTop: 6 }}>{s.text}</div>
               </div>
             </div>
           )
         })}
       </div>
-      <div style={{ position: 'absolute', left: 960, bottom: 120, width: 864, fontFamily: FONT.head, fontWeight: 800, fontSize: 68, letterSpacing: '-0.035em', lineHeight: 1.05, color: C.white, opacity: enterAt(frame, fps, 300) }}>
+      <div style={{ position: 'absolute', left: 960, bottom: 120, width: 864, fontFamily: FONT.head, fontWeight: 800, fontSize: 68, letterSpacing: '-0.005em', lineHeight: 1.05, color: C.white, opacity: enterAt(frame, fps, 300) }}>
         You choose how much they do on their own.
       </div>
     </SceneShell>

@@ -44,7 +44,7 @@ export const S07Ask: React.FC = () => {
         <TapRipple at={B.stop} x={pad.x + 70} y={pad.y} label="TAP · DONE" hold={20} />
       </div>
       <div style={{ position: 'absolute', left: left + 8, top: TOP + h + 34, width: w, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <div style={{ fontFamily: FONT.head, fontWeight: 600, fontSize: 52, letterSpacing: '-0.025em', color: C.white, opacity: enterAt(frame, fps, B.say - 4) }}>
+        <div style={{ fontFamily: FONT.head, fontWeight: 600, fontSize: 52, letterSpacing: '0', color: C.white, opacity: enterAt(frame, fps, B.say - 4) }}>
           “<Typed text={ASK} chars={chars} />{chars >= ASK.length ? '”' : ''}
         </div>
       </div>

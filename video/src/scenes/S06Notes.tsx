@@ -29,7 +29,7 @@ const Fallback: React.FC = () => {
     <>
       <LensStage top={TOP} scale={SCALE} spec={spec} power={lin(local, [0, 6], [0.2, 1])} zoom={0.97 + 0.03 * cut} />
       <MonoTag style={{ position: 'absolute', left, top: TOP - 56, opacity: cut }}>{beat.where}</MonoTag>
-      <div style={{ position: 'absolute', left: left + 8, top: TOP + h + 30, fontFamily: FONT.head, fontWeight: 600, fontSize: 52, letterSpacing: '-0.025em', color: C.white, opacity: cut }}>
+      <div style={{ position: 'absolute', left: left + 8, top: TOP + h + 30, fontFamily: FONT.head, fontWeight: 600, fontSize: 52, letterSpacing: '0', color: C.white, opacity: cut }}>
         “<Typed text={beat.said} chars={typed(frame, fps, beat.at + 4)} />{typed(frame, fps, beat.at + 4) >= beat.said.length ? '”' : ''}
       </div>
     </>

@@ -16,12 +16,12 @@ export const Footnote: React.FC<{ children: React.ReactNode; style?: React.CSSPr
 
 /** Headline type: Inter Tight, tight tracking. */
 export const Headline: React.FC<{ size?: number; weight?: 600 | 700 | 800; children: React.ReactNode; style?: React.CSSProperties; color?: string }> = ({ size = 96, weight = 800, children, style, color = C.white }) => (
-  <div style={{ fontFamily: FONT.head, fontWeight: weight, fontSize: size, letterSpacing: '-0.03em', lineHeight: 1.02, color, ...style }}>{children}</div>
+  <div style={{ fontFamily: FONT.head, fontWeight: weight, fontSize: size, letterSpacing: '-0.012em', lineHeight: 1.02, color, ...style }}>{children}</div>
 )
 
 /** A caption line under a demo beat: off-white lead, muted tail. */
 export const Caption: React.FC<{ children: React.ReactNode; style?: React.CSSProperties; size?: number }> = ({ children, style, size = 44 }) => (
-  <div style={{ fontFamily: FONT.head, fontWeight: 600, fontSize: size, letterSpacing: '-0.02em', lineHeight: 1.15, color: C.white, ...style }}>{children}</div>
+  <div style={{ fontFamily: FONT.head, fontWeight: 600, fontSize: size, letterSpacing: '-0.005em', lineHeight: 1.15, color: C.white, ...style }}>{children}</div>
 )
 
 /** Text with a blinking-free block caret, for typewritten spoken lines. */

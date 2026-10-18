@@ -32,7 +32,7 @@ export const S01Hook: React.FC = () => {
             <div
               key={l.text}
               style={{
-                fontFamily: FONT.head, fontWeight: 800, fontSize: 168, letterSpacing: '-0.045em', lineHeight: 1.04, color: C.white,
+                fontFamily: FONT.head, fontWeight: 800, fontSize: 168, letterSpacing: '-0.012em', lineHeight: 1.04, color: C.white,
                 opacity: p * dim, translate: `0 ${(1 - p) * 50}px`, filter: `blur(${(1 - p) * 8}px)`,
               }}
             >
@@ -51,7 +51,7 @@ export const S01Hook: React.FC = () => {
         />
         <div
           style={{
-            position: 'relative', fontFamily: FONT.head, fontWeight: 800, fontSize: 188, letterSpacing: '-0.045em', color: C.white,
+            position: 'relative', fontFamily: FONT.head, fontWeight: 800, fontSize: 188, letterSpacing: '-0.012em', color: C.white,
             opacity: punch, scale: String(1.08 - 0.08 * punch), filter: `blur(${(1 - punch) * 10}px)`,
           }}
         >

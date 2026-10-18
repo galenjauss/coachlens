@@ -61,14 +61,14 @@ export const S12Mosaic: React.FC = () => {
                   boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 20px 40px rgba(0,0,0,0.35)',
                 }}
               >
-                <div style={{ fontFamily: FONT.head, fontWeight: 600, fontSize: 30, letterSpacing: '-0.015em', color: ours ? C.white : C.muted }}>{who}</div>
+                <div style={{ fontFamily: FONT.head, fontWeight: 600, fontSize: 30, letterSpacing: '-0.005em', color: ours ? C.white : '#C4CBC5' }}>{who}</div>
                 <div style={{ fontFamily: FONT.lens, fontWeight: 400, fontSize: 29, lineHeight: 1.15, whiteSpace: 'nowrap', letterSpacing: '-0.005em', color: C.green, textShadow: '0 0 4px rgba(61,255,122,0.5), 0 0 14px rgba(61,255,122,0.25)' }}>{line}</div>
               </div>
             )
           })}
         </div>
       </AbsoluteFill>
-      <div style={{ position: 'absolute', left: 96, top: 110, fontFamily: FONT.head, fontWeight: 800, fontSize: 96, letterSpacing: '-0.045em', color: C.white, opacity: line, translate: `0 ${(1 - line) * -20}px` }}>
+      <div style={{ position: 'absolute', left: 96, top: 110, fontFamily: FONT.head, fontWeight: 800, fontSize: 96, letterSpacing: '-0.012em', color: C.white, opacity: line, translate: `0 ${(1 - line) * -20}px` }}>
         Any room. <span style={{ color: C.muted }}>Any coach.</span>
       </div>
     </SceneShell>

@@ -16,7 +16,7 @@ export const Chip: React.FC<{ kicker: string; children: React.ReactNode; tone?: 
         <div style={{ fontFamily: FONT.mono, fontWeight: 500, fontSize: 28, letterSpacing: '0.14em', textTransform: 'uppercase', color: tone === 'amber' ? C.amber : C.muted }}>
           {glyph ? <span style={{ marginRight: 10 }}>{glyph}</span> : null}{kicker}
         </div>
-        <div style={{ fontFamily: FONT.head, fontWeight: 600, fontSize: 36, letterSpacing: '-0.015em', color: C.white }}>{children}</div>
+        <div style={{ fontFamily: FONT.head, fontWeight: 600, fontSize: 36, letterSpacing: '-0.005em', color: C.white }}>{children}</div>
       </div>
     </div>
   )

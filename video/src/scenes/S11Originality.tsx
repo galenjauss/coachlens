@@ -27,19 +27,19 @@ export const S11Originality: React.FC = () => {
       <Atmos y="48%" strength={0.035} />
       {frame < CUT ? (
         <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
-          <div style={{ fontFamily: FONT.head, fontWeight: 800, fontSize: 340, letterSpacing: '-0.06em', color: C.white, fontVariantNumeric: 'tabular-nums', lineHeight: 0.9, translate: '0 -30px' }}>
+          <div style={{ fontFamily: FONT.head, fontWeight: 800, fontSize: 340, letterSpacing: '-0.012em', color: C.white, fontVariantNumeric: 'tabular-nums', lineHeight: 0.9, translate: '0 -30px' }}>
             {n}<span style={{ opacity: plus, display: 'inline-block', translate: `${(1 - plus) * -20}px 0` }}>+</span>
           </div>
-          <div style={{ fontFamily: FONT.head, fontWeight: 600, fontSize: 60, letterSpacing: '-0.02em', color: C.muted, marginTop: 10, opacity: enterAt(frame, fps, 14) }}>G2 apps we checked.</div>
+          <div style={{ fontFamily: FONT.head, fontWeight: 600, fontSize: 60, letterSpacing: '-0.005em', color: C.muted, marginTop: 10, opacity: enterAt(frame, fps, 14) }}>G2 apps we checked.</div>
         </AbsoluteFill>
       ) : frame < NOW_AT ? (
         <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', translate: `${shake}px 0` }}>
-          <div style={{ fontFamily: FONT.head, fontWeight: 700, fontSize: 72, letterSpacing: '-0.03em', color: C.white, opacity: enterAt(frame, fps, CUT + 2), translate: '0 -40px' }}>
+          <div style={{ fontFamily: FONT.head, fontWeight: 700, fontSize: 72, letterSpacing: '-0.005em', color: C.white, opacity: enterAt(frame, fps, CUT + 2), translate: '0 -40px' }}>
             Built for coaches &amp; teachers:
           </div>
           <div
             style={{
-              fontFamily: FONT.head, fontWeight: 800, fontSize: 420, letterSpacing: '-0.06em', color: C.white, lineHeight: 0.85,
+              fontFamily: FONT.head, fontWeight: 800, fontSize: 420, letterSpacing: '-0.012em', color: C.white, lineHeight: 0.85,
               opacity: Math.min(1, zero * 2), scale: String(1.6 - 0.6 * zero), filter: `blur(${(1 - zero) * 12}px)`,
             }}
           >
@@ -49,7 +49,7 @@ export const S11Originality: React.FC = () => {
       ) : (
         <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
           <LensFrame scale={scale} rim={1} bloom={pulse} style={{ position: 'absolute', left: (1920 - w) / 2, top: (1080 - h) / 2, scale: String(1 + 0.03 * pulse), opacity: enterAt(frame, fps, NOW_AT) }} />
-          <div style={{ position: 'relative', fontFamily: FONT.head, fontWeight: 800, fontSize: 200, letterSpacing: '-0.05em', color: C.white, opacity: enterAt(frame, fps, NOW_AT + 2), filter: `blur(${(1 - enterAt(frame, fps, NOW_AT + 2)) * 8}px)` }}>
+          <div style={{ position: 'relative', fontFamily: FONT.head, fontWeight: 800, fontSize: 200, letterSpacing: '-0.012em', color: C.white, opacity: enterAt(frame, fps, NOW_AT + 2), filter: `blur(${(1 - enterAt(frame, fps, NOW_AT + 2)) * 8}px)` }}>
             Until now.
           </div>
         </AbsoluteFill>

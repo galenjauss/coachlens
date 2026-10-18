@@ -8,7 +8,7 @@ import { P } from '../components/PhoneFrame'
  * (Review email card, From your agents, AutonomyControl). Type is set large for 1080p legibility.
  */
 const font = '-apple-system, "SF Pro Text", "Inter Tight", system-ui, sans-serif'
-const H1: React.FC<{ children: React.ReactNode }> = ({ children }) => <div style={{ fontSize: 50, fontWeight: 700, letterSpacing: '-0.02em', color: '#fff', lineHeight: 1.1 }}>{children}</div>
+const H1: React.FC<{ children: React.ReactNode }> = ({ children }) => <div style={{ fontSize: 50, fontWeight: 700, letterSpacing: '-0.005em', color: '#fff', lineHeight: 1.1 }}>{children}</div>
 const Sub: React.FC<{ children: React.ReactNode }> = ({ children }) => <div style={{ fontSize: 28, color: P.muted, marginTop: 4, marginBottom: 22 }}>{children}</div>
 const Card: React.FC<{ children: React.ReactNode; style?: React.CSSProperties }> = ({ children, style }) => (
   <div style={{ background: P.card, borderRadius: 18, padding: '20px 20px', marginBottom: 14, ...style }}>{children}</div>

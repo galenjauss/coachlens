@@ -61,8 +61,8 @@ export const S08Notice: React.FC = () => {
             >
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: FONT.mono, fontWeight: 500, fontSize: 28, letterSpacing: '0.16em', textTransform: 'uppercase', color: C.muted, marginBottom: 8 }}>★ {it.where}</div>
-                <div style={{ fontFamily: FONT.head, fontWeight: 700, fontSize: 40, letterSpacing: '-0.02em', color: C.white, whiteSpace: 'nowrap' }}>{it.title}</div>
-                <div style={{ fontFamily: FONT.head, fontWeight: 500, fontSize: 34, letterSpacing: '-0.01em', color: C.muted, whiteSpace: 'nowrap', marginTop: 2 }}>{it.detail}</div>
+                <div style={{ fontFamily: FONT.head, fontWeight: 700, fontSize: 40, letterSpacing: '-0.005em', color: C.white, whiteSpace: 'nowrap' }}>{it.title}</div>
+                <div style={{ fontFamily: FONT.head, fontWeight: 500, fontSize: 34, letterSpacing: '-0.005em', color: C.muted, whiteSpace: 'nowrap', marginTop: 2 }}>{it.detail}</div>
               </div>
               <div style={{ flex: 'none', fontFamily: FONT.head, fontWeight: 700, fontSize: 30, color: C.bg, background: C.white, borderRadius: 999, padding: '14px 24px' }}>{it.action}</div>
             </div>
@@ -71,7 +71,7 @@ export const S08Notice: React.FC = () => {
       </div>
       <div
         style={{
-          position: 'absolute', left: 96, right: 96, bottom: 110, fontFamily: FONT.head, fontWeight: 700, fontSize: 60, letterSpacing: '-0.03em', lineHeight: 1.1, color: C.white,
+          position: 'absolute', left: 96, right: 96, bottom: 110, fontFamily: FONT.head, fontWeight: 700, fontSize: 60, letterSpacing: '-0.005em', lineHeight: 1.1, color: C.white,
           opacity: enterAt(frame, fps, LINE_AT), translate: `0 ${(1 - enterAt(frame, fps, LINE_AT)) * 24}px`,
         }}
       >

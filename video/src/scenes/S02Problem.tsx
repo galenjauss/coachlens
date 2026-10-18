@@ -34,7 +34,7 @@ export const S02Problem: React.FC = () => {
       {/* Class clock */}
       <div style={{ position: 'absolute', left: 96, top: 250, opacity: enterAt(frame, fps, 6) }}>
         <div style={{ fontFamily: FONT.mono, fontWeight: 500, fontSize: 28, letterSpacing: '0.2em', color: C.muted }}>CLASS TIME</div>
-        <div style={{ fontFamily: FONT.head, fontWeight: 700, fontSize: 200, letterSpacing: '-0.04em', color: C.white, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+        <div style={{ fontFamily: FONT.head, fontWeight: 700, fontSize: 200, letterSpacing: '-0.012em', color: C.white, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
           {mmss(secs)}
         </div>
         <div style={{ width: 560, height: 3, background: C.hair, marginTop: 24, borderRadius: 2 }}>
@@ -61,7 +61,7 @@ export const S02Problem: React.FC = () => {
         20 KIDS · {frame < TICK_END ? 'CORRECTED IN CLASS' : 'REMEMBERED BY DINNER'}
       </div>
       <AbsoluteFill style={{ justifyContent: 'flex-end', padding: '0 96px 120px' }}>
-        <div style={{ fontFamily: FONT.head, fontWeight: 700, fontSize: 84, letterSpacing: '-0.035em', color: C.white, opacity: line, translate: `0 ${(1 - line) * 30}px` }}>
+        <div style={{ fontFamily: FONT.head, fontWeight: 700, fontSize: 84, letterSpacing: '-0.005em', color: C.white, opacity: line, translate: `0 ${(1 - line) * 30}px` }}>
           By dinner, I remember <span style={{ color: C.white, textDecoration: 'underline', textDecorationThickness: 4, textUnderlineOffset: 14 }}>two.</span>
         </div>
       </AbsoluteFill>

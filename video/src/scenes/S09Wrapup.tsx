@@ -86,7 +86,7 @@ export const S09Wrapup: React.FC = () => {
           Eli · Mia · Leo
         </div>
       ) : null}
-      <div style={{ position: 'absolute', left: 96, top: TOP + h + 44, width: w + 200, fontFamily: FONT.head, fontWeight: 600, fontSize: 48, letterSpacing: '-0.02em', lineHeight: 1.15, color: C.white, opacity: enterAt(frame, fps, 30) }}>
+      <div style={{ position: 'absolute', left: 96, top: TOP + h + 44, width: w + 200, fontFamily: FONT.head, fontWeight: 600, fontSize: 48, letterSpacing: '-0.005em', lineHeight: 1.15, color: C.white, opacity: enterAt(frame, fps, 30) }}>
         See who you missed. <span style={{ color: frame >= TAP ? C.white : C.muted }}>One tap puts them first next class.</span>
       </div>
     </SceneShell>

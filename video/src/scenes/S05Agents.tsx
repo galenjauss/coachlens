@@ -73,7 +73,7 @@ export const S05Agents: React.FC = () => {
       {/* What the coach said, typed at speaking pace under the lens */}
       <div style={{ position: 'absolute', left: LEFT + 8, top: TOP + h + 34, width: w - 16, opacity: quoteIn }}>
         <div style={{ fontFamily: FONT.mono, fontWeight: 500, fontSize: 28, letterSpacing: '0.2em', color: C.muted, marginBottom: 10 }}>COACH, MID-DRILL</div>
-        <div style={{ fontFamily: FONT.head, fontWeight: 600, fontSize: 52, letterSpacing: '-0.025em', lineHeight: 1.12, color: C.white }}>
+        <div style={{ fontFamily: FONT.head, fontWeight: 600, fontSize: 52, letterSpacing: '0', lineHeight: 1.12, color: C.white }}>
           “<Typed text={quote} chars={chars} />{chars >= quote.length ? '”' : ''}
         </div>
       </div>

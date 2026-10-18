@@ -24,12 +24,12 @@ export const S03Meet: React.FC = () => {
       <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', scale: String(1.02 - 0.02 * settle) }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 44, translate: '0 -40px' }}>
           <LensIcon size={200} draw={draw} dot={dot} lines={lines} />
-          <div style={{ fontFamily: FONT.head, fontWeight: 800, fontSize: 168, letterSpacing: '-0.045em', color: C.white, minWidth: 820 }}>
+          <div style={{ fontFamily: FONT.head, fontWeight: 800, fontSize: 168, letterSpacing: '-0.012em', color: C.white, minWidth: 820 }}>
             {WORD.slice(0, chars)}
             <span style={{ display: 'inline-block', width: 8, height: 130, marginLeft: 8, translate: '0 14px', background: C.green, opacity: chars < WORD.length || frame % 30 < 18 ? (frame > SUB_AT + 30 ? 0 : 1) : 0, boxShadow: `0 0 16px ${C.green}` }} />
           </div>
         </div>
-        <div style={{ position: 'absolute', top: 640, fontFamily: FONT.head, fontWeight: 500, fontSize: 52, letterSpacing: '-0.02em', color: C.muted, opacity: sub, translate: `0 ${(1 - sub) * 24}px` }}>
+        <div style={{ position: 'absolute', top: 640, fontFamily: FONT.head, fontWeight: 500, fontSize: 52, letterSpacing: '-0.005em', color: C.muted, opacity: sub, translate: `0 ${(1 - sub) * 24}px` }}>
           Hands-free AI agents for coaches, <span style={{ color: C.white }}>on Even G2.</span>
         </div>
       </AbsoluteFill>
