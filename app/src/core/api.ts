@@ -1,6 +1,6 @@
 import {
   Alternatives, AgentRunDetail, AgentRunView, AgentsSummary, AgentTaskRun, RedraftResponse, type AgentTask, Coverage, Deck, ModeId, NextStudent, ReviewItem, RosterStudent, StartSessionResponse, StudentDetail,
-  SuggestResponse, Today, TranscribeResponse, UtteranceResponse, WrapUp, type DeckPatch,
+  SuggestResponse, Today, TranscribeResponse, VoicePlanResponse, type ReplaceSource, UtteranceResponse, WrapUp, type DeckPatch,
   SettingsResponse, type SettingsPatch,
   ExtractResponse, OnboardingCommitResponse, OnboardingStatus, type ExtractRequest, type OnboardingCommit,
 } from '@matside/shared'
@@ -125,6 +125,10 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
     deck: (id: string) => req(`/v1/decks/${id}`, {}, Deck),
     patchDeck: (id: string, patch: DeckPatch) => req(`/v1/decks/${id}`, { method: 'PATCH', json: patch }, Deck),
     suggest: (id: string, text: string) => post(`/v1/decks/${id}/suggest`, { text }, SuggestResponse),
+    /** Replaces a not-started deck's items from another plan (409 once the class has started). */
+    replaceDeck: (deckId: string, source: ReplaceSource) => post(`/v1/decks/${deckId}/replace`, { source }, Deck),
+    /** Voice plan edit: applies the spoken changes at once; undo with undoDiff(diffId). */
+    voicePlan: (classId: string, transcript: string) => post('/v1/plan/voice', { classId, transcript }, VoicePlanResponse),
     acceptDiff: (id: string, remember: boolean) => post(`/v1/diffs/${id}/accept`, { remember }, Deck),
     undoDiff: (id: string) => post(`/v1/diffs/${id}/undo`, {}, ok),
     alternatives: (drillId: string) => post(`/v1/drills/${drillId}/alternatives`, {}, Alternatives),

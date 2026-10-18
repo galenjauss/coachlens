@@ -5,7 +5,7 @@ import type { Deps } from '../deps'
 import { classes, deckDiffs, decks, drills, enrollments, issues, preferences, sessions, students } from '../db/schema'
 import { applyDiff, totalMinutes } from '../logic/deckDiff'
 import { nextDateForWeekday } from '../logic/dates'
-import { findDeck, getDeck } from '../services/decks'
+import { findDeck, getDeck, patchDeck } from '../services/decks'
 import { curriculumFor, modeForClass } from '../services/context'
 import { normalizeAlternatives, normalizeDeck, normalizeDiff, RawAlternatives, RawDeckDiff, RawDraftOut, starterDeck } from '../logic/planNormalize'
 import { BudgetExceededError } from './budget'
@@ -37,7 +37,7 @@ export function plannerInstructions(mode: ModeConfig): string {
 - ${mode.guardrails}`
 }
 
-async function planningContext(deps: Deps, classId: string, forDate: string) {
+export async function planningContext(deps: Deps, classId: string, forDate: string) {
   const { db } = deps
   const mode = await modeForClass(db, classId)
   const cur = await curriculumFor(db, mode, forDate)
@@ -66,10 +66,10 @@ async function planningContext(deps: Deps, classId: string, forDate: string) {
 const REDRAFT_MIN_AGE_MS = 2 * 60_000
 const REDRAFT_COOLDOWN_MS = 10 * 60_000
 
-type PlanCtx = Awaited<ReturnType<typeof planningContext>>
+export type PlanCtx = Awaited<ReturnType<typeof planningContext>>
 
 /** Asks the LLM for the deck. Never throws: any failure (error, budget, bad output) yields the mode's starter deck plus a cause. */
-async function llmDrills(deps: Deps, ctx: PlanCtx, forDate: string): Promise<{ drills: DrillDraft[]; cause: string | null }> {
+export async function llmDrills(deps: Deps, ctx: PlanCtx, forDate: string): Promise<{ drills: DrillDraft[]; cause: string | null }> {
   try {
     const raw = await deps.llm.object({ name: 'planner.draft', instructions: ctx.instructions, prompt: `Plan the class on ${forDate}.\n${ctx.text}`, schema: RawDraftOut })
     return { drills: normalizeDeck(raw.drills, ctx.mode.id, ctx.rosterIds), cause: null }
@@ -122,7 +122,7 @@ export async function draftDeck(deps: Deps, classId: string, forDate: string, ut
  * A spent daily budget simply fails the attempt (and waits out the cooldown).
  */
 /** True once a session exists for the deck or any of its drills has started. */
-async function isStarted(db: Db, deckId: string): Promise<boolean> {
+export async function isStarted(db: Db, deckId: string): Promise<boolean> {
   const [s] = await db.select({ id: sessions.id }).from(sessions).where(eq(sessions.deckId, deckId)).limit(1)
   if (s) return true
   const [r] = await db.select({ id: drills.id }).from(drills).where(and(eq(drills.deckId, deckId), isNotNull(drills.startedAt))).limit(1)
@@ -256,8 +256,32 @@ export async function alternativesFor(deps: Deps, drillId: string): Promise<Dril
   return r
 }
 
+/**
+ * Pending diff: just marked undone. Accepted diff that recorded a `before` snapshot (voice plan): the deck's drills are
+ * restored from it, unless the class has started (then 'class started', a 409).
+ */
 export async function undoDiff(db: Db, diffId: string) {
-  await db.update(deckDiffs).set({ status: 'undone' }).where(and(eq(deckDiffs.id, diffId), eq(deckDiffs.status, 'pending')))
+  const [row] = await db.select().from(deckDiffs).where(eq(deckDiffs.id, diffId))
+  if (!row) return
+  if (row.status === 'pending') {
+    await db.update(deckDiffs).set({ status: 'undone' }).where(and(eq(deckDiffs.id, diffId), eq(deckDiffs.status, 'pending')))
+    return
+  }
+  if (row.status !== 'accepted' || !row.before) return
+  if (await isStarted(db, row.deckId)) throw new Error('class started')
+  const now = (await getDeck(db, row.deckId)).drills
+  const key = (d: { name: string; minutes: number; kind: string; cues: string[] }) => JSON.stringify([d.name, d.minutes, d.kind, d.cues])
+  const expected = applyDiff(row.before.map((d, i) => ({ ...d, position: i + 1 })), row.diff)
+  if (now.length !== expected.length || now.some((d, i) => key(d) !== key(expected[i]!))) throw new Error('plan changed since')
+  const [claimed] = await db.update(deckDiffs).set({ status: 'undone' }).where(and(eq(deckDiffs.id, diffId), eq(deckDiffs.status, 'accepted'))).returning({ id: deckDiffs.id })
+  if (!claimed) return
+  try {
+    const current = new Set(now.map(d => d.id))
+    await patchDeck(db, row.deckId, { drills: row.before.map(d => ({ ...d, id: current.has(d.id) ? d.id : null })) })
+  } catch (e) {
+    await db.update(deckDiffs).set({ status: 'accepted' }).where(eq(deckDiffs.id, diffId)).catch(() => {})
+    throw e
+  }
 }
 
 /** Short run recording whether a planner suggestion was applied or left for review (the suggest run itself predates the decision). */

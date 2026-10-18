@@ -3,7 +3,7 @@ import { cors } from 'hono/cors'
 import { HTTPException } from 'hono/http-exception'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { AgentTask, DeckPatch, SettingsPatch, ExtractRequest, MAX_ALIASES, MAX_IMAGE_BASE64, MAX_ONBOARDING_TEXT, OnboardingCommit, RedraftRequest, StudentPatch, TranscribeForm, UtteranceForm } from '@matside/shared'
+import { AgentTask, DeckPatch, ReplaceDeckRequest, VoicePlanRequest, SettingsPatch, ExtractRequest, MAX_ALIASES, MAX_IMAGE_BASE64, MAX_ONBOARDING_TEXT, OnboardingCommit, RedraftRequest, StudentPatch, TranscribeForm, UtteranceForm } from '@matside/shared'
 import type { Deps } from './deps'
 import { attendance, billingFlags, enrollments, instructors, notes, sessions, students, classes, utterances } from './db/schema'
 import { hashToken } from './http/auth'
@@ -17,6 +17,7 @@ import { listReview, approveOutbox, skipOutbox, approveAllOutbox, handleBilling,
 import { getDeck, patchDeck } from './services/decks'
 import { runReportCards } from './agents/reportCard'
 import { agentFeed, getStudentDetail, listStudents } from './services/students'
+import { replaceDeck, voicePlan, VoicePlanError } from './agents/planEdit'
 import { acceptDiff, alternativesFor, nextDeckFor, suggestDiff, undoDiff } from './agents/planner'
 import { applyDiff, totalMinutes } from './logic/deckDiff'
 import { addAlias, aliasKey } from './logic/names'
@@ -262,6 +263,7 @@ export function createApp(deps: Deps) {
     if (/not found$/.test(m) || /^deck .* not found/.test(m)) throw new HTTPException(404, { message: m })
     if (/not pending$/.test(m)) throw new HTTPException(409, { message: m })
     if (/^drills not in deck|^duplicate drill ids/.test(m)) throw new HTTPException(400, { message: m })
+    if (/^class started|^plan changed since|^previous plan not found/.test(m)) throw new HTTPException(/^(class started|plan changed since)/.test(m) ? 409 : 404, { message: m })
     if (/^planner unavailable/.test(m)) throw new HTTPException(502, { message: m })
     throw e
   }
@@ -301,7 +303,22 @@ export function createApp(deps: Deps) {
     const { remember } = await json(c.req.raw, z.object({ remember: z.boolean() }))
     return c.json(await guard(acceptDiff(deps, c.req.param('id'), { remember })))
   })
-  app.post('/v1/diffs/:id/undo', async c => { await undoDiff(db, c.req.param('id')); return c.json({ ok: true }) })
+  app.post('/v1/diffs/:id/undo', async c => { await guard(undoDiff(db, c.req.param('id'))); return c.json({ ok: true }) })
+  app.post('/v1/decks/:id/replace', async c => {
+    const { source } = await json(c.req.raw, ReplaceDeckRequest)
+    return c.json(await guard(replaceDeck(deps, c.req.param('id'), source)))
+  })
+  app.post('/v1/plan/voice', async c => {
+    const body = await json(c.req.raw, VoicePlanRequest)
+    try { return c.json(await voicePlan(deps, body.classId, body.transcript)) } catch (e) {
+      if (e instanceof VoicePlanError) {
+        if (e.code === 'not_found') throw new HTTPException(404, { message: 'class not found' })
+        if (e.code === 'budget') throw new HTTPException(429, { message: 'ai_budget_reached' })
+        throw new HTTPException(502, { message: 'planner unavailable' })
+      }
+      throw e
+    }
+  })
   app.post('/v1/drills/:id/alternatives', async c => c.json({ alternatives: await guard(alternativesFor(deps, c.req.param('id'))) }))
 
   app.get('/jobs/report-cards', async c => {

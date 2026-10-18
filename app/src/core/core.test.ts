@@ -447,3 +447,16 @@ describe('dual recorder with untagged audio', () => {
     expect(calls.slice(-2)).toEqual([[false, 'glasses'], [false]]) // the phone is not closed twice
   })
 })
+
+describe('api plan sources and voice plan', () => {
+  it('replaceDeck posts the source and parses the Deck; voicePlan parses the lens summary', async () => {
+    const calls: { url: string; body: string }[] = []
+    const reply = (body: unknown) => ((url: string, init: RequestInit) => { calls.push({ url, body: String(init.body) }); return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: JSON_HDR })) }) as unknown as typeof fetch
+    const deck = { id: 'd', classId: 'c', forDate: '2026-10-19', status: 'draft', isStarter: false, drills: [] }
+    await expect(createApi('http://x', async () => null, reply(deck)).replaceDeck('d', { deckId: 'o' })).resolves.toMatchObject({ id: 'd' })
+    expect(calls[0]).toEqual({ url: 'http://x/v1/decks/d/replace', body: '{"source":{"deckId":"o"}}' })
+    const vp = { diffId: 'x', deckId: 'd', lines: ['+ Sparring 6m'] }
+    await expect(createApi('http://x', async () => null, reply(vp)).voicePlan('c', 'cut kata')).resolves.toEqual(vp)
+    expect(calls[1]).toEqual({ url: 'http://x/v1/plan/voice', body: '{"classId":"c","transcript":"cut kata"}' })
+  })
+})
