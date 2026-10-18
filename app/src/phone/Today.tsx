@@ -3,6 +3,7 @@ import { ApiError, type Api } from '../core/api'
 import { bus } from '../core/bus'
 import type { KV } from '../core/storage'
 import { ClassPicker } from './ClassPicker'
+import { FromAgents } from './FromAgents'
 import { MotionToggle } from './ImuDebug'
 import { rePair } from './kvContext'
 import { CLASS_ID_KEY, MODE_EMOJI } from './classPref'
@@ -11,7 +12,7 @@ import { SetupEntry } from './onboarding/SetupEntry'
 import { usePoll } from './usePoll'
 import { queuedBanner, useOutboxCount } from './outboxLogic'
 
-export function Today({ api, kv, onOpenDeck, onSetup }: { api: Api; kv: KV; onOpenDeck(deckId: string): void; onSetup(): void }) {
+export function Today({ api, kv, onOpenDeck, onSetup, onOpenInsights }: { api: Api; kv: KV; onOpenDeck(deckId: string): void; onSetup(): void; onOpenInsights(): void }) {
   const [classId, setClassId] = useState<string | null | undefined>(undefined) // undefined = KV not read yet
   const [checkIn, setCheckIn] = useState(false)
   const [actionErr, setActionErr] = useState<string | null>(null)
@@ -87,6 +88,7 @@ export function Today({ api, kv, onOpenDeck, onSetup }: { api: Api; kv: KV; onOp
       <section className="card"><div className="label">Focus (from your notes)</div>
         {t.focus.length ? t.focus.map(f => <div key={f.label} className="dot">{f.label}</div>) : <div className="muted">No open focus areas.</div>}
       </section>
+      <FromAgents api={api} onOpenAll={onOpenInsights} />
       <section className="card tappable" role="button" tabIndex={0} aria-label={`${t.planUnit}, edit`} onClick={() => onOpenDeck(t.deck.id)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenDeck(t.deck.id) } }}>
         <div className="row"><b className="grow">{t.planUnit}</b><span className="muted">{t.deck.drills.length} items · {mins} min · edit ›</span></div>
         {t.deck.drills.slice(0, 4).map(d => <div className="drill" key={d.id}><span>{d.name}</span><span className="muted">{d.minutes}m</span></div>)}

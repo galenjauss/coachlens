@@ -109,6 +109,11 @@ export const AUTONOMY_COPY: Record<AgentTask, Partial<Record<Autonomy, string>>>
     auto: 'Marks who’s here or absent when you say so.',
     off: 'Ignores spoken attendance. Use the roster instead.',
   },
+  insights: {
+    auto: 'Acts on what it notices (a draft, a plan focus) and tells you what it did.',
+    review: 'Suggests what it notices and waits for you to tap Do it.',
+    off: 'Stops looking for patterns. Nothing is suggested.',
+  },
 }
 
 export const autonomyOptions = (task: AgentTask): Autonomy[] =>

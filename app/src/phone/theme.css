@@ -208,3 +208,36 @@ button.quiet.danger:hover:not(:disabled) { background: var(--danger-bg); color: 
 .metric-add-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .metric-add-grid input { margin-top: 0; }
 #mf-key, #mf-value { grid-column: 1 / -1; }
+
+/* Insights ("From your agents" on Today, Agents → Insights): a warm lightbulb accent, apart from the green action color. */
+:root { --idea: #ffd36b; --idea-ink: #1c1504; --idea-line: #5b4b20; --idea-glow: rgba(255, 211, 107, .22); --ok-bg: #1e3a28; }
+.ideas-card { position: relative; overflow: hidden; padding: 14px 14px 4px; border-color: var(--idea-line); background: linear-gradient(165deg, #38311b 0%, var(--card) 48%); }
+.ideas-card::before { content: ''; position: absolute; top: -56px; left: -48px; width: 168px; height: 168px; border-radius: 50%; background: radial-gradient(circle, var(--idea-glow), transparent 68%); pointer-events: none; }
+.ideas-head { position: relative; display: flex; align-items: center; gap: 10px; margin-bottom: 2px; }
+.ideas-head h2 { flex: 1; margin: 0; font-size: 12px; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; color: var(--idea); }
+.ideas-bulb { display: grid; place-items: center; flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--idea); font-size: 15px; box-shadow: 0 0 0 4px rgba(255, 211, 107, .12), 0 0 18px var(--idea-glow); }
+.ideas-count { font-size: 12px; font-weight: 600; color: var(--idea); padding: 2px 8px; border-radius: 99px; border: 1px solid var(--idea-line); }
+.ideas { position: relative; list-style: none; margin: 0; padding: 0; }
+.insight { padding: 14px 0 12px; border-top: 1px solid var(--line); }
+.insight:first-child { border-top: 0; }
+.insight-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.insight-now { font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; padding: 2px 7px; border-radius: 99px; background: var(--idea); color: var(--idea-ink); }
+.insight-who { font-size: 12px; font-weight: 600; color: var(--muted); }
+.insight-title { margin: 0; font-size: 17px; line-height: 1.28; font-weight: 650; letter-spacing: -.01em; color: #fff; overflow-wrap: anywhere; }
+.insight-detail { margin: 4px 0 0; font-size: 14px; line-height: 1.4; color: var(--muted); overflow-wrap: anywhere; }
+.insight.settled .insight-title { color: var(--text); font-weight: 600; font-size: 15px; }
+.insight-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.insight-next { flex-basis: 100%; font-size: 12px; font-weight: 600; color: var(--idea); }
+button.insight-do { flex: 1; background: var(--idea); color: var(--idea-ink); font-weight: 700; }
+button.insight-do:hover:not(:disabled) { filter: brightness(1.06); }
+/* Only urgent items get the solid button: the rest stay outlined so the card has one clear first move. */
+.insight:not(.high) button.insight-do { background: transparent; color: var(--idea); box-shadow: inset 0 0 0 1px var(--idea-line); }
+.insight:not(.high) button.insight-do:hover:not(:disabled) { background: rgba(255, 211, 107, .08); filter: none; }
+.insight-actions button.quiet { min-height: 44px; padding: 8px 16px; }
+.insight-actions button.quiet:hover:not(:disabled) { color: var(--text); border-color: var(--muted); filter: none; }
+.insight-outcome { margin: 10px 0 0; padding: 8px 12px; border-radius: 10px; background: var(--ok-bg); color: var(--accent); font-size: 14px; font-weight: 600; overflow-wrap: anywhere; animation: outcome-in 220ms cubic-bezier(.16, 1, .3, 1); }
+.insight-outcome.off { background: none; padding: 0; color: var(--muted); font-weight: 500; }
+@keyframes outcome-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+button.ideas-all { position: relative; display: block; width: 100%; flex: none; min-height: 44px; padding: 10px 0; margin-top: 2px; border-top: 1px solid var(--line); border-radius: 0; background: none; color: var(--idea); font-weight: 650; text-align: right; }
+button.ideas-all:hover:not(:disabled) { filter: none; color: #fff; }
+@media (prefers-reduced-motion: reduce) { .insight-outcome { animation: none; } }

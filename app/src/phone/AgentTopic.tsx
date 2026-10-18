@@ -3,10 +3,23 @@ import type { Api } from '../core/api'
 import { AgentBadge } from './AgentBadge'
 import { relTime, taskLabel } from './agentsLogic'
 import { AutonomyControl } from './AutonomyControl'
+import { InsightsList } from './InsightsList'
 import { usePoll } from './usePoll'
 
 export function AgentTopic({ api, task, onBack, onOpenRun }: { api: Api; task: AgentTask; onBack(): void; onOpenRun(id: string): void }) {
-  const { data, error, loading, reload } = usePoll(() => api.agentTask(task), 5000, [task])
+  const insights = task === 'insights'
+  const { data, error, loading, reload } = usePoll(() => api.agentTask(task), 5000, [task], !insights)
+  if (insights) {
+    return (
+      <main className="screen">
+        <button type="button" className="back" onClick={onBack}>‹ Agents</button>
+        <h1>{taskLabel(task)}</h1>
+        <div className="sub">What your agents noticed, and what they can do about it</div>
+        <AutonomyControl api={api} task={task} />
+        <InsightsList api={api} />
+      </main>
+    )
+  }
   return (
     <main className="screen">
       <button type="button" className="back" onClick={onBack}>‹ Agents</button>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { AgentTask } from '@matside/shared'
 import { bus } from '../core/bus'
 import { KEYS } from '../core/storage'
 import { Agents } from './Agents'
@@ -19,6 +20,8 @@ export function App({ api, kv }: PhoneDeps) {
   const [tab, setTab] = useState<Tab>('today')
   const [deckId, setDeckId] = useState<string | null>(null)
   const [setup, setSetup] = useState(false)
+  /** Agents opened from Today's "All insights": which task to open, and a nonce that remounts Agents there. */
+  const [agentsOpen, setAgentsOpen] = useState<{ task: AgentTask | null; n: number }>({ task: null, n: 0 })
   useEffect(() => { void kv.get(KEYS.token).then(t => setPaired(Boolean(t)), () => setPaired(false)) }, [kv])
   // A 401 anywhere (or "Re-pair this phone") means the token is no longer valid: clear it and pair again.
   useEffect(() => bus.on('unauthorized', () => {
@@ -48,13 +51,14 @@ export function App({ api, kv }: PhoneDeps) {
   if (deckId) return <DeckEditor api={api} deckId={deckId} onClose={() => setDeckId(null)} />
   return (
     <>
-      {tab === 'today' && <Today api={api} kv={kv} onOpenDeck={setDeckId} onSetup={() => setSetup(true)} />}
-      {tab === 'agents' && <Agents api={api} />}
+      {tab === 'today' && <Today api={api} kv={kv} onOpenDeck={setDeckId} onSetup={() => setSetup(true)}
+        onOpenInsights={() => { setAgentsOpen(a => ({ task: 'insights', n: a.n + 1 })); setTab('agents') }} />}
+      {tab === 'agents' && <Agents key={agentsOpen.n} api={api} initialTask={agentsOpen.task} />}
       {tab === 'review' && <Review api={api} />}
       {tab === 'students' && <Students api={api} />}
       <nav className="tabs" aria-label="CoachLens">
         {TABS.map(t => (
-          <button key={t} type="button" aria-current={tab === t ? 'page' : undefined} onClick={() => setTab(t)}>{t[0]!.toUpperCase() + t.slice(1)}{t === 'review' && pending > 0 && <><span className="badge" aria-hidden="true">{pending}</span><span className="sr-only"> ({pending} pending)</span></>}</button>
+          <button key={t} type="button" aria-current={tab === t ? 'page' : undefined} onClick={() => { if (t === 'agents' && tab !== 'agents') setAgentsOpen(a => ({ ...a, task: null })); setTab(t) }}>{t[0]!.toUpperCase() + t.slice(1)}{t === 'review' && pending > 0 && <><span className="badge" aria-hidden="true">{pending}</span><span className="sr-only"> ({pending} pending)</span></>}</button>
         ))}
       </nav>
     </>
