@@ -113,3 +113,11 @@ export const preferences = pgTable('preferences', {
 export const llmUsage = pgTable('llm_usage', {
   day: text('day').primaryKey(), calls: integer('calls').notNull().default(0),
 })
+// Per-agent autonomy ('auto' | 'review' | 'off'); a missing row means that task's default.
+export const agentSettings = pgTable('agent_settings', {
+  task: text('task').primaryKey(), autonomy: text('autonomy').notNull(),
+})
+// Instructor's custom words (names of moves, studio jargon) fed to speech-to-text and the router.
+export const schoolVocab = pgTable('school_vocab', {
+  term: text('term').primaryKey(), createdAt: createdAt(),
+})

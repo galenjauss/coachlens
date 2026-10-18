@@ -4,7 +4,7 @@ import type { OnboardingCommit } from '@matside/shared'
 import { resetRateLimits } from './http/rateLimit'
 import { makeTestDb, makeDeps, fakeLlm, type TestDeps } from './test/helpers'
 import { createApp } from './app'
-import { classes, curriculum, decks, enrollments, guardians, instructors, students } from './db/schema'
+import { classes, curriculum, decks, enrollments, guardians, instructors, schoolVocab, students } from './db/schema'
 import { BudgetExceededError } from './agents/budget'
 import type { Llm } from './deps'
 import { cleanClasses, cleanCurriculum, cleanRoster, groundEmails, normalizeTime, normalizeWeekday } from './logic/onboarding'
@@ -242,6 +242,16 @@ describe('POST /v1/onboarding/commit', () => {
     expect(calls.filter(c => c.name === 'planner.draft')).toHaveLength(2)
     expect((await db.select().from(decks)).map(d => d.forDate).sort()).toEqual(['2026-10-20', '2026-10-22'])
     expect(await (await app.request('/v1/onboarding/status', { headers: h })).json()).toMatchObject({ needsOnboarding: false, classCount: 2, studentCount: 2, schoolName: 'Tiger Dojo' })
+  })
+
+  it('adds curriculum items and drafted drill names as vocabulary, deduped', async () => {
+    const { post, db, deps } = await setup()
+    await post('/v1/onboarding/commit', COMMIT)
+    await deps.flush()
+    await post('/v1/onboarding/commit', COMMIT)
+    await deps.flush()
+    const terms = (await db.select().from(schoolVocab)).map(r => r.term).sort()
+    expect(terms).toEqual(['Drill 1', 'Drill 2', 'Drill 3', 'Drill 4', 'Drill 5', 'Kata 1'])
   })
 
   it('is idempotent by name: re-running updates instead of duplicating', async () => {

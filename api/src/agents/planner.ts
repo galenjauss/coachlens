@@ -10,6 +10,7 @@ import { curriculumFor, modeForClass } from '../services/context'
 import { normalizeAlternatives, normalizeDeck, normalizeDiff, RawAlternatives, RawDeckDiff, RawDraftOut, starterDeck } from '../logic/planNormalize'
 import { BudgetExceededError } from './budget'
 import { withRun } from './runs'
+import { getAutonomy } from '../services/settings'
 
 const AUDIENCE: Record<ModeConfig['id'], string> = {
   martial_arts: "kids' martial arts classes (ages 6-12)",
@@ -225,10 +226,15 @@ export async function nextDeckFor(deps: Deps, classId: string, afterDate: string
 }
 
 export async function autoAdjustNextDeck(deps: Deps, a: { classId: string; afterDate: string; requestText: string; sessionId: string | null; utteranceId?: string | null }) {
+  const autonomy = await getAutonomy(deps.db, 'planner')
+  if (autonomy === 'off') {
+    await withRun(deps, { agent: 'planner', trigger: 'auto_adjust', sessionId: a.sessionId, utteranceId: a.utteranceId ?? null }, async () => ({ result: null, summary: 'Auto-adjust skipped (off)', reason: 'autonomy: off — the planner will not adjust next class on its own' }))
+    return
+  }
   const deckId = await nextDeckFor(deps, a.classId, a.afterDate, a.utteranceId ?? null)
   if (!deckId) return
   const s = await suggestDiff(deps, deckId, a.requestText, a.sessionId, a.utteranceId ?? null)
-  if (s) await acceptDiff(deps, s.diffId, { remember: false })
+  if (s && autonomy === 'auto') await acceptDiff(deps, s.diffId, { remember: false })
 }
 
 export async function alternativesFor(deps: Deps, drillId: string): Promise<DrillDraft[]> {

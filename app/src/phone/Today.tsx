@@ -94,7 +94,7 @@ export function Today({ api, kv, onOpenDeck, onSetup }: { api: Api; kv: KV; onOp
           </>}
       {actionErr && <p className="error" role="alert">{actionErr}</p>}
       <SetupEntry onOpen={onSetup} />
-      <MotionToggle kv={kv} />
+      <MotionToggle kv={kv} api={api} />
     </main>
   )
 }

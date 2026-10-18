@@ -3,7 +3,9 @@ import { NOD } from '../config'
 import { bus, type ImuSampleEvent } from '../core/bus'
 import { readImuDebug, writeImuDebug } from '../core/imuDebug'
 import type { KV } from '../core/storage'
+import type { Api } from '../core/api'
 import { rePair } from './kvContext'
+import { VocabEditor } from './VocabEditor'
 
 const WINDOW_MS = 2000
 type Axis = 'x' | 'y' | 'z'
@@ -38,7 +40,7 @@ function useImuDebugFlag(kv: KV): boolean {
  * Today → Settings: the "Show motion readout" switch (label left and wrapping, switch right) and,
  * when on, the readout right below it. Works in a Beta build, no URL params needed.
  */
-export function MotionToggle({ kv }: { kv: KV }) {
+export function MotionToggle({ kv, api }: { kv: KV; api: Api }) {
   const on = useImuDebugFlag(kv)
   return (
     <details className="card">
@@ -49,6 +51,7 @@ export function MotionToggle({ kv }: { kv: KV }) {
           style={{ width: 'auto', flex: 'none', margin: 0, padding: 0, accentColor: 'var(--accent)', inlineSize: 22, blockSize: 22 }} />
       </label>
       <ImuDebug kv={kv} />
+      <VocabEditor api={api} />
       <div className="btns" style={{ marginTop: 12 }}>
         <button type="button" onClick={() => { void rePair(kv) }}>Re-pair this phone</button>
       </div>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentTile } from '@matside/shared'
-import { addAlias, latestTile, reassignChoices, relTime, removeAlias, sortTiles, steeringFor, taskLabel, tileStatus } from './agentsLogic'
+import { addAlias, addVocabTerm, AUTONOMY_COPY, autonomyOptions, latestTile, radioStep, reassignChoices, relTime, removeAlias, removeVocabTerm, sortTiles, steeringFor, taskLabel, tileStatus } from './agentsLogic'
 
 const run = (createdAt: string) => ({ id: createdAt, agent: 'x', summary: 's', reason: 'r', status: 'ok' as const, createdAt })
 const tile = (task: AgentTile['task'], color: AgentTile['color'], today: number, urgent = 0, pending = 0, latest: AgentTile['latest'] = null): AgentTile =>
@@ -79,5 +79,28 @@ describe('reassignChoices', () => {
     expect(reassignChoices([a, b], [a, b, c])).toEqual({ students: [a, b], scoped: true })
     expect(reassignChoices(null, [a, b, c])).toEqual({ students: [a, b, c], scoped: false })
     expect(reassignChoices(null, null)).toEqual({ students: null, scoped: false })
+  })
+})
+
+describe('autonomy + vocabulary helpers', () => {
+  it('offers only the modes each agent allows, in Auto · Review · Off order', () => {
+    expect(autonomyOptions('parent_email')).toEqual(['auto', 'review', 'off'])
+    expect(autonomyOptions('report_card')).toEqual(['review', 'off'])
+    expect(autonomyOptions('billing')).toEqual(['auto', 'off'])
+    for (const t of ['parent_email', 'report_card', 'planner', 'billing', 'progress', 'attendance'] as const)
+      for (const m of autonomyOptions(t)) expect(AUTONOMY_COPY[t][m], `${t}/${m}`).toBeTruthy()
+  })
+  it('radioStep wraps and ignores other keys', () => {
+    expect(radioStep('ArrowRight', 2, 3)).toBe(0)
+    expect(radioStep('ArrowLeft', 0, 3)).toBe(2)
+    expect(radioStep('Enter', 0, 3)).toBeNull()
+  })
+  it('addVocabTerm trims, dedupes case-insensitively and enforces limits', () => {
+    expect(addVocabTerm(['Mawashi'], '  Kata  Ni ')).toEqual({ list: ['Mawashi', 'Kata Ni'] })
+    expect(addVocabTerm(['Mawashi'], 'mawashi')).toEqual({ error: 'Already added.' })
+    expect('error' in addVocabTerm([], '   ')).toBe(true)
+    expect('error' in addVocabTerm([], 'x'.repeat(41))).toBe(true)
+    expect('error' in addVocabTerm(Array.from({ length: 200 }, (_, i) => `t${i}`), 'new')).toBe(true)
+    expect(removeVocabTerm(['a', 'b'], 'a')).toEqual(['b'])
   })
 })

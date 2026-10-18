@@ -1,4 +1,4 @@
-import { AGENT_TASK_LABELS, type AgentColor, type AgentRunDetail, type AgentTask, type AgentTile } from '@matside/shared'
+import { AGENT_TASK_LABELS, AUTONOMY_RULES, MAX_VOCAB, VOCAB_TERM_MAX, type AgentColor, type AgentRunDetail, type AgentTask, type AgentTile, type Autonomy } from '@matside/shared'
 
 const COLOR_RANK: Record<AgentColor, number> = { red: 0, amber: 1, green: 2 }
 /** Text that backs up the color so it is never the only signal. */
@@ -77,3 +77,57 @@ export function reassignChoices<S extends { id: string }>(classRoster: S[] | nul
   if (classRoster) return { students: classRoster, scoped: true }
   return { students: all, scoped: false }
 }
+
+// ---- Autonomy (Auto · Review · Off) and custom vocabulary ----
+export const AUTONOMY_LABEL: Record<Autonomy, string> = { auto: 'Auto', review: 'Review', off: 'Off' }
+
+/** One sentence per agent and mode: what that choice does. Only the modes the agent allows are offered. */
+export const AUTONOMY_COPY: Record<AgentTask, Partial<Record<Autonomy, string>>> = {
+  parent_email: {
+    auto: 'Writes the email and sends it right away. No review step.',
+    review: 'Writes the email and waits for your OK in Review before anything is sent.',
+    off: 'Doesn’t write parent emails at all. Each skipped one is logged.',
+  },
+  report_card: {
+    review: 'Drafts monthly report cards and waits for your OK before they’re sent.',
+    off: 'Doesn’t draft report cards.',
+  },
+  planner: {
+    auto: 'Applies its own changes to next class’s plan as it goes.',
+    review: 'Suggests changes to next class’s plan and waits for you to accept them.',
+    off: 'Doesn’t adjust next class’s plan on its own. Your explicit requests still make suggestions.',
+  },
+  billing: {
+    auto: 'Records billing flags from what you say. Notes only, never a payment.',
+    off: 'Ignores billing mentions.',
+  },
+  progress: {
+    auto: 'Logs your notes and tracks recurring issues for report cards and plans.',
+    off: 'Still saves your notes, but stops tracking recurring issues.',
+  },
+  attendance: {
+    auto: 'Marks who’s here or absent when you say so.',
+    off: 'Ignores spoken attendance. Use the roster instead.',
+  },
+}
+
+export const autonomyOptions = (task: AgentTask): Autonomy[] =>
+  (['auto', 'review', 'off'] as const).filter(m => AUTONOMY_RULES[task].allowed.includes(m))
+
+/** Next index for ←/→ (wraps); null for other keys. */
+export function radioStep(key: string, i: number, n: number): number | null {
+  if (key === 'ArrowRight' || key === 'ArrowDown') return (i + 1) % n
+  if (key === 'ArrowLeft' || key === 'ArrowUp') return (i - 1 + n) % n
+  return null
+}
+
+/** Adds a vocabulary term (trim, 40 chars, no case-insensitive duplicates, 200 max). */
+export function addVocabTerm(list: readonly string[], draft: string, max = MAX_VOCAB, maxLen = VOCAB_TERM_MAX): { list: string[] } | { error: string } {
+  const t = draft.trim().replace(/\s+/g, ' ')
+  if (!t) return { error: 'Type a word first.' }
+  if (t.length > maxLen) return { error: `Keep it under ${maxLen} characters.` }
+  if (list.some(x => x.toLowerCase() === t.toLowerCase())) return { error: 'Already added.' }
+  if (list.length >= max) return { error: `Up to ${max} words.` }
+  return { list: [...list, t] }
+}
+export const removeVocabTerm = (list: readonly string[], term: string): string[] => list.filter(x => x !== term)
