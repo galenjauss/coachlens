@@ -15,7 +15,7 @@ import { check, results, run, scenario, writeResults, statusOf } from './results
 import { CODES } from './seed'
 import { backToQuiet, s1Praise, s2RollCall, s3RateLimit, s4Banner, s4Quiet, s4Standard, s5Urgent, startClass, type LensCtx } from './scenariosLens'
 import { s10Concurrent, s11Isolation, s12Unpair, s8Undo, s9ResponseLoss } from './scenariosB2'
-import { pairPhone, phoneUnpair, s6Phone, s7Insights, startPhone, stopPhone } from './scenariosPhone'
+import { pairPhone, phoneSignOutOthers, phoneUnpair, s6Phone, s7Insights, startPhone, stopPhone } from './scenariosPhone'
 import { repro429 } from './repro'
 
 const lens = !process.argv.includes('--no-lens')
@@ -70,8 +70,9 @@ if (ctx) {
     await s7Insights(s7)
     const s6 = scenario('S6', 'Phone UI: Unsent notes, Settings, Review roster, roster and class edits', 'F07 UI, C5, F16, F23')
     await s6Phone(s6)
+    const others = await phoneSignOutOthers(s6, true)
     const s12phone = await phoneUnpair(s6)
-    await s12Unpair(s12phone)
+    await s12Unpair(s12phone, others, s6.evidence.filter(e => /s12-/.test(e)))
   } finally { await stopPhone() }
 } else {
   // No simulator: the batch-2 API scenarios run on a class started through the API.
@@ -89,7 +90,8 @@ if (ctx) {
     await s7Insights(s7)
     const s6 = scenario('S6', 'Phone UI: Unsent notes, Settings, Review roster, roster and class edits', 'F07 UI, C5, F16, F23')
     await s6Phone(s6)
-    await s12Unpair(await phoneUnpair(s6))
+    const others = await phoneSignOutOthers(s6, false)
+    await s12Unpair(await phoneUnpair(s6), others, s6.evidence.filter(e => /s12-/.test(e)))
   } finally { await stopPhone() }
 }
 await s11Isolation(seed)

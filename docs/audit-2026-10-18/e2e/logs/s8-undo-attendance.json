@@ -1,0 +1,47 @@
+{
+  "present0": 12,
+  "present1": 14,
+  "present2": 12,
+  "rollCall": {
+    "utteranceId": "6c22fe8c-d354-425b-9427-2db55ba539ad",
+    "transcript": "everyone is here",
+    "cardLines": [
+      "14 present"
+    ],
+    "coverage": {
+      "covered": 7,
+      "present": 14
+    },
+    "nextStudent": {
+      "id": "15b2fb6c-d32f-4bfa-80ba-fe8039dde8c2",
+      "name": "Sam",
+      "reason": "guard"
+    },
+    "disambiguation": null,
+    "attendanceChanged": true
+  },
+  "undo": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "reversed": [
+        "Attendance restored (12 present)"
+      ],
+      "cancelled": [],
+      "notReversible": [],
+      "coverage": {
+        "covered": 7,
+        "present": 12
+      }
+    },
+    "headers": {
+      "access-control-expose-headers": "Idempotent-Replay",
+      "connection": "keep-alive",
+      "content-length": "131",
+      "content-type": "application/json",
+      "date": "Sun, 18 Oct 2026 15:24:56 GMT",
+      "keep-alive": "timeout=5",
+      "vary": "Origin"
+    }
+  }
+}

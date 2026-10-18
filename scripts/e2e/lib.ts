@@ -52,6 +52,8 @@ export async function call(method: string, path: string, token: string | null, j
   return { status: r.status, body: parsed, headers: Object.fromEntries(r.headers.entries()) }
 }
 const tokens = new Map<string, string>()
+/** Drop cached harness tokens (after a scenario revokes them). */
+export const forgetTokens = () => tokens.clear()
 /** A harness token per code, cached: /pair allows 10 calls a minute per address. `fresh` for a token to revoke. */
 export async function pair(code: string, fresh = false): Promise<string> {
   if (!fresh && tokens.has(code)) return tokens.get(code)!
@@ -84,6 +86,12 @@ function remotePlugin() {
     res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(q.shift()))
   }
   const AGENT = `(() => {
+    // Harness only: the SDK logs every 100 ms mic frame and every bridge call. In the simulator each console line
+    // crosses IPC into a 2000-entry buffer; under that flood the webview stalled. Drop just those debug lines.
+    for (const level of ['log', 'debug']) {
+      const orig = console[level].bind(console)
+      console[level] = (...a) => { const m = typeof a[0] === 'string' ? a[0] : ''; if (m.startsWith('[EvenAppBridge] EvenHub event') || m.startsWith('[Simulator] Flutter Bridge intercepted')) return; orig(...a) }
+    }
     let ch = new URLSearchParams(location.search).get('e2e') || sessionStorage.getItem('e2e-ch')
     // The simulator's WKWebView may reload without the query string; the headless phone uses an iPhone UA.
     if (!ch) ch = /iPhone/.test(navigator.userAgent) ? 'phone' : (window.flutter_inappwebview || window.__TAURI_INTERNALS__ || window.__TAURI__ ? 'sim' : null)
@@ -104,7 +112,12 @@ function remotePlugin() {
       const q = queues.get(ch) ?? []; q.push({ id, code }); queues.set(ch, q)
       flushTo(ch)
       return new Promise((resolve, reject) => {
-        const t = setTimeout(() => { pending.delete(id); reject(new Error(`remote ${ch}: timed out`)) }, timeoutMs)
+        const t = setTimeout(() => {
+          pending.delete(id)
+          // Never let a command that was not picked up run later (a late click would land in another scenario).
+          const qq = queues.get(ch) ?? []; const i = qq.findIndex(c => c.id === id)
+          if (i >= 0) { qq.splice(i, 1); reject(new Error(`remote ${ch}: not picked up (agent busy)`)) } else reject(new Error(`remote ${ch}: timed out`))
+        }, timeoutMs)
         pending.set(id, { resolve: v => { clearTimeout(t); resolve(v) }, reject: e => { clearTimeout(t); reject(e) } })
       })
     },
@@ -171,11 +184,15 @@ export async function startVite(extraPlugins: unknown[] = []) {
 }
 
 /** Run a snippet in the page opened with `?e2e=<ch>` (through the stack's Vite server). */
-export async function remote<T = unknown>(ch: string, code: string, timeoutMs = 20_000): Promise<T> {
-  const r = await fetch(`${APP_URL}/__e2e-remote/exec`, { method: 'POST', body: JSON.stringify({ ch, code, timeoutMs }) })
-  const j = await r.json() as { ok: boolean; value?: T; error?: string }
-  if (!j.ok) throw new Error(`remote(${ch}): ${j.error}`)
-  return j.value as T
+export async function remote<T = unknown>(ch: string, code: string, timeoutMs = 60_000): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    const r = await fetch(`${APP_URL}/__e2e-remote/exec`, { method: 'POST', body: JSON.stringify({ ch, code, timeoutMs }) })
+    const j = await r.json() as { ok: boolean; value?: T; error?: string }
+    if (j.ok) return j.value as T
+    // The simulator's webview sometimes stops polling for a while; a command it never picked up is safe to resend.
+    if (attempt < 4 && /not picked up/.test(j.error ?? '')) { console.warn(`  [remote] ${ch}: agent busy, retrying (${attempt})`); continue }
+    throw new Error(`remote(${ch}): ${j.error}`)
+  }
 }
 
 /** DOM helpers available inside remote snippets (prepended to each). React-safe input and deepest-match clicks. */

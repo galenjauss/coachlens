@@ -1,0 +1,49 @@
+{
+  "pairB": 200,
+  "probes": {
+    "GET /v1/students/:id": 404,
+    "GET /v1/today?classId=:id": 404,
+    "GET /v1/notes/:id/candidates": 404,
+    "GET /v1/students/:id/brief": 404,
+    "PATCH /v1/students/:id": 404,
+    "DELETE /v1/students/:id": 404,
+    "POST /v1/sessions": 404,
+    "PATCH /v1/classes/:id": 404,
+    "POST /v1/notes/:id/assign": 404
+  },
+  "listsForB": {
+    "classes": [
+      {
+        "id": "eb58d410-b321-43c5-8de3-4f3e291d2395",
+        "name": "Rivera Teens · Sat",
+        "mode": "martial_arts",
+        "modeLabel": "Martial arts",
+        "weekday": 6,
+        "startTime": "10:00"
+      }
+    ],
+    "students": [
+      {
+        "id": "502e98b7-4d6d-4fe0-9d31-0e54d1c61ab0",
+        "name": "Quinn Ortega",
+        "nickname": null,
+        "belt": "blue",
+        "aliases": []
+      },
+      {
+        "id": "3733ea1d-ef00-4ce3-8a9d-d72dce324191",
+        "name": "Rosa Vance",
+        "nickname": null,
+        "belt": "blue",
+        "aliases": []
+      },
+      {
+        "id": "39538451-bdbc-4a45-b591-ce654add8293",
+        "name": "Theo Marsh",
+        "nickname": null,
+        "belt": "blue",
+        "aliases": []
+      }
+    ]
+  }
+}

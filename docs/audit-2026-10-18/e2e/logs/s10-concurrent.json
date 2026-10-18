@@ -1,0 +1,48 @@
+{
+  "key": "3ead78fb-dfaa-4bd5-93dc-4c1767b3b5ab",
+  "a": {
+    "status": 200,
+    "body": {
+      "utteranceId": "943a8d95-40fb-59b6-8b16-73c965ee34a5",
+      "transcript": "Ben listened well in line-up",
+      "cardLines": [
+        "√ Ben · praise · focus"
+      ],
+      "coverage": {
+        "covered": 9,
+        "present": 12
+      },
+      "nextStudent": {
+        "id": "2886505b-a38e-4c38-b0a3-c11f7b9ca044",
+        "name": "Ava",
+        "reason": "guard"
+      },
+      "disambiguation": null
+    },
+    "headers": {
+      "access-control-expose-headers": "Idempotent-Replay",
+      "connection": "keep-alive",
+      "content-length": "291",
+      "content-type": "application/json",
+      "date": "Sun, 18 Oct 2026 15:25:34 GMT",
+      "keep-alive": "timeout=5",
+      "vary": "Origin"
+    }
+  },
+  "b": {
+    "status": 409,
+    "body": {
+      "error": "in_progress"
+    },
+    "headers": {
+      "access-control-expose-headers": "Idempotent-Replay",
+      "connection": "keep-alive",
+      "content-length": "23",
+      "content-type": "application/json",
+      "date": "Sun, 18 Oct 2026 15:25:32 GMT",
+      "keep-alive": "timeout=5",
+      "vary": "Origin"
+    }
+  },
+  "addedNotes": 1
+}

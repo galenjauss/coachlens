@@ -1,0 +1,12 @@
+{
+  "status": 200,
+  "revoked": null,
+  "harnessTokenAfter": 401,
+  "phoneTokenAfter": 200,
+  "simRepairScreen": true,
+  "simRepaired": true,
+  "evidence": [
+    "docs/audit-2026-10-18/e2e/sim-phone/s12-0c-sim-phone-signed-out.png",
+    "docs/audit-2026-10-18/e2e/sim-phone/s12-0d-sim-phone-re-paired.png"
+  ]
+}

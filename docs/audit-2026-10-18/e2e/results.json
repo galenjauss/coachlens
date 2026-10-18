@@ -1,0 +1,954 @@
+{
+  "started": "2026-10-18T15:19:52.846Z",
+  "finished": "2026-10-18T15:26:09.688Z",
+  "lens": true,
+  "safety": {
+    "mailSent": 0,
+    "mailIntercepted": 0,
+    "blockedFetches": 0,
+    "unexpectedModelCalls": 0
+  },
+  "scenarios": [
+    {
+      "id": "S0",
+      "title": "Setup: pair the simulator app, start class on the lens",
+      "findings": "harness",
+      "checks": [
+        {
+          "name": "class live on the lens (POST /v1/sessions)",
+          "ok": true
+        }
+      ],
+      "evidence": [
+        "docs/audit-2026-10-18/e2e/lens/class-0-home.png",
+        "docs/audit-2026-10-18/e2e/lens/class-1-lobby.png",
+        "docs/audit-2026-10-18/e2e/lens/class-2-rollcall-listening.png",
+        "docs/audit-2026-10-18/e2e/lens/class-3-rollcall-skipped.png"
+      ],
+      "notes": [],
+      "status": "PASS"
+    },
+    {
+      "id": "S2",
+      "title": "Ordinary-mode roll call (F04)",
+      "findings": "F04, F20 routing",
+      "checks": [
+        {
+          "name": "POST /v1/utterance 200 (note mode)",
+          "ok": true,
+          "detail": {
+            "status": 200,
+            "cardLines": [
+              "12 present",
+              "absent: Jake, Mia"
+            ]
+          }
+        },
+        {
+          "name": "card says 12 present, absent Jake and Mia",
+          "ok": true,
+          "detail": [
+            "12 present",
+            "absent: Jake, Mia"
+          ]
+        },
+        {
+          "name": "zero model calls for the roll call",
+          "ok": true,
+          "detail": []
+        },
+        {
+          "name": "attendance set: 12 present, Jake and Mia absent",
+          "ok": true,
+          "detail": {
+            "present": 12,
+            "absent": 2
+          }
+        },
+        {
+          "name": "utterance recorded in note mode, no note written",
+          "ok": true,
+          "detail": {
+            "mode": "note"
+          }
+        },
+        {
+          "name": "\"Nothing changed\" card with a hint for a no-op",
+          "ok": true,
+          "detail": [
+            "● Nothing changed",
+            "Try a name + what you saw"
+          ]
+        }
+      ],
+      "evidence": [
+        "docs/audit-2026-10-18/e2e/lens/s2-1-rollcall-card.png",
+        "docs/audit-2026-10-18/e2e/lens/s2-2-nothing-changed.png"
+      ],
+      "notes": [
+        "The no-op went to the router (1 model call, the deterministic fake); only roll call and count/coverage questions are pre-routed."
+      ],
+      "status": "PASS"
+    },
+    {
+      "id": "S1",
+      "title": "Praise vs criticism (F01)",
+      "findings": "F01",
+      "checks": [
+        {
+          "name": "precondition: Priya has two guard concern notes",
+          "ok": true,
+          "detail": [
+            "Guard drops after the jab",
+            "Hands low when tired in sparring"
+          ]
+        },
+        {
+          "name": "card reads it as praise: \"√ Priya · praise · guard\"",
+          "ok": true,
+          "detail": [
+            "√ Priya · praise · guard"
+          ]
+        },
+        {
+          "name": "no new issue",
+          "ok": true,
+          "detail": []
+        },
+        {
+          "name": "no plan change (no deck diff)",
+          "ok": true
+        },
+        {
+          "name": "no email draft",
+          "ok": true
+        },
+        {
+          "name": "note stored with valence positive",
+          "ok": true,
+          "detail": {
+            "text": "kept her guard up today",
+            "valence": "positive"
+          }
+        },
+        {
+          "name": "only the router was called",
+          "ok": true,
+          "detail": [
+            "router"
+          ]
+        },
+        {
+          "name": "\"Who keeps their guard up?\" lists the praised student (Priya), not the concern-only ones",
+          "ok": true,
+          "detail": {
+            "name": "Answer",
+            "lines": [
+              "Good guard: Priya (1)"
+            ]
+          }
+        },
+        {
+          "name": "\"Who never drops their guard?\" lists the praised student (Priya), not the concern-only ones",
+          "ok": true,
+          "detail": {
+            "name": "Answer",
+            "lines": [
+              "Good guard: Priya (1)"
+            ]
+          }
+        },
+        {
+          "name": "answers took the fast path with positive polarity (no answer-model call)",
+          "ok": true,
+          "detail": [
+            "fast path: tag guard (positive)",
+            "fast path: tag guard (positive)"
+          ]
+        }
+      ],
+      "evidence": [
+        "docs/audit-2026-10-18/e2e/lens/s1-1-praise-card.png",
+        "docs/audit-2026-10-18/e2e/lens/s1-2-question-keeps-up.png",
+        "docs/audit-2026-10-18/e2e/lens/s1-3-question-never-drops.png"
+      ],
+      "notes": [],
+      "status": "PASS"
+    },
+    {
+      "id": "S4",
+      "title": "Quiet mode (C6 · F06 / F12 / F13)",
+      "findings": "F06, F12, F13 (C6)",
+      "checks": [
+        {
+          "name": "note result card shown",
+          "ok": true,
+          "detail": {
+            "lit": 0.02963445216049383
+          }
+        },
+        {
+          "name": "card closed by itself after 6 s (back on peek, still lit)",
+          "ok": true,
+          "detail": {
+            "lit": 0.028609664351851853
+          }
+        },
+        {
+          "name": "idle peek went dark 8 s after its last change",
+          "ok": true,
+          "detail": {
+            "lit": 0
+          }
+        },
+        {
+          "name": "tap on the dark screen started a note that was sent",
+          "ok": true,
+          "detail": {
+            "lit": 0.029513888888888888,
+            "status": 200
+          }
+        },
+        {
+          "name": "swipe on the card dismissed it without recording",
+          "ok": true
+        },
+        {
+          "name": "Settings › Lens display › Standard stored coachlens.displayMode=standard",
+          "ok": true,
+          "detail": "standard"
+        },
+        {
+          "name": "standard mode: card persists past 6 s and peek stays lit past 8 s",
+          "ok": true,
+          "detail": {
+            "card": 0.028838734567901234,
+            "peek": 0.028645833333333332
+          }
+        },
+        {
+          "name": "tap on the banner started recording (not the banner); 2× cancelled it (nothing sent)",
+          "ok": true
+        },
+        {
+          "name": "banner flow ran (swipe opens the insight, swipe returns)",
+          "ok": true
+        },
+        {
+          "name": "switched back to Quiet from phone Settings",
+          "ok": true
+        }
+      ],
+      "evidence": [
+        "docs/audit-2026-10-18/e2e/lens/s4-1-card-at-1s.png",
+        "docs/audit-2026-10-18/e2e/lens/s4-2-card-closed-at-7s.png",
+        "docs/audit-2026-10-18/e2e/lens/s4-3-dark-at-16s.png",
+        "docs/audit-2026-10-18/e2e/lens/s4-4-tap-on-dark-records.png",
+        "docs/audit-2026-10-18/e2e/lens/s4-5-dark-tap-note-card.png",
+        "docs/audit-2026-10-18/e2e/lens/s4-6-swipe-dismissed-card.png",
+        "docs/audit-2026-10-18/e2e/lens/s4-7-doubletap-end-confirm.png",
+        "docs/audit-2026-10-18/e2e/lens/s4-8-back-to-peek.png",
+        "docs/audit-2026-10-18/e2e/sim-phone/s4-9-settings-standard.png",
+        "docs/audit-2026-10-18/e2e/lens/s4-10-standard-card-still-up-at-10s.png",
+        "docs/audit-2026-10-18/e2e/lens/s4-11-standard-peek-lit-at-12s.png",
+        "docs/audit-2026-10-18/e2e/lens/s4-12-banner.png",
+        "docs/audit-2026-10-18/e2e/lens/s4-13-tap-on-banner-records.png",
+        "docs/audit-2026-10-18/e2e/lens/s4-14-cancelled-banner-behind-star.png",
+        "docs/audit-2026-10-18/e2e/lens/s4-15-swipe-opens-insight.png",
+        "docs/audit-2026-10-18/e2e/lens/s4-16-swipe-back.png"
+      ],
+      "notes": [
+        "Hint lines (`tap: note · 2×: undo` on cards, `tap: note · swipe: deck · 2×: end` on peek, the end-class confirm) are read from the screenshots, not OCR-asserted."
+      ],
+      "status": "PASS"
+    },
+    {
+      "id": "S5",
+      "title": "Urgent note waits for review (F17)",
+      "findings": "F17",
+      "checks": [
+        {
+          "name": "parent emails set to auto from the phone (GET /v1/status mailMode)",
+          "ok": true,
+          "detail": {
+            "aiCallsToday": 0,
+            "aiDailyCap": 300,
+            "sttConfigured": true,
+            "mailMode": "auto",
+            "degraded": false,
+            "degradedReasons": [],
+            "aiCallsRemaining": 300,
+            "aiCallsCounted": "anthropic",
+            "day": "2026-10-18"
+          }
+        },
+        {
+          "name": "urgent parent-email draft created",
+          "ok": true,
+          "detail": {
+            "subject": "Dee: rolled her ankle and sat out the last drill",
+            "status": "pending_review"
+          }
+        },
+        {
+          "name": "draft waits in Review (pending_review), not sent, despite parent_email=auto",
+          "ok": true
+        },
+        {
+          "name": "intercepted mail log is empty for this scenario",
+          "ok": true,
+          "detail": []
+        },
+        {
+          "name": "agent run says urgent notes always wait for review",
+          "ok": true,
+          "detail": "URGENT — coach logged this today and the parent should hear it now (observation only, no diagnosis): rolled her ankle and sat out the last drill · autonomy: auto, but urgent notes always wait for review"
+        },
+        {
+          "name": "Review shows the URGENT label, urgent first",
+          "ok": true
+        }
+      ],
+      "evidence": [
+        "docs/audit-2026-10-18/e2e/sim-phone/s5-1-parent-emails-auto.png",
+        "docs/audit-2026-10-18/e2e/lens/s5-2-urgent-card.png",
+        "docs/audit-2026-10-18/e2e/sim-phone/s5-3-review-urgent-first.png",
+        "docs/audit-2026-10-18/e2e/logs/s5-mail-log.json"
+      ],
+      "notes": [
+        "card lines: [\"√ Dee\",\"! urgent · parent note drafting\"]"
+      ],
+      "status": "PASS"
+    },
+    {
+      "id": "S7",
+      "title": "Insight wording (F09 · F10 · F11)",
+      "findings": "F09, F10, F11",
+      "checks": [
+        {
+          "name": "live class: exactly one class-level \"no observation yet\" reminder",
+          "ok": true,
+          "detail": [
+            {
+              "title": "5 students have no observation yet",
+              "detail": "Not noted yet: Sam, Ava, Ben, Eli, Gus · class 95% done."
+            }
+          ]
+        },
+        {
+          "name": "reminder wording says observation, not feedback",
+          "ok": true,
+          "detail": "5 students have no observation yet"
+        },
+        {
+          "name": "rank review: \"Gus: review for next rank\", evidence listed, no email action",
+          "ok": true,
+          "detail": {
+            "title": "Gus: review for next rank",
+            "detail": "Have: 4 mo at green, 11/12 classes in 8 wk, 0 open issues, 1 positive note. Not tracked: curriculum, your assessment.",
+            "action": null
+          }
+        },
+        {
+          "name": "issue_reassess: \"no recent notes … not evidence it improved\", action \"Check next class\"",
+          "ok": true,
+          "detail": {
+            "title": "Priya's focus: no recent notes",
+            "detail": "No focus notes in 21+ days. No notes is not evidence it improved: check it next class.",
+            "action": "Check next class"
+          }
+        },
+        {
+          "name": "no \"resolve + praise\" or \"ready to test\" wording anywhere in the inbox",
+          "ok": true
+        },
+        {
+          "name": "the class-level reminder is ONE row for the class (no per-student flood)",
+          "ok": true,
+          "detail": [
+            "No notes on Eli in 3 classes",
+            "5 students have no observation yet"
+          ]
+        }
+      ],
+      "evidence": [
+        "docs/audit-2026-10-18/e2e/lens/s4-12-banner.png",
+        "docs/audit-2026-10-18/e2e/lens/s4-15-swipe-opens-insight.png",
+        "docs/audit-2026-10-18/e2e/phone/p0-pairing-screen.png",
+        "docs/audit-2026-10-18/e2e/phone/s7-1-today-from-your-agents.png",
+        "docs/audit-2026-10-18/e2e/phone/s7-2-insights-all-classes.png",
+        "docs/audit-2026-10-18/e2e/phone/s7-3-rank-review.png",
+        "docs/audit-2026-10-18/e2e/phone/s7-4-issue-reassess.png",
+        "docs/audit-2026-10-18/e2e/logs/s7-insights.json"
+      ],
+      "notes": [],
+      "status": "PASS"
+    },
+    {
+      "id": "S3",
+      "title": "Temporary rate limit keeps the note (F07)",
+      "findings": "F07",
+      "checks": [
+        {
+          "name": "five 429s (Retry-After 2) then one 200",
+          "ok": true,
+          "detail": [
+            "2026-10-18T15:22:28.479Z 429",
+            "2026-10-18T15:22:48.622Z 429",
+            "2026-10-18T15:23:08.667Z 429",
+            "2026-10-18T15:23:28.795Z 429",
+            "2026-10-18T15:23:48.927Z 429",
+            "2026-10-18T15:24:09.054Z 200"
+          ]
+        },
+        {
+          "name": "every attempt carried the same Idempotency-Key",
+          "ok": true,
+          "detail": "e73b18d1-c3a6-4c1b-bd90-3b38ee5b2f49"
+        },
+        {
+          "name": "delivered exactly once (one note)",
+          "ok": true,
+          "detail": 1
+        },
+        {
+          "name": "outbox empty afterwards",
+          "ok": true,
+          "detail": "[]"
+        },
+        {
+          "name": "rejected note kept, then sent once after Retry",
+          "ok": true,
+          "detail": {
+            "msFromRetryTapToDelivery": 656
+          }
+        },
+        {
+          "name": "one Ivy note after the retry",
+          "ok": true
+        }
+      ],
+      "evidence": [
+        "docs/audit-2026-10-18/e2e/lens/s3-1-queued-after-429.png",
+        "docs/audit-2026-10-18/e2e/sim-phone/s3-2-unsent-notes-waiting.png",
+        "docs/audit-2026-10-18/e2e/lens/s3-3-delivered.png",
+        "docs/audit-2026-10-18/e2e/sim-phone/s3-4-unsent-notes-empty.png",
+        "docs/audit-2026-10-18/e2e/lens/s3-5-rejected-not-sent.png",
+        "docs/audit-2026-10-18/e2e/sim-phone/s3-6-unsent-notes-failed.png"
+      ],
+      "notes": [],
+      "status": "PASS"
+    },
+    {
+      "id": "S8",
+      "title": "Undo reversal and the deferred-work race (C2 · F02)",
+      "findings": "F02 (C2)",
+      "checks": [
+        {
+          "name": "lens undo: server answers in the C2 shape (reversed/cancelled/notReversible)",
+          "ok": true,
+          "detail": {
+            "status": 200,
+            "response": {
+              "ok": true,
+              "reversed": [
+                "Removed Ben note",
+                "Attendance restored (12 present)"
+              ],
+              "cancelled": [],
+              "notReversible": [],
+              "coverage": {
+                "covered": 7,
+                "present": 12
+              }
+            },
+            "lit": 0.028133439429012346
+          }
+        },
+        {
+          "name": "lens undo removed the note",
+          "ok": true
+        },
+        {
+          "name": "undo answers in the C2 shape",
+          "ok": true,
+          "detail": {
+            "status": 200,
+            "body": {
+              "ok": true,
+              "reversed": [
+                "Attendance restored (12 present)"
+              ],
+              "cancelled": [],
+              "notReversible": [],
+              "coverage": {
+                "covered": 7,
+                "present": 12
+              }
+            }
+          }
+        },
+        {
+          "name": "undoing a roll call restores attendance (audit repro undo-attendance)",
+          "ok": true,
+          "detail": {
+            "before": 12,
+            "afterRollCall": 14,
+            "afterUndo": 12
+          }
+        },
+        {
+          "name": "second undo → 409 already_undone",
+          "ok": true,
+          "detail": {
+            "status": 409,
+            "body": {
+              "error": "already_undone"
+            }
+          }
+        },
+        {
+          "name": "unknown id → 404",
+          "ok": true,
+          "detail": {
+            "status": 404,
+            "body": {
+              "error": "utterance not found"
+            }
+          }
+        },
+        {
+          "name": "race exercised: the deferred parent-email drafting had started when undo arrived",
+          "ok": true,
+          "detail": {
+            "parentEmailModelCalls": 1
+          }
+        },
+        {
+          "name": "race: undo during deferred drafting leaves no live draft (cancelled or never written)",
+          "ok": true,
+          "detail": {
+            "undoStatus": 200,
+            "undo": {
+              "ok": true,
+              "reversed": [
+                "Removed Gus note",
+                "Attendance restored (12 present)"
+              ],
+              "cancelled": [
+                "Cancelled email draft for Gus"
+              ],
+              "notReversible": [],
+              "coverage": {
+                "covered": 7,
+                "present": 12
+              }
+            },
+            "drafts": []
+          }
+        },
+        {
+          "name": "race: no mail sent",
+          "ok": true
+        }
+      ],
+      "evidence": [
+        "docs/audit-2026-10-18/e2e/lens/s8-1-undoing.png",
+        "docs/audit-2026-10-18/e2e/lens/s8-2-undo-result.png",
+        "docs/audit-2026-10-18/e2e/logs/s8-undo-attendance.json",
+        "docs/audit-2026-10-18/e2e/logs/s8-undo-race.json"
+      ],
+      "notes": [],
+      "status": "PASS"
+    },
+    {
+      "id": "S9",
+      "title": "Response lost after commit: retry replays (C1 · F03)",
+      "findings": "F03 (C1)",
+      "checks": [
+        {
+          "name": "lens retry reused the Idempotency-Key",
+          "ok": true,
+          "detail": [
+            {
+              "status": 200,
+              "key": "13bcd3c6-c1dc-4cd2-8a47-e132bc0549b6",
+              "replay": null,
+              "injected": "response dropped after commit"
+            },
+            {
+              "status": 200,
+              "key": "13bcd3c6-c1dc-4cd2-8a47-e132bc0549b6",
+              "replay": "true"
+            }
+          ]
+        },
+        {
+          "name": "lens retry was a replay: one note, one urgent draft",
+          "ok": true,
+          "detail": {
+            "replayHeader": "true",
+            "notes": 1,
+            "urgentDrafts": 1
+          }
+        },
+        {
+          "name": "the first response never reached the client",
+          "ok": true,
+          "detail": "network error: terminated"
+        },
+        {
+          "name": "retry with the same Idempotency-Key replays (200, Idempotent-Replay: true)",
+          "ok": true,
+          "detail": {
+            "status": 200,
+            "header": "true"
+          }
+        },
+        {
+          "name": "no duplicate note, no duplicate email draft",
+          "ok": true,
+          "detail": {
+            "addedNotes": 1,
+            "addedDrafts": 1
+          }
+        },
+        {
+          "name": "no email sent",
+          "ok": true
+        }
+      ],
+      "evidence": [
+        "docs/audit-2026-10-18/e2e/lens/s9-1-lens-after-lost-response.png",
+        "docs/audit-2026-10-18/e2e/lens/s9-2-lens-after-retry.png",
+        "docs/audit-2026-10-18/e2e/logs/s9-response-loss.json"
+      ],
+      "notes": [],
+      "status": "PASS"
+    },
+    {
+      "id": "S10",
+      "title": "Duplicate concurrent requests → 409 in_progress (C1)",
+      "findings": "F03 (C1)",
+      "checks": [
+        {
+          "name": "one 200 and one 409 { error: \"in_progress\" }",
+          "ok": true,
+          "detail": {
+            "statuses": [
+              200,
+              409
+            ],
+            "bodies": [
+              "{\"utteranceId\":\"943a8d95-40fb-59b6-8b16-73c965ee34a5\",\"transcript\":\"Ben listened well in line-up\",\"cardLines\":[\"√ Ben · ",
+              "{\"error\":\"in_progress\"}"
+            ]
+          }
+        },
+        {
+          "name": "one note written",
+          "ok": true,
+          "detail": {
+            "addedNotes": 1
+          }
+        }
+      ],
+      "evidence": [
+        "docs/audit-2026-10-18/e2e/logs/s10-concurrent.json"
+      ],
+      "notes": [],
+      "status": "PASS"
+    },
+    {
+      "id": "S6",
+      "title": "Phone UI: Unsent notes, Settings, Review roster, roster and class edits",
+      "findings": "F07 UI, C5, F16, F23",
+      "checks": [
+        {
+          "name": "Settings shows Quiet/Standard and the server status from GET /v1/status",
+          "ok": true,
+          "detail": {
+            "status": 200,
+            "panel": "SERVER STATUS\nAI calls today: 0 of 300"
+          }
+        },
+        {
+          "name": "class edit sends only the changed field (no weekday / startTime)",
+          "ok": true,
+          "detail": {
+            "name": "Kids · Thu (e2e)"
+          }
+        },
+        {
+          "name": "class saved, weekday unchanged",
+          "ok": true,
+          "detail": {
+            "status": 200,
+            "weekdayBefore": 4,
+            "weekdayAfter": 4
+          }
+        },
+        {
+          "name": "unassigned note: roster picker scoped to the note's class",
+          "ok": true,
+          "detail": {
+            "className": "Kids · Tue",
+            "n": 14
+          }
+        },
+        {
+          "name": "add a student (POST /v1/students)",
+          "ok": true,
+          "detail": {
+            "status": 201
+          }
+        },
+        {
+          "name": "edit a student (PATCH nickname only)",
+          "ok": true,
+          "detail": {
+            "sent": {
+              "nickname": "Eli-E2E"
+            },
+            "nickname": "Eli-E2E"
+          }
+        },
+        {
+          "name": "delete a student and their data",
+          "ok": true,
+          "detail": {
+            "status": 200
+          }
+        }
+      ],
+      "evidence": [
+        "docs/audit-2026-10-18/e2e/phone/s6-1-settings.png",
+        "docs/audit-2026-10-18/e2e/phone/s6-2-settings-server-status.png",
+        "docs/audit-2026-10-18/e2e/phone/s6-3-classes.png",
+        "docs/audit-2026-10-18/e2e/phone/s6-4-class-edit-form.png",
+        "docs/audit-2026-10-18/e2e/phone/s6-5-class-edit-saved.png",
+        "docs/audit-2026-10-18/e2e/phone/s6-6-review.png",
+        "docs/audit-2026-10-18/e2e/phone/s6-7-review-unassigned-note.png",
+        "docs/audit-2026-10-18/e2e/phone/s6-8-add-student-form.png",
+        "docs/audit-2026-10-18/e2e/phone/s6-9-add-student-result.png",
+        "docs/audit-2026-10-18/e2e/phone/s6-10-edit-student.png",
+        "docs/audit-2026-10-18/e2e/phone/s6-11-edit-student-result.png",
+        "docs/audit-2026-10-18/e2e/phone/s6-12-delete-confirm.png",
+        "docs/audit-2026-10-18/e2e/phone/s6-13-delete-result.png",
+        "docs/audit-2026-10-18/e2e/phone/s12-0a-sign-out-others-confirm.png",
+        "docs/audit-2026-10-18/e2e/phone/s12-0b-sign-out-others-done.png",
+        "docs/audit-2026-10-18/e2e/sim-phone/s12-0c-sim-phone-signed-out.png",
+        "docs/audit-2026-10-18/e2e/sim-phone/s12-0d-sim-phone-re-paired.png",
+        "docs/audit-2026-10-18/e2e/phone/s12-1-unpair-confirm.png",
+        "docs/audit-2026-10-18/e2e/phone/s12-2-unpair-result.png"
+      ],
+      "notes": [
+        "Unsent notes panel: exercised on the simulator's phone webview in S3 (shared outbox with the lens): sim-phone/s3-2-unsent-notes-waiting.png, s3-6-unsent-notes-failed.png, s3-4-unsent-notes-empty.png."
+      ],
+      "status": "PASS"
+    },
+    {
+      "id": "S12",
+      "title": "Unpair revokes the token → 401 (C4 · F18)",
+      "findings": "F18 (C4)",
+      "checks": [
+        {
+          "name": "POST /v1/unpair → 200",
+          "ok": true,
+          "detail": {
+            "ok": true
+          }
+        },
+        {
+          "name": "the revoked token gets 401",
+          "ok": true,
+          "detail": 401
+        },
+        {
+          "name": "phone Settings › Unpair: server revoked, the old token gets 401",
+          "ok": true,
+          "detail": {
+            "status": 200,
+            "tokenAfter": 401
+          }
+        },
+        {
+          "name": "phone A › Sign out other phones → POST /v1/tokens/revoke-others 200",
+          "ok": true,
+          "detail": null
+        },
+        {
+          "name": "the other phones' tokens get 401; phone A keeps working",
+          "ok": true,
+          "detail": {
+            "other": 401,
+            "phoneA": 200
+          }
+        },
+        {
+          "name": "the signed-out simulator phone falls back to Pairing and re-pairs",
+          "ok": true,
+          "detail": {
+            "pairingScreen": true,
+            "rePaired": true
+          }
+        }
+      ],
+      "evidence": [
+        "docs/audit-2026-10-18/e2e/logs/s12-unpair.json",
+        "docs/audit-2026-10-18/e2e/logs/s12-sign-out-others.json",
+        "docs/audit-2026-10-18/e2e/phone/s12-0a-sign-out-others-confirm.png",
+        "docs/audit-2026-10-18/e2e/phone/s12-0b-sign-out-others-done.png",
+        "docs/audit-2026-10-18/e2e/sim-phone/s12-0c-sim-phone-signed-out.png",
+        "docs/audit-2026-10-18/e2e/sim-phone/s12-0d-sim-phone-re-paired.png",
+        "docs/audit-2026-10-18/e2e/phone/s12-1-unpair-confirm.png",
+        "docs/audit-2026-10-18/e2e/phone/s12-2-unpair-result.png"
+      ],
+      "notes": [],
+      "status": "PASS"
+    },
+    {
+      "id": "S11",
+      "title": "Class and account boundaries (C4 · F19)",
+      "findings": "F19 (C4)",
+      "checks": [
+        {
+          "name": "A's class list does not include B's class",
+          "ok": true,
+          "detail": {
+            "leaked": []
+          }
+        },
+        {
+          "name": "B's list routes return only B's data",
+          "ok": true,
+          "detail": {
+            "classes": [
+              {
+                "id": "eb58d410-b321-43c5-8de3-4f3e291d2395",
+                "name": "Rivera Teens · Sat",
+                "mode": "martial_arts",
+                "modeLabel": "Martial arts",
+                "weekday": 6,
+                "startTime": "10:00"
+              }
+            ],
+            "students": [
+              {
+                "id": "502e98b7-4d6d-4fe0-9d31-0e54d1c61ab0",
+                "name": "Quinn Ortega",
+                "nickname": null,
+                "belt": "blue",
+                "aliases": []
+              },
+              {
+                "id": "3733ea1d-ef00-4ce3-8a9d-d72dce324191",
+                "name": "Rosa Vance",
+                "nickname": null,
+                "belt": "blue",
+                "aliases": []
+              },
+              {
+                "id": "39538451-bdbc-4a45-b591-ce654add8293",
+                "name": "Theo Marsh",
+                "nickname": null,
+                "belt": "blue",
+                "aliases": []
+              }
+            ]
+          }
+        },
+        {
+          "name": "every read/write of A's entities with B's token is 404",
+          "ok": true,
+          "detail": {
+            "GET /v1/students/:id": 404,
+            "GET /v1/today?classId=:id": 404,
+            "GET /v1/notes/:id/candidates": 404,
+            "GET /v1/students/:id/brief": 404,
+            "PATCH /v1/students/:id": 404,
+            "DELETE /v1/students/:id": 404,
+            "POST /v1/sessions": 404,
+            "PATCH /v1/classes/:id": 404,
+            "POST /v1/notes/:id/assign": 404
+          }
+        },
+        {
+          "name": "A's data unchanged",
+          "ok": true
+        }
+      ],
+      "evidence": [
+        "docs/audit-2026-10-18/e2e/logs/s11-isolation.json"
+      ],
+      "notes": [],
+      "status": "PASS"
+    },
+    {
+      "id": "R1",
+      "title": "Audit repro queue-failure.ts re-run (five 429s)",
+      "findings": "F07",
+      "checks": [
+        {
+          "name": "still queued after each of five 429s (never dropped, never failed)",
+          "ok": true,
+          "detail": [
+            {
+              "attempt": 1,
+              "remaining": 1,
+              "failedCount": 0,
+              "retrying": [
+                "rate_limited"
+              ]
+            },
+            {
+              "attempt": 2,
+              "remaining": 1,
+              "failedCount": 0,
+              "retrying": [
+                "rate_limited"
+              ]
+            },
+            {
+              "attempt": 3,
+              "remaining": 1,
+              "failedCount": 0,
+              "retrying": [
+                "rate_limited"
+              ]
+            },
+            {
+              "attempt": 4,
+              "remaining": 1,
+              "failedCount": 0,
+              "retrying": [
+                "rate_limited"
+              ]
+            },
+            {
+              "attempt": 5,
+              "remaining": 1,
+              "failedCount": 0,
+              "retrying": [
+                "rate_limited"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "sent exactly once when the server recovers",
+          "ok": true,
+          "detail": {
+            "sent": 1,
+            "remaining": 0
+          }
+        }
+      ],
+      "evidence": [
+        "docs/audit-2026-10-18/e2e/logs/r1-queue-429.json"
+      ],
+      "notes": [],
+      "status": "PASS"
+    }
+  ]
+}

@@ -5,7 +5,8 @@
  */
 import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { APP_URL, DOM, EVIDENCE, apiLog, call, ctl, pair, shrink, sleep, state, writeEvidence } from './lib'
+import { APP_URL, DOM, EVIDENCE, apiLog, call, ctl, forgetTokens, pair, shrink, sleep, state, writeEvidence } from './lib'
+import { simJs, simPhoneShot } from './lens'
 import { CODES } from './seed'
 import { check, run, scenario, type Scenario } from './results'
 // @ts-expect-error plain JS module (CDP driver shared with the earlier capture session)
@@ -168,11 +169,46 @@ export async function s6Phone(s: Scenario) {
 /** Phone half of S12: Settings › This phone › Unpair. Returns what the server did, for S12. */
 export async function phoneUnpair(s: Scenario): Promise<{ status: number; tokenAfter: number } | null> {
   const token = await ph<string>(`return localStorage.getItem('evenhost:matside.token')`)
-  await ph(`click('Today', 'nav.tabs button'); window.scrollTo(0, 0); await waitFor(() => document.querySelector('button.settings-btn'), 8000); document.querySelector('button.settings-btn').click(); await waitFor(() => byText('Unpair this phone', 'button'), 8000); click('Unpair this phone', 'button'); await new Promise(r => setTimeout(r, 300)); return true`)
+  await ph(`if (!byText('Unpair this phone', 'button')) { for (let i = 0; i < 3 && !document.querySelector('nav.tabs') && byText('‹ Back', 'button'); i++) { click('‹ Back', 'button'); await new Promise(r => setTimeout(r, 400)) } click('Today', 'nav.tabs button'); window.scrollTo(0, 0); await waitFor(() => document.querySelector('button.settings-btn'), 8000); document.querySelector('button.settings-btn').click() } await waitFor(() => byText('Unpair this phone', 'button'), 8000); click('Unpair this phone', 'button'); await new Promise(r => setTimeout(r, 300)); return true`)
   await shot(s, 's12-1-unpair-confirm', 'This phone')
   await ph(`const sec = [...document.querySelectorAll('section')].find(x => x.innerText.toLowerCase().includes('this phone')); [...sec.querySelectorAll('button')].find(x => x.innerText.trim() === 'Unpair').click(); await new Promise(r => setTimeout(r, 2000)); return true`)
   await shot(s, 's12-2-unpair-result')
   const un = await lastReq(r => r.path === '/v1/unpair')
   const after = await call('GET', '/v1/classes', token)
   return un ? { status: un.status, tokenAfter: after.status } : null
+}
+
+export interface SignOutOthers { status: number; revoked: unknown; harnessTokenAfter: number; phoneTokenAfter: number; simRepairScreen: boolean; simRepaired: boolean; evidence: string[] }
+
+/**
+ * Settings › Sign out other phones on the headless phone ("phone A"). The other phones are the simulator's own phone
+ * UI and a harness token: both must get 401; the simulator page falls back to Pairing and is paired again.
+ */
+export async function phoneSignOutOthers(s: Scenario, withSim: boolean): Promise<SignOutOthers> {
+  const other = await pair(CODES.A, true)
+  const mine = await ph<string>(`return localStorage.getItem('evenhost:matside.token')`)
+  await ph(`for (let i = 0; i < 3 && !document.querySelector('nav.tabs') && byText('‹ Back', 'button'); i++) { click('‹ Back', 'button'); await new Promise(r => setTimeout(r, 400)) } click('Today', 'nav.tabs button'); window.scrollTo(0, 0); await waitFor(() => document.querySelector('button.settings-btn'), 8000); document.querySelector('button.settings-btn').click(); await waitFor(() => byText('Sign out other phones', 'button'), 8000); click('Sign out other phones', 'button'); await new Promise(r => setTimeout(r, 300)); return true`)
+  await shot(s, 's12-0a-sign-out-others-confirm', 'Sign out other phones')
+  await ph(`click('Sign out others', 'button'); await new Promise(r => setTimeout(r, 1500)); return true`)
+  await shot(s, 's12-0b-sign-out-others-done', 'This phone')
+  const req = await lastReq(r => r.path === '/v1/tokens/revoke-others')
+  const evidence: string[] = []
+  const out: SignOutOthers = {
+    status: req?.status ?? 0, revoked: req?.response ?? null,
+    harnessTokenAfter: (await call('GET', '/v1/classes', other)).status, phoneTokenAfter: (await call('GET', '/v1/classes', mine)).status,
+    simRepairScreen: false, simRepaired: false, evidence,
+  }
+  forgetTokens()
+  if (withSim) {
+    // The simulator's phone UI makes its next request with the revoked token: 401 → Pairing.
+    await simJs(`if (document.querySelector('nav.tabs')) click('Review', 'nav.tabs button'); return true`).catch(() => null)
+    out.simRepairScreen = Boolean(await simJs<boolean>(`await waitFor(() => document.querySelector('#code'), 25000); return true`, 30_000).catch(() => false))
+    evidence.push(await simPhoneShot('s12-0c-sim-phone-signed-out'))
+    if (out.simRepairScreen) {
+      out.simRepaired = Boolean(await simJs<boolean>(`setValue('#code', ${JSON.stringify(CODES.A)}); await new Promise(r => setTimeout(r, 200)); click('Pair'); await waitFor(() => document.querySelector('nav.tabs'), 40000); return true`, 60_000).catch(() => false))
+      evidence.push(await simPhoneShot('s12-0d-sim-phone-re-paired'))
+    }
+  }
+  s.evidence.push(...evidence)
+  return out
 }

@@ -1,0 +1,48 @@
+{
+  "rounds": [
+    {
+      "attempt": 1,
+      "remaining": 1,
+      "failedCount": 0,
+      "retrying": [
+        "rate_limited"
+      ]
+    },
+    {
+      "attempt": 2,
+      "remaining": 1,
+      "failedCount": 0,
+      "retrying": [
+        "rate_limited"
+      ]
+    },
+    {
+      "attempt": 3,
+      "remaining": 1,
+      "failedCount": 0,
+      "retrying": [
+        "rate_limited"
+      ]
+    },
+    {
+      "attempt": 4,
+      "remaining": 1,
+      "failedCount": 0,
+      "retrying": [
+        "rate_limited"
+      ]
+    },
+    {
+      "attempt": 5,
+      "remaining": 1,
+      "failedCount": 0,
+      "retrying": [
+        "rate_limited"
+      ]
+    }
+  ],
+  "afterSuccess": {
+    "remaining": 0,
+    "sent": 1
+  }
+}

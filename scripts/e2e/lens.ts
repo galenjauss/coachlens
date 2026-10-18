@@ -31,7 +31,7 @@ export async function waitRequest(pred: (r: Awaited<ReturnType<typeof apiLog>>['
   const end = Date.now() + timeoutMs
   while (Date.now() < end) {
     const log = await apiLog()
-    const hit = log.requests.slice(from).find(pred)
+    const hit = log.requests.slice(from).find(r => r.status > 0 && pred(r)) // status 0 = still in flight
     if (hit) return hit
     await sleep(300)
   }
@@ -50,7 +50,7 @@ export async function speak(text: string, o: { expectQueued?: boolean; settleMs?
   await sleep(1300) // past the 600 ms stop debounce; the simulator streams (silent) mic PCM meanwhile
   await tap()
   if (o.expectQueued) await waitRequest(r => r.method === 'POST' && r.path === '/v1/transcribe', from)
-  else await waitRequest(r => r.method === 'POST' && r.path === '/v1/utterance' && r.status > 0, from, 30_000)
+  else await waitRequest(r => r.method === 'POST' && r.path === '/v1/utterance', from, 45_000)
   await sleep(o.settleMs ?? 900)
   const log = await apiLog()
   return log.requests.slice(from).filter(r => r.method === 'POST' && r.path === '/v1/utterance').at(-1) ?? null

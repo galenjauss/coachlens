@@ -154,7 +154,7 @@ export async function s11Isolation(seed: { classIds: Record<string, string>; cla
   return s
 }
 
-export async function s12Unpair(phoneResult?: { status: number; tokenAfter: number } | null) {
+export async function s12Unpair(phoneResult?: { status: number; tokenAfter: number } | null, others?: import('./scenariosPhone').SignOutOthers | null, phoneEvidence: string[] = []) {
   const s = scenario('S12', 'Unpair revokes the token → 401 (C4 · F18)', 'F18 (C4)')
   await run(s, async () => {
     await ctl('/scenario', { method: 'POST', body: 'S12' })
@@ -172,6 +172,14 @@ export async function s12Unpair(phoneResult?: { status: number; tokenAfter: numb
     check(s, 'POST /v1/unpair → 200', un.status === 200, un.body)
     check(s, 'the revoked token gets 401', after.status === 401, after.status)
     if (phoneResult) check(s, 'phone Settings › Unpair: server revoked, the old token gets 401', phoneResult.status === 200 && phoneResult.tokenAfter === 401, phoneResult)
+    if (others) {
+      writeEvidence('logs/s12-sign-out-others.json', JSON.stringify(others, null, 2))
+      s.evidence.push('docs/audit-2026-10-18/e2e/logs/s12-sign-out-others.json')
+      check(s, 'phone A › Sign out other phones → POST /v1/tokens/revoke-others 200', others.status === 200, others.revoked)
+      check(s, "the other phones' tokens get 401; phone A keeps working", others.harnessTokenAfter === 401 && others.phoneTokenAfter === 200, { other: others.harnessTokenAfter, phoneA: others.phoneTokenAfter })
+      if (others.evidence.length) check(s, 'the signed-out simulator phone falls back to Pairing and re-pairs', others.simRepairScreen && others.simRepaired, { pairingScreen: others.simRepairScreen, rePaired: others.simRepaired })
+    }
+    s.evidence.push(...phoneEvidence)
   })
   return s
 }

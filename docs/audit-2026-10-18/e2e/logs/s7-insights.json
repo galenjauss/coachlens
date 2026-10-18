@@ -1,0 +1,121 @@
+{
+  "insights": [
+    {
+      "id": "8019e3a6-e341-4827-9a70-8602a9192fe5",
+      "kind": "no_feedback",
+      "studentId": null,
+      "studentName": null,
+      "classId": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+      "title": "5 students have no observation yet",
+      "detail": "Not noted yet: Sam, Ava, Ben, Eli, Gus · class 95% done.",
+      "urgency": "high",
+      "status": "new",
+      "createdAt": "2026-10-18T16:04:42.596Z",
+      "actionLabel": null
+    },
+    {
+      "id": "24b74c92-d866-425a-9c12-88101d55912a",
+      "kind": "returning_student",
+      "studentId": "68a78f3f-b7f3-4c0b-9e8c-af737eb48c74",
+      "studentName": "Jake Ross",
+      "classId": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+      "title": "Jake's back after 3 missed",
+      "detail": "Missed 3 classes in a row before today · welcome Jake back.",
+      "urgency": "high",
+      "status": "new",
+      "createdAt": "2026-10-18T15:24:56.571Z",
+      "actionLabel": "Draft welcome email"
+    },
+    {
+      "id": "7ad1aacc-2999-4664-a7d9-2e733ff41b4a",
+      "kind": "new_pr",
+      "studentId": "566b2b8c-ee46-498a-b6da-766be3f45f2c",
+      "studentName": "Maria Gomez",
+      "classId": "bc6fdf0c-f4b9-433d-8d3e-4f35bfbe0a79",
+      "title": "Maria hit a PR: squat 185 lb",
+      "detail": "New best on squat: 185 lb (+10) on Oct 15. Worth a shout-out.",
+      "urgency": "low",
+      "status": "new",
+      "createdAt": "2026-10-18T15:19:56.996Z",
+      "actionLabel": "Draft praise email"
+    },
+    {
+      "id": "35e96d8c-96f4-4b57-8ece-1723ee120e88",
+      "kind": "grade_drop",
+      "studentId": "25465b43-270a-4a5d-92d2-a2062638b18f",
+      "studentName": "Noah Kim",
+      "classId": "cfc05306-952c-4d4d-915d-bf8b81e1c5bd",
+      "title": "Noah's unit test down 12 pts",
+      "detail": "Latest unit test: 72% on Oct 14, down from 84%.",
+      "urgency": "low",
+      "status": "new",
+      "createdAt": "2026-10-18T15:19:56.996Z",
+      "actionLabel": "Plan a review"
+    },
+    {
+      "id": "9f31a2c6-96a9-46ce-ab81-b3195bdc1c13",
+      "kind": "rank_review",
+      "studentId": "bf0a23eb-76f2-49c7-8167-bcaf8b7254fb",
+      "studentName": "Gus Hill",
+      "classId": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+      "title": "Gus: review for next rank",
+      "detail": "Have: 4 mo at green, 11/12 classes in 8 wk, 0 open issues, 1 positive note. Not tracked: curriculum, your assessment.",
+      "urgency": "low",
+      "status": "new",
+      "createdAt": "2026-10-18T15:19:56.995Z",
+      "actionLabel": null
+    },
+    {
+      "id": "9d294d28-09ce-47fc-b073-81cc14cfbad6",
+      "kind": "attendance_decline",
+      "studentId": "68a78f3f-b7f3-4c0b-9e8c-af737eb48c74",
+      "studentName": "Jake Ross",
+      "classId": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+      "title": "Jake missed 3 of last 3 classes",
+      "detail": "Absent Oct 8, Oct 13, Oct 15. A quick check-in may help.",
+      "urgency": "low",
+      "status": "new",
+      "createdAt": "2026-10-18T15:19:56.995Z",
+      "actionLabel": "Draft check-in email"
+    },
+    {
+      "id": "5e262914-90ef-4e5b-b8a5-d77c59b2998d",
+      "kind": "no_feedback",
+      "studentId": "441af041-700f-4d7b-8dfd-fc820dc7d87c",
+      "studentName": "Eli Shah",
+      "classId": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+      "title": "No notes on Eli in 3 classes",
+      "detail": "Present the last 3 classes with no notes. Make Eli a focus next class.",
+      "urgency": "low",
+      "status": "new",
+      "createdAt": "2026-10-18T15:19:56.995Z",
+      "actionLabel": "Put first next time"
+    },
+    {
+      "id": "9fcc1702-da35-4a28-aec1-3ae45f7dcc82",
+      "kind": "issue_reassess",
+      "studentId": "64dd6d7c-7015-4c66-960c-a747e0ff2058",
+      "studentName": "Priya Rao",
+      "classId": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+      "title": "Priya's focus: no recent notes",
+      "detail": "No focus notes in 21+ days. No notes is not evidence it improved: check it next class.",
+      "urgency": "low",
+      "status": "new",
+      "createdAt": "2026-10-18T15:19:56.994Z",
+      "actionLabel": "Check next class"
+    },
+    {
+      "id": "b0423a20-337f-4ee7-be8f-cc2993622652",
+      "kind": "billing_repeat",
+      "studentId": "10943afb-7c8f-4348-baed-431944550d9b",
+      "studentName": "Leonardo Diaz",
+      "classId": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+      "title": "Leonardo has 2 open billing flags",
+      "detail": "2 billing notes still open; latest: \"October dues not in yet\". Notes only, no payment.",
+      "urgency": "low",
+      "status": "new",
+      "createdAt": "2026-10-18T15:19:56.994Z",
+      "actionLabel": null
+    }
+  ]
+}
