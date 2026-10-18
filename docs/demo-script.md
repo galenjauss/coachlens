@@ -44,7 +44,7 @@ The portal Beta installs v0.1.0, which packages the client code from before the 
 
 ### On the laptop
 
-- **iPhone mirror:** plug in the phone, open QuickTime → New Movie Recording, and choose the iPhone as the camera. Judges watch Review, Today and Agents on the big screen.
+- **Judge guide:** open [`demo-judges.html`](demo-judges.html) full screen (double-click it, then press Ctrl+Cmd+F in the browser). It shows the gestures and lines to say, in big type, so judges can wear the glasses and explore on their own. Hand them the phone for the Review, Today and Agents tabs.
 - **Film:** `video/out/coachlens-launch-v3.4.mp4`, ready full screen, to use as an opener or a fallback.
 - **Demo inbox** (the `DEMO_EMAIL_OVERRIDE` address), to show the parent email arriving.
 - **Optional tabs:** the Devpost page, [`audit-2026-10-18/remediation-ledger.md`](audit-2026-10-18/remediation-ledger.md) and [`audit-2026-10-18/e2e/RESULTS.md`](audit-2026-10-18/e2e/RESULTS.md).
@@ -66,7 +66,7 @@ Gestures in class:
 | 6 | Tap, say **"Dee rolled her ankle and sat out the last drill."** | Urgent card, parent email drafting | "An injury drafts a parent email, and urgent emails always wait for me." |
 | 7 | Tap, ask **"Who keeps dropping their guard?"** | ANSWER card listing names with counts | "I can ask the class a question; the answer comes from its notes." |
 | 8 | Double-tap, tap to confirm | `40 min · 6 drills · 9/12 with a note` / `Missed: …` / `N agent actions · N to review` / `tap: put … first next class` | "When class ends I see who I haven't noted. One tap puts them first next class." |
-| 9 | On the phone (mirrored): **Review** → Dee's email (URGENT, first) → Send, then show the inbox. **Today** → `Gus: review for next rank`. **Agents** → Auto · Review · Off | Nothing (the lens goes dark) | "The agents did the follow-up. The email waited for me. Gus is flagged for a rank review with the evidence; the call is mine. Every agent has Auto, Review or Off." |
+| 9 | On the phone (hand it over): **Review** → Dee's email (URGENT, first) → Send, then show the inbox. **Today** → `Gus: review for next rank`. **Agents** → Auto · Review · Off | Nothing (the lens goes dark) | "The agents did the follow-up. The email waited for me. Gus is flagged for a rank review with the evidence; the call is mine. Every agent has Auto, Review or Off." |
 
 To let a judge try it, hand over the glasses after step 2 and have them say one note and one question.
 
