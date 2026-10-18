@@ -1,7 +1,7 @@
 /** Single source of truth for copy that must stay honest. Timing lives in timeline.ts. */
 
 /** The store line on the close card. Change it here and only here. */
-export const STORE_LINE = 'Now on the Even Hub store'
+export const STORE_LINE = 'Submitted to the Even Hub store'
 
 /** Originality numbers. Keep exactly as checked. */
 export const APPS_CHECKED = 220
