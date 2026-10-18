@@ -17,6 +17,7 @@ export interface LensState {
   attendanceLines: string[]
   status: string | null
   loadError: string | null
+  starting: boolean
 }
 
 export type LensEvent =
@@ -36,6 +37,7 @@ export type LensEvent =
   | { type: 'headTilt' }
   | { type: 'timerEnded' }
   | { type: 'hide' }
+  | { type: 'actionFailed'; message: string }
 
 export type Effect =
   | { type: 'markFirstRunSeen' }
