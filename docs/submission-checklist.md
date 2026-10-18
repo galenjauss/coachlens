@@ -26,6 +26,11 @@
 
 ## 3. Even Hub: Beta (required for judging)
 
+**Status (Oct 18):** project `com.coachlens.app` created; build v0.1.0 uploaded (Private). Icon (drawn in the portal editor; the rule is that every lit pixel must belong to a filled 2×2 block), description, category Education, 5 tags, 7 screenshots and cover are saved. Permissions were read from the package.
+
+**Left for you:** Privacy and terms (developer name, contact email/phone/address, then the privacy policy URL), and Testing group → Add user (your Even ID, which sends an invite).
+
+
 1. 👤 Sign in at https://hub.evenrealities.com/login.
 2. Create the project **CoachLens** (package `com.coachlens.app`), or open it.
 3. Upload `app/coachlens.ehpk` → it lands in **Draft**.
