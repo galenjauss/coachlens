@@ -39,7 +39,7 @@ import { undoUtterance, UndoError } from './services/undo'
 import { deferOnce } from './services/deferred'
 import { recordAttendance } from './services/ledger'
 import { agentRunDetail, agentTaskRuns, agentsSummary, utteranceRuns } from './services/agents'
-import { localDate } from './logic/dates'
+import { localDate, upcomingClassDate } from './logic/dates'
 import { computeCoverage, coverageAndNext, loadSessionContext, markPresent, nextStudentFor } from './services/context'
 import { extractOnboarding } from './agents/onboarding'
 import { BudgetExceededError } from './agents/budget'
@@ -485,7 +485,7 @@ export function createApp(deps: Deps) {
     const id = c.req.param('id')
     const patch = await json(c.req.raw, StudentUpdateBody)
     await ownAllClasses(c, patch.classIds)
-    await updateStudent(db, id, patch)
+    await updateStudent(db, me(c), id, patch)
     const view = (await studentView(db, id))!
     // Roster edits echo the whole student; alias / belt / rankSince edits keep their original reply shape.
     if (patch.name !== undefined || patch.nickname !== undefined || patch.classIds || patch.guardians) return c.json(view)
@@ -506,7 +506,9 @@ export function createApp(deps: Deps) {
   app.use('/v1/classes/:id', async (c, next) => { await need(ownsClass(db, me(c), c.req.param('id')!), 'class'); await next() })
   app.patch('/v1/classes/:id', async c => c.json(await updateClass(db, c.req.param('id'), await json(c.req.raw, ClassUpdate))))
   app.delete('/v1/classes/:id', async c => {
-    try { await deleteClass(db, c.req.param('id')) } catch (e) {
+    const [cls] = await db.select({ weekday: classes.weekday }).from(classes).where(eq(classes.id, c.req.param('id')))
+    const today = upcomingClassDate(deps.now(), deps.env.timeZone, cls!.weekday) // the same "current session" date startSession uses
+    try { await deleteClass(db, c.req.param('id'), today) } catch (e) {
       if (e instanceof ClassLiveError) throw new HTTPException(409, { message: 'class_live' })
       throw e
     }

@@ -175,3 +175,53 @@ describe('C3 classes (F23)', () => {
     expect((await w.db.select().from(classes).where(eq(classes.id, w.B.classId)))[0]!.name).toBe('Bravo Kids')
   })
 })
+
+describe('C3 fix round 1', () => {
+  beforeEach(() => resetRateLimits())
+
+  it('an abandoned session from an earlier week does not block delete; history goes, assigned notes stay with the student', async () => {
+    const w = await world()
+    // End today's session; leave an older one open (abandoned).
+    await w.db.update(sessions).set({ endedAt: new Date('2026-10-20T01:00:00Z') }).where(eq(sessions.id, w.A.sessionId))
+    const [old] = await w.db.insert(sessions).values({ classId: w.A.classId, deckId: w.A.deckId, forDate: '2026-10-12', startedAt: new Date('2026-10-13T00:00:00Z') }).returning()
+    await w.db.insert(attendance).values({ sessionId: old!.id, studentId: w.A.studentIds[0]!, status: 'present', source: 'phone' })
+    expect((await w.req('DELETE', `/v1/classes/${w.A.classId}`)).status).toBe(200)
+    expect((await w.db.select().from(sessions).where(eq(sessions.classId, w.A.classId))).length).toBe(0)
+    expect((await w.db.select().from(attendance).where(eq(attendance.sessionId, old!.id))).length).toBe(0)
+    expect((await w.db.select().from(notes).where(eq(notes.id, w.A.looseNoteId))).length).toBe(0) // unassigned: unreachable, removed
+    const [kept] = await w.db.select().from(notes).where(eq(notes.id, w.A.noteId))
+    expect(kept).toMatchObject({ studentId: w.A.studentIds[0], sessionId: null })
+    expect(((await (await w.req('GET', `/v1/students/${w.A.studentIds[0]}`)).json()) as { notes: { text: string }[] }).notes.map(n => n.text)).toContain('Alpha secret note')
+  })
+
+  it('a session started for today still blocks (409) and nothing is deleted', async () => {
+    const w = await world()
+    expect((await w.req('DELETE', `/v1/classes/${w.A.classId}`)).status).toBe(409)
+    expect((await w.db.select().from(enrollments).where(eq(enrollments.classId, w.A.classId))).length).toBe(2)
+  })
+
+  it('deleting a student scrubs their id and name from plan diffs, undo bookkeeping, deferred tasks and run summaries', async () => {
+    const { actionLedger, deferredTasks } = await import('./db/schema')
+    const w = await world()
+    const id = w.A.studentIds[0]!
+    const name = 'Alphaia One'
+    await w.db.insert(deckDiffs).values({ deckId: w.A.deckId, requestText: `Add a drill for ${name} [${id}] (recurring issue).`, diff: { added: [{ focusStudentIds: [id] }], changed: [], removed: [], rememberSuggestion: null } as never })
+    await w.db.insert(actionLedger).values([{ utteranceId: w.A.utteranceId, kind: 'rank', entityId: id }, { utteranceId: w.A.utteranceId, kind: 'attendance', entityId: `${w.A.sessionId}:${id}` }])
+    await w.db.insert(deferredTasks).values({ utteranceId: w.A.utteranceId, kind: 'parent_email', subject: id })
+    await w.db.insert(agentRuns).values({ agent: 'planner', trigger: 'x', sessionId: null, summary: `Planned for ${name}`, reason: 'r', status: 'ok', ms: 1, instructorId: w.A.instructorId })
+    await w.db.update(students).set({ name }).where(eq(students.id, id))
+    expect((await w.req('DELETE', `/v1/students/${id}`)).status).toBe(200)
+    const blob = JSON.stringify([await w.db.select().from(deckDiffs), await w.db.select().from(actionLedger), await w.db.select().from(deferredTasks), await w.db.select().from(agentRuns)])
+    expect(blob).not.toContain(id)
+    expect(blob).not.toContain(name)
+  })
+
+  it('an edit stamps the owner on a legacy (owner-less) student', async () => {
+    const w = await world()
+    const id = w.A.studentIds[1]!
+    await w.db.update(students).set({ instructorId: null }).where(eq(students.id, id))
+    expect((await w.req('PATCH', `/v1/students/${id}`, { classIds: [] })).status).toBe(200)
+    expect((await w.db.select().from(students).where(eq(students.id, id)))[0]!.instructorId).toBe(w.A.instructorId)
+    expect((await (await w.req('GET', '/v1/students')).json() as { id: string }[]).map(s => s.id)).toContain(id)
+  })
+})
