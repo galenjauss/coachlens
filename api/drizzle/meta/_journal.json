@@ -92,6 +92,13 @@
       "when": 1792300156285,
       "tag": "0012_insights",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792328199690,
+      "tag": "0013_note_valence",
+      "breakpoints": true
     }
   ]
 }

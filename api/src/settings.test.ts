@@ -44,7 +44,7 @@ describe('settings service', () => {
     const app = createApp(makeDeps(db))
     const token = await pairToken(app, db)
     const r = await app.request('/v1/settings', { headers: { Authorization: `Bearer ${token}` } })
-    expect(await r.json()).toEqual({ autonomy: expected, vocabulary: [] })
+    expect(await r.json()).toEqual({ autonomy: expected, vocabulary: [], rankReview: { minDaysAtRank: 90, minAttendance: 0, attendanceWindowDays: 56, requireNoOpenIssues: true } })
   })
 
   it('PATCH stores partial changes and rejects disallowed values with 400 (nothing written)', async () => {

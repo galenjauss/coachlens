@@ -11,6 +11,16 @@ export type SkillTag = z.infer<typeof SkillTag>
 export const Urgency = z.enum(['low', 'med', 'high'])
 export type Urgency = z.infer<typeof Urgency>
 
+/**
+ * What an observation means: a problem to work on, praise, visible improvement, or a plain fact. Only `concern`
+ * counts toward a recurring issue; `positive`/`improving` can support closing one.
+ */
+export const Valence = z.enum(['concern', 'positive', 'improving', 'neutral'])
+export type Valence = z.infer<typeof Valence>
+/** When the observed thing happened: today, or earlier ("last week she dropped her guard"); earlier is never a new occurrence. */
+export const ObservedWhen = z.enum(['today', 'earlier'])
+export type ObservedWhen = z.infer<typeof ObservedWhen>
+
 export const IntentType = z.enum(['feedback', 'attendance', 'billing', 'plan_request', 'parent_message', 'add_drill', 'metric', 'student_query', 'question'])
 export type IntentType = z.infer<typeof IntentType>
 
@@ -42,6 +52,10 @@ const intentShape = <T extends z.ZodType<string>>(tag: T) => z.object({
   metricSince: z.string().nullish(),
   /** question intents: the coach's question about the class, restated (nullish so older transports still parse). */
   question: z.string().nullish(),
+  /** feedback intents: the observation's meaning (nullish so older transports still parse; the server infers it then). */
+  valence: Valence.nullish(),
+  /** feedback intents: 'earlier' when the coach describes a past occurrence. */
+  observedWhen: ObservedWhen.nullish(),
 })
 export const Intent = intentShape(SkillTag)
 export type Intent = z.infer<typeof Intent>
@@ -214,7 +228,8 @@ export type AgentRunView = z.infer<typeof AgentRunView>
 
 const at = z.string()
 export const ReviewItem = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('parent_email'), id: z.string(), studentName: z.string(), to: z.string(), subject: z.string(), body: z.string(), createdAt: at }),
+  // urgent: drafted from an urgent observation (injury, safety, serious behavior); the phone labels it.
+  z.object({ kind: z.literal('parent_email'), id: z.string(), studentName: z.string(), to: z.string(), subject: z.string(), body: z.string(), createdAt: at, urgent: z.boolean() }),
   z.object({ kind: z.literal('report_card'), id: z.string(), studentName: z.string(), to: z.string(), subject: z.string(), body: z.string(), createdAt: at }),
   z.object({ kind: z.literal('billing'), id: z.string(), studentName: z.string(), urgency: Urgency, note: z.string(), amount: z.number().nullable(), createdAt: at }),
   z.object({ kind: z.literal('unassigned_note'), id: z.string(), heard: z.string().nullable(), text: z.string(), createdAt: at }),
@@ -367,19 +382,36 @@ export const AUTONOMY_RULES: Record<AutonomyTask, { default: Autonomy; allowed: 
 export const MAX_VOCAB = 200
 export const VOCAB_TERM_MAX = 40
 export const VocabTerm = z.string().trim().min(1).max(VOCAB_TERM_MAX)
+/**
+ * The school's thresholds for the rank-review reminder (F10). Defaults reproduce the original rule: 90 days at rank,
+ * no open focus areas, no attendance minimum. The attendance window is capped at the 56 days the detectors load.
+ */
+export const RankReviewSettings = z.object({
+  minDaysAtRank: z.number().int().min(0).max(3650),
+  minAttendance: z.number().int().min(0).max(200),
+  attendanceWindowDays: z.number().int().min(7).max(56),
+  requireNoOpenIssues: z.boolean(),
+})
+export type RankReviewSettings = z.infer<typeof RankReviewSettings>
+export const DEFAULT_RANK_REVIEW: RankReviewSettings = { minDaysAtRank: 90, minAttendance: 0, attendanceWindowDays: 56, requireNoOpenIssues: true }
 export const SettingsPatch = z.object({
   autonomy: z.partialRecord(AutonomyTask, Autonomy).optional(),
   vocabulary: z.array(VocabTerm).max(MAX_VOCAB).optional(),
+  rankReview: RankReviewSettings.partial().optional(),
 })
 export type SettingsPatch = z.infer<typeof SettingsPatch>
 export const SettingsResponse = z.object({
   autonomy: z.record(AutonomyTask, Autonomy),
   vocabulary: z.array(z.string()),
+  /** Optional on the wire so an older server still parses. */
+  rankReview: RankReviewSettings.optional(),
 })
 export type SettingsResponse = z.infer<typeof SettingsResponse>
 
 // ---- Opportunistic insights (agents notice things and suggest or act) ----
-export const InsightKind = z.enum(['attendance_decline', 'returning_student', 'no_feedback', 'ready_to_test', 'new_pr', 'grade_drop', 'issue_resolved', 'billing_repeat'])
+// rank_review replaced ready_to_test (F10) and issue_reassess/issue_improving replaced issue_resolved (F09); old rows keep
+// their kind string, which clients treat as opaque.
+export const InsightKind = z.enum(['attendance_decline', 'returning_student', 'no_feedback', 'rank_review', 'new_pr', 'grade_drop', 'issue_improving', 'issue_reassess', 'billing_repeat'])
 export type InsightKind = z.infer<typeof InsightKind>
 export const InsightStatus = z.enum(['new', 'accepted', 'dismissed', 'auto_done'])
 export type InsightStatus = z.infer<typeof InsightStatus>
@@ -395,7 +427,7 @@ const label = z.string().min(1).max(INSIGHT_LABEL_MAX)
 export const InsightAction = z.discriminatedUnion('type', [
   z.object({ type: z.literal('draft_email'), studentId: z.string(), purpose: z.string(), label }),
   z.object({ type: z.literal('plan_focus'), classId: z.string(), studentId: z.string(), text: z.string(), label }),
-  // notify: also draft a positive note home once the issue is resolved.
+  // Runs only on the instructor's explicit accept, never in auto mode. notify (legacy rows only): also draft a note home.
   z.object({ type: z.literal('resolve_issue'), issueId: z.string(), studentId: z.string(), notify: z.boolean(), label }),
   z.object({ type: z.literal('none'), label: z.null() }),
 ])
@@ -485,3 +517,24 @@ export type ClassCreate = z.infer<typeof ClassCreate>
 /** C3 · PATCH /v1/classes/:id. DELETE refuses with 409 while a session is live. */
 export const ClassUpdate = ClassCreate.partial()
 export type ClassUpdate = z.infer<typeof ClassUpdate>
+
+// ---- Degraded-mode status (F20) ----
+/**
+ * GET /v1/status. `ai` counts Anthropic model calls only (failed calls included) against the daily cap; it is not a
+ * token, transcription, email or hosting budget. dailyCap null = no cap configured.
+ */
+export const DegradedReason = z.enum(['ai_budget_reached', 'speech_to_text_unconfigured'])
+export type DegradedReason = z.infer<typeof DegradedReason>
+export const StatusResponse = z.object({
+  ai: z.object({
+    counts: z.literal('anthropic_calls'),
+    day: z.string(),
+    dailyCap: z.number().int().nullable(),
+    usedToday: z.number().int(),
+    remainingToday: z.number().int().nullable(),
+    exhausted: z.boolean(),
+  }),
+  stt: z.object({ configured: z.boolean() }),
+  degraded: z.array(DegradedReason),
+})
+export type StatusResponse = z.infer<typeof StatusResponse>

@@ -65,6 +65,15 @@ describe('router', () => {
     expect(routerInstructions(MODES.martial_arts)).toContain('who is forgetting to keep their guard up?')
   })
 
+  it('F01: every mode teaches valence (praise is never concern) and observedWhen for past occurrences', () => {
+    for (const m of Object.values(MODES)) {
+      const t = routerInstructions(m)
+      expect(t).toContain('valence (feedback only): "concern"')
+      expect(t).toContain('Praise is NEVER concern')
+      expect(t).toContain('observedWhen (feedback only): "earlier"')
+    }
+  })
+
   it('withRun records errors and returns null', async () => {
     const db = await makeTestDb()
     const deps = makeDeps(db)

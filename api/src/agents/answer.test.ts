@@ -63,12 +63,12 @@ describe('class questions', () => {
     expect(await w.db.select().from(notes).where(eq(notes.sessionId, w.sessionId))).toHaveLength(0)
   })
 
-  it('an open issue with no recent notes still lists the student; an unknown tag reads "No … notes"', async () => {
+  it('an open issue with no recent notes still lists the student; an unknown tag reads "No … concerns"', async () => {
     const w = await world()
     await w.db.insert(issues).values({ studentId: w.ss[3]!.id, tag: 'guard', openedAt: at('2026-08-01') })
     const f = await loadClassFacts(w.db, w.sessionId, w.drillId, new Date('2026-10-20T00:30:00Z'), 'America/Los_Angeles')
     expect(fastAnswer(f, 'who keeps dropping their hands?')?.lines).toEqual(['Guard: Priya (3), Leo (2), Sam (1),', 'Mia'])
-    expect(fastAnswer(f, 'anyone sloppy on footwork?')?.lines).toEqual(['No footwork notes in 21 days'])
+    expect(fastAnswer(f, 'anyone sloppy on footwork?')?.lines).toEqual(['No footwork concerns in 21 days'])
     expect(matchTag(MODES.martial_arts, 'what should I focus on next drill?')).toBeNull() // no "who": goes to the model
     expect(matchTag(MODES.personal_training, 'who is cutting their depth?')).toBe('depth')
   })
@@ -79,8 +79,8 @@ describe('class questions', () => {
     await w.db.insert(notes).values({ sessionId: w.sessionId, studentId: w.ss[0]!.id, text: 'nice stance', tags: ['stance'] })
     const { llm, calls } = routerOnly("Who hasn't gotten feedback today?")
     const r = await ask(makeDeps(w.db, { llm }), w, "who hasn't gotten feedback today")
-    expect(r.brief?.lines).toEqual(['No feedback yet: Leo, Sam'])
-    expect(calls).toEqual(['router'])
+    expect(r.brief?.lines).toEqual(['No observation yet: Leo, Sam'])
+    expect(calls).toEqual([]) // F20: recognized before the router, zero model calls
   })
 
   it('how many are here comes from attendance', async () => {
@@ -106,7 +106,7 @@ describe('class questions', () => {
     expect(r.brief?.lines).toEqual(['Guard: Priya and Leo keep dropping…', 'Kick ladder next', 'line four', 'line five'])
     expect(seen.prompt).toContain('Question: """What should I focus on next drill?"""')
     expect(seen.prompt).toContain('Priya | yellow')
-    expect(seen.prompt).toContain('[guard] guard drops on the jab')
+    expect(seen.prompt).toContain('[guard concern] guard drops on the jab')
     expect(seen.prompt).toContain('drill: Guard-up jab · next: Kick ladder, Freeze tag')
     expect(seen.prompt).toContain('kata 9')
     expect(seen.instructions).toContain(NOT_ENOUGH)
@@ -152,7 +152,7 @@ describe('class questions', () => {
       mode: MODES.martial_arts, today: '2026-10-19', theme: 'Stances', attendanceTaken: true, drill: 'Jab', remaining: ['A', 'B'], insights: ['Jake is back'],
       students: Array.from({ length: 40 }, (_, i) => ({
         id: `s${i}`, name: `Kid${i} Long-Surname`, first: `Kid${i}`, belt: 'yellow', rankSince: '2026-01-01',
-        openIssues: [{ tag: 'guard', count: 3 }], tagCounts: { guard: 3 }, attendance: 'PPAPPPP', presentToday: true, notedToday: i % 2 === 0,
+        openIssues: [{ tag: 'guard', count: 3 }], tagCounts: { guard: 3 }, tagStats: {}, attendance: 'PPAPPPP', presentToday: true, notedToday: i % 2 === 0,
         recentNotes: [1, 2, 3].map(n => ({ tags: ['guard'], text: `note ${n} about a long and detailed correction on the jab` })), metrics: ['kata 9'],
       })),
     }

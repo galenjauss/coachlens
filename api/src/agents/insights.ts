@@ -1,11 +1,15 @@
 // PURE: the opportunistic-insight detectors. Deterministic functions over rows the service has already loaded (no
 // LLM, no db). Each returns a draft insight or null; the service dedupes on `dedupeKey` (kind:student:ISO week).
-import { INSIGHT_DETAIL_MAX, INSIGHT_TITLE_MAX, MODES, type InsightAction, type InsightKind, type InsightUrgency, type ModeId } from '@matside/shared'
+import { DEFAULT_RANK_REVIEW, INSIGHT_DETAIL_MAX, INSIGHT_TITLE_MAX, MODES, type InsightAction, type InsightKind, type InsightUrgency, type ModeId, type RankReviewSettings, type Valence } from '@matside/shared'
 import { changeFor, comparable, keyLabel, measure, shortDate, signed, timeInRank } from '../logic/metrics'
 import { clip } from '../logic/text'
+import { effectiveValence, isPositive } from '../logic/valence'
+
+export { DEFAULT_RANK_REVIEW }
 
 export interface AttendanceRec { sessionId: string; forDate: string; status: 'present' | 'absent'; ended: boolean }
-export interface NoteRec { sessionId: string | null; tags: string[]; createdAt: Date }
+/** valence/text/historical are optional for older fixtures: a note without them reads as neutral, current. */
+export interface NoteRec { sessionId: string | null; tags: string[]; createdAt: Date; valence?: Valence | null; text?: string; historical?: boolean }
 export interface IssueRec { id: string; tag: string; openedAt: Date }
 export interface MetricRec { key: string; value: string; num: number | null; unit: string | null; recordedAt: Date }
 export interface BillingRec { note: string; createdAt: Date }
@@ -31,6 +35,8 @@ export interface DetectCtx {
   now: Date
   /** The live session that started this run, if any (returning_student checks it first). */
   sessionId: string | null
+  /** The school's rank-review thresholds (Settings); defaults when absent. */
+  rankReview?: RankReviewSettings
 }
 
 export interface InsightDraft {
@@ -51,7 +57,8 @@ export const DECLINE_RATE_RATIO = 0.5
 export const RETURNING_MIN_ABSENT = 2
 export const NO_FEEDBACK_LAST_N = 3
 export const NO_FEEDBACK_LIVE_FRACTION = 0.7
-export const READY_TO_TEST_DAYS = 90
+/** Lookback for the positive-observation count shown on a rank review (matches the notes loaded for detectors). */
+export const RANK_REVIEW_NOTES_DAYS = 60
 export const NEW_PR_DAYS = 7
 export const GRADE_DROP_POINTS = 10
 export const ISSUE_QUIET_DAYS = 21
@@ -84,6 +91,10 @@ function draft(s: StudentFacts, ctx: DetectCtx, kind: InsightKind, urgency: Insi
   }
 }
 const email = (s: StudentFacts, purpose: string, label: string): InsightAction => ({ type: 'draft_email', studentId: s.id, purpose, label })
+const valenceOf = (n: NoteRec) => effectiveValence({ valence: n.valence ?? null, text: n.text ?? '' })
+/** Current praise/improvement notes (oldest first). */
+const positiveNotes = (s: StudentFacts) => s.notes.filter(n => !n.historical && isPositive(valenceOf(n)))
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
 /** Absent in ≥2 of the last 3 sessions, or the last-4-weeks rate fell below half the prior 4 weeks'. */
 export function attendanceDecline(s: StudentFacts, ctx: DetectCtx): InsightDraft | null {
@@ -142,25 +153,46 @@ export interface LiveSnapshot {
   notedIds: ReadonlySet<string>
 }
 
-/** In class: present today, still no note, and 70% of class time has gone by. One high item per student. */
+/**
+ * In class, once 70% of class time has gone by: ONE class-level reminder naming the present students with no
+ * observation logged yet (high, so the lens shows it once). A note is a record, not proof feedback was given, so the
+ * wording says "observation", and there is no per-student demand.
+ */
 export function liveNoFeedback(snap: LiveSnapshot): InsightDraft[] {
   if (snap.elapsed < NO_FEEDBACK_LIVE_FRACTION) return []
-  const ctx: DetectCtx = { today: snap.today, now: new Date(0), sessionId: snap.sessionId }
-  return snap.present.filter(p => !snap.notedIds.has(p.id)).map(p => {
-    const facts = { ...p, belt: '', rankSince: null, attendance: [], notes: [], openIssues: [], metrics: [], openBilling: [] }
-    const name = first(p.name)
-    return draft(facts, ctx, 'no_feedback', 'high', `${name}: no note yet today`,
-      `Present today with no notes and the ${unit(p.mode)} is ${Math.min(100, Math.round(snap.elapsed * 100))}% done.`, { type: 'none', label: null }, 'no_feedback_high')
-  })
+  const missing = snap.present.filter(p => !snap.notedIds.has(p.id))
+  const firstP = missing[0]
+  if (!firstP) return []
+  const m = MODES[firstP.mode]
+  const pct = Math.min(100, Math.round(snap.elapsed * 100))
+  return [{
+    kind: 'no_feedback', studentId: null, classId: firstP.classId, urgency: 'high', action: { type: 'none', label: null },
+    title: clip(`${plural(missing.length, m.person, m.people)} ${missing.length === 1 ? 'has' : 'have'} no observation yet`, INSIGHT_TITLE_MAX),
+    detail: clip(`Not noted yet: ${missing.map(p => first(p.name)).join(', ')} · ${unit(firstP.mode)} ${pct}% done.`, INSIGHT_DETAIL_MAX),
+    dedupeKey: `no_feedback_live:${snap.sessionId}`,
+  }]
 }
 
-/** Martial arts: ≥90 days at the current rank and no open focus areas. */
-export function readyToTest(s: StudentFacts, ctx: DetectCtx): InsightDraft | null {
-  if (s.mode !== 'martial_arts' || !s.rankSince || s.openIssues.length) return null
-  if (daysBetween(s.rankSince, ctx.today) < READY_TO_TEST_DAYS) return null
-  const name = first(s.name)
-  return draft(s, ctx, 'ready_to_test', 'low', `${name} may be ready to test`,
-    `${timeInRank(s.rankSince, ctx.today)} at ${s.belt} belt (since ${shortDate(s.rankSince)}) with no open focus areas.`, email(s, 'ready_to_test', 'Draft testing email'))
+/**
+ * Martial arts: a reminder to review a student for their next rank, with the evidence the app has and what it cannot
+ * see. Fires when the school's thresholds are met (defaults: >=90 days at rank, no open focus areas, no attendance
+ * minimum). It is not a readiness judgment and drafts nothing.
+ */
+export function rankReview(s: StudentFacts, ctx: DetectCtx): InsightDraft | null {
+  const cfg = ctx.rankReview ?? DEFAULT_RANK_REVIEW
+  if (s.mode !== 'martial_arts' || !s.rankSince) return null
+  if (daysBetween(s.rankSince, ctx.today) < cfg.minDaysAtRank) return null
+  if (cfg.requireNoOpenIssues && s.openIssues.length) return null
+  const inWindow = s.attendance.filter(a => { const age = daysBetween(a.forDate, ctx.today); return age >= 0 && age <= cfg.attendanceWindowDays })
+  const came = inWindow.filter(a => a.status === 'present').length
+  if (came < cfg.minAttendance) return null
+  const since = ctx.now.getTime() - RANK_REVIEW_NOTES_DAYS * DAY
+  const positives = positiveNotes(s).filter(n => n.createdAt.getTime() >= since).length
+  const weeks = Math.round(cfg.attendanceWindowDays / 7)
+  const att = inWindow.length ? `${came}/${inWindow.length} ${unit(s.mode, inWindow.length)} in ${weeks} wk` : 'no attendance recorded'
+  return draft(s, ctx, 'rank_review', 'low', `${first(s.name)}: review for next rank`,
+    `Have: ${timeInRank(s.rankSince, ctx.today)} at ${s.belt}, ${att}, ${plural(s.openIssues.length, 'open issue')}, ${plural(positives, 'positive note')}. Not tracked: curriculum, your assessment.`,
+    { type: 'none', label: null })
 }
 
 /** Personal training: a personal best recorded in the last 7 days (the most recent one). */
@@ -200,19 +232,44 @@ export function gradeDrop(s: StudentFacts, ctx: DetectCtx): InsightDraft | null 
       text: `Add a short review ${MODES.tutoring.planItem} on ${label} for ${s.name} [${s.id}] next lesson: their latest test dropped ${drop} points.` })
 }
 
-/** An open issue whose tag has had no new notes for 21 days: suggest a positive note home and closing it (oldest first). */
-export function issueResolved(s: StudentFacts, ctx: DetectCtx): InsightDraft | null {
+/** Current praise/improvement notes on an open issue's tag since it opened (oldest first). */
+const positivesSince = (s: StudentFacts, iss: IssueRec) => positiveNotes(s).filter(n => n.tags.includes(iss.tag) && n.createdAt >= iss.openedAt)
+const byOpened = (s: StudentFacts) => [...s.openIssues].sort((a, b) => a.openedAt.getTime() - b.openedAt.getTime())
+
+/**
+ * An open issue with praise or improvement on its tag since it opened: suggest marking it resolved. The resolve action
+ * runs only when the instructor accepts it (never in auto mode) and sends nothing home.
+ */
+export function issueImproving(s: StudentFacts, ctx: DetectCtx): InsightDraft | null {
+  const iss = byOpened(s).find(i => positivesSince(s, i).length)
+  if (!iss) return null
+  const pos = positivesSince(s, iss)
+  const latest = pos[pos.length - 1]!
+  return draft(s, ctx, 'issue_improving', 'low', `${first(s.name)}'s ${iss.tag}: improving`,
+    `${plural(pos.length, `positive ${iss.tag} note`)} since it opened ${shortDate(iss.openedAt.toISOString().slice(0, 10))}, latest "${clip(latest.text ?? '', 60)}". Mark resolved if you agree.`,
+    { type: 'resolve_issue', issueId: iss.id, studentId: s.id, notify: false, label: 'Mark resolved' })
+}
+
+/**
+ * An open issue whose tag has had no notes for 21 days and no positive evidence: a prompt to re-check it in class.
+ * Silence (a forgotten note, an absence, a skill not practiced) is never treated as improvement.
+ */
+export function issueReassess(s: StudentFacts, ctx: DetectCtx): InsightDraft | null {
   const cutoff = ctx.now.getTime() - ISSUE_QUIET_DAYS * DAY
-  const quiet = [...s.openIssues].sort((a, b) => a.openedAt.getTime() - b.openedAt.getTime()).find(iss => {
+  const quiet = byOpened(s).find(iss => {
+    if (positivesSince(s, iss).length) return false
     const lastNote = Math.max(iss.openedAt.getTime(), ...s.notes.filter(n => n.tags.includes(iss.tag)).map(n => n.createdAt.getTime()))
     return lastNote <= cutoff
   })
   if (!quiet) return null
   const name = first(s.name)
-  const tagLabel = MODES[s.mode].tagLabels[quiet.tag] ?? quiet.tag
-  return draft(s, ctx, 'issue_resolved', 'low', `${name}'s ${quiet.tag} looks resolved`,
-    `No ${tagLabel.toLowerCase()} notes in ${ISSUE_QUIET_DAYS}+ days. Send a positive note home and close it.`,
-    { type: 'resolve_issue', issueId: quiet.id, studentId: s.id, notify: true, label: 'Resolve + praise' })
+  const tagLabel = (MODES[s.mode].tagLabels[quiet.tag] ?? quiet.tag).toLowerCase()
+  const action: InsightAction = s.classId
+    ? { type: 'plan_focus', classId: s.classId, studentId: s.id, label: 'Check next class',
+        text: `Make ${s.name} [${s.id}] a focus student next ${unit(s.mode)} to re-check ${tagLabel}: an open focus area with no notes in ${ISSUE_QUIET_DAYS}+ days.` }
+    : { type: 'none', label: null }
+  return draft(s, ctx, 'issue_reassess', 'low', `${name}'s ${quiet.tag}: no recent notes`,
+    `No ${tagLabel} notes in ${ISSUE_QUIET_DAYS}+ days. No notes is not evidence it improved: check it next ${unit(s.mode)}.`, action)
 }
 
 /** ≥2 open billing flags for the same person. Notes only: the action is just to acknowledge. */
@@ -227,10 +284,11 @@ export const DETECTORS = {
   attendance_decline: attendanceDecline,
   returning_student: returningStudent,
   no_feedback: noFeedback,
-  ready_to_test: readyToTest,
+  rank_review: rankReview,
   new_pr: newPr,
   grade_drop: gradeDrop,
-  issue_resolved: issueResolved,
+  issue_improving: issueImproving,
+  issue_reassess: issueReassess,
   billing_repeat: billingRepeat,
 } satisfies Record<InsightKind, (s: StudentFacts, ctx: DetectCtx) => InsightDraft | null>
 
@@ -241,8 +299,8 @@ export function detectAll(students: readonly StudentFacts[], ctx: DetectCtx, onl
 }
 
 const KIND_SHORT: Record<InsightKind, string> = {
-  attendance_decline: 'attendance', returning_student: 'is back', no_feedback: 'needs a note', ready_to_test: 'ready to test',
-  new_pr: 'PR', grade_drop: 'grade drop', issue_resolved: 'issue quiet', billing_repeat: 'billing',
+  attendance_decline: 'attendance', returning_student: 'is back', no_feedback: 'no observations', rank_review: 'rank review',
+  new_pr: 'PR', grade_drop: 'grade drop', issue_improving: 'improving', issue_reassess: 'recheck issue', billing_repeat: 'billing',
 }
 
 /** Run summary for the Agents tab: "3 new: Jake attendance, Maria ready to test…". */
