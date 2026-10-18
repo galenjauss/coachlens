@@ -184,7 +184,7 @@ export const kv = pgTable('kv', {
 // drafts, deck diffs) are found through that column.
 export const actionLedger = pgTable('action_ledger', {
   id: id(), utteranceId: text('utterance_id').notNull(),
-  kind: text('kind').$type<'attendance' | 'rank' | 'issue' | 'drill_added' | 'drill_moved'>().notNull(),
+  kind: text('kind').$type<'attendance' | 'rank' | 'issue' | 'drill_added' | 'deck_drafted'>().notNull(),
   entityId: text('entity_id').notNull(), before: jsonb('before'), after: jsonb('after'), createdAt: createdAt(),
 }, t => [index('action_ledger_utterance').on(t.utteranceId, t.createdAt)])
 // C1 + C2 · deferred agent work started by an utterance, one row per (utterance, kind, subject): a re-run never
@@ -200,3 +200,11 @@ export const operations = pgTable('operations', {
   status: text('status').$type<'pending' | 'done'>().notNull().default('pending'),
   responseJson: text('response_json'), createdAt: createdAt(), // the exact JSON text sent, replayed byte for byte
 }, t => [primaryKey({ columns: [t.instructorId, t.key] })])
+// S1 · pairing attempt counters shared by every instance (fixed window per bucket: an IP, or a code prefix).
+export const pairAttempts = pgTable('pair_attempts', {
+  bucket: text('bucket').primaryKey(), count: integer('count').notNull().default(0), windowStart: ts('window_start').notNull(),
+})
+// S2 · per-instructor AI calls per local day (the global llm_usage cap stays the ceiling).
+export const llmUsageInstructor = pgTable('llm_usage_instructor', {
+  instructorId: text('instructor_id').notNull(), day: text('day').notNull(), calls: integer('calls').notNull().default(0),
+}, t => [primaryKey({ columns: [t.instructorId, t.day] })])
