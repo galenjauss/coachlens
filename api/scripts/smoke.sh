@@ -4,7 +4,7 @@ set -euo pipefail
 curl -fsS "$API_URL/health"; echo
 TOKEN=$(curl -fsS -X POST "$API_URL/pair" -H 'Content-Type: application/json' -d "{\"code\":\"$PAIRING_CODE\"}" | node -pe 'JSON.parse(require("fs").readFileSync(0)).token')
 H="Authorization: Bearer $TOKEN"
-TODAY=$(curl -fsS "$API_URL/v1/today" -H "$H")
+TODAY=$(curl -fsS "$API_URL/v1/today${CLASS_ID:+?classId=$CLASS_ID}" -H "$H")
 echo "$TODAY" | node -pe 'const t=JSON.parse(require("fs").readFileSync(0)); `${t.className} · ${t.theme} · ${t.deck.drills.length} drills`'
 CLASS=$(echo "$TODAY" | node -pe 'JSON.parse(require("fs").readFileSync(0)).classId')
 SID=$(curl -fsS -X POST "$API_URL/v1/sessions" -H "$H" -H 'Content-Type: application/json' -d "{\"classId\":\"$CLASS\"}" | node -pe 'JSON.parse(require("fs").readFileSync(0)).sessionId')
