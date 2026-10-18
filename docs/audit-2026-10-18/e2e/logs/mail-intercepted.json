@@ -1,0 +1,5 @@
+{
+  "note": "deps.mail records; nothing is sent. RESEND_API_KEY is unset and non-loopback fetch is refused.",
+  "mail": [],
+  "blockedFetches": []
+}

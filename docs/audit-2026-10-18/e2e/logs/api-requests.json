@@ -1,0 +1,4954 @@
+[
+ {
+  "at": "2026-10-18T15:19:54.521Z",
+  "scenario": "S0",
+  "method": "GET",
+  "path": "/health",
+  "status": 200,
+  "ms": 3,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": null
+ },
+ {
+  "at": "2026-10-18T15:19:54.525Z",
+  "scenario": "S0",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 401,
+  "ms": 0,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": null,
+  "response": {
+   "error": "missing token"
+  }
+ },
+ {
+  "at": "2026-10-18T15:19:54.526Z",
+  "scenario": "S0",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 401,
+  "ms": 0,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": null
+ },
+ {
+  "at": "2026-10-18T15:19:56.893Z",
+  "scenario": "S0",
+  "method": "POST",
+  "path": "/pair",
+  "status": 200,
+  "ms": 20,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": null,
+  "body": {
+   "code": "E2EA4242"
+  }
+ },
+ {
+  "at": "2026-10-18T15:19:56.919Z",
+  "scenario": "S0",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 200,
+  "ms": 6,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": [
+   {
+    "id": "bc6fdf0c-f4b9-433d-8d3e-4f35bfbe0a79",
+    "name": "PT · Mon 6:00",
+    "mode": "personal_training",
+    "modeLabel": "Personal training",
+    "weekday": 1,
+    "startTime": "18:00"
+   },
+   {
+    "id": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+    "name": "Kids · Tue",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 2,
+    "startTime": "17:00"
+   },
+   {
+    "id": "cfc05306-952c-4d4d-915d-bf8b81e1c5bd",
+    "name": "Algebra · Wed 4:00",
+    "mode": "tutoring",
+    "modeLabel": "Tutoring",
+    "weekday": 3,
+    "startTime": "16:00"
+   },
+   {
+    "id": "10034525-c4b2-48c5-980b-b4732ddc482d",
+    "name": "Kids · Thu",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 4,
+    "startTime": "17:00"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:19:56.926Z",
+  "scenario": "S0",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": [
+   {
+    "id": "bc6fdf0c-f4b9-433d-8d3e-4f35bfbe0a79",
+    "name": "PT · Mon 6:00",
+    "mode": "personal_training",
+    "modeLabel": "Personal training",
+    "weekday": 1,
+    "startTime": "18:00"
+   },
+   {
+    "id": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+    "name": "Kids · Tue",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 2,
+    "startTime": "17:00"
+   },
+   {
+    "id": "cfc05306-952c-4d4d-915d-bf8b81e1c5bd",
+    "name": "Algebra · Wed 4:00",
+    "mode": "tutoring",
+    "modeLabel": "Tutoring",
+    "weekday": 3,
+    "startTime": "16:00"
+   },
+   {
+    "id": "10034525-c4b2-48c5-980b-b4732ddc482d",
+    "name": "Kids · Thu",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 4,
+    "startTime": "17:00"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:19:56.929Z",
+  "scenario": "S0",
+  "method": "GET",
+  "path": "/v1/onboarding/status",
+  "status": 200,
+  "ms": 4,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:19:56.929Z",
+  "scenario": "S0",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 12,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:19:56.929Z",
+  "scenario": "S0",
+  "method": "GET",
+  "path": "/v1/review",
+  "status": 200,
+  "ms": 24,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:19:56.954Z",
+  "scenario": "S0",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 5,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:19:56.978Z",
+  "scenario": "S0",
+  "method": "GET",
+  "path": "/v1/settings",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:19:56.981Z",
+  "scenario": "S0",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 18,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:19:57.050Z",
+  "scenario": "S0",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 6,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:19:57.056Z",
+  "scenario": "S0",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 4,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:19:57.062Z",
+  "scenario": "S0",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 3,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:19:59.267Z",
+  "scenario": "S0",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 4,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:20:00.818Z",
+  "scenario": "S0",
+  "method": "POST",
+  "path": "/v1/sessions",
+  "status": 200,
+  "ms": 15,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "body": {
+   "classId": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511"
+  }
+ },
+ {
+  "at": "2026-10-18T15:20:00.971Z",
+  "scenario": "S0",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 5,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:20:06.274Z",
+  "scenario": "S2",
+  "method": "POST",
+  "path": "/v1/transcribe",
+  "status": 200,
+  "ms": 11,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "transcript": "everyone except Jake and Mia"
+  }
+ },
+ {
+  "at": "2026-10-18T15:20:06.292Z",
+  "scenario": "S2",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 200,
+  "ms": 25,
+  "idempotencyKey": "3ef816db-1e1b-4772-b4f7-31c648216402",
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "utteranceId": "9c1b8b85-a9fc-5efc-9d4a-103238fdac02",
+   "transcript": "everyone except Jake and Mia",
+   "cardLines": [
+    "12 present",
+    "absent: Jake, Mia"
+   ],
+   "coverage": {
+    "covered": 0,
+    "present": 12
+   },
+   "nextStudent": {
+    "id": "64dd6d7c-7015-4c66-960c-a747e0ff2058",
+    "name": "Priya",
+    "reason": "focus"
+   },
+   "disambiguation": null,
+   "attendanceChanged": true
+  }
+ },
+ {
+  "at": "2026-10-18T15:20:06.325Z",
+  "scenario": "S2",
+  "method": "GET",
+  "path": "/v1/utterances/9c1b8b85-a9fc-5efc-9d4a-103238fdac02/runs",
+  "status": 200,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": [
+   {
+    "agent": "router",
+    "summary": "Recognized roll call (no AI call)",
+    "status": "ok",
+    "createdAt": "2026-10-18T15:20:06.301Z"
+   },
+   {
+    "agent": "attendance",
+    "summary": "12 present, absent: Jake, Mia",
+    "status": "ok",
+    "createdAt": "2026-10-18T15:20:06.305Z"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:20:07.837Z",
+  "scenario": "S2",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 13,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:20:09.642Z",
+  "scenario": "S2",
+  "method": "POST",
+  "path": "/v1/transcribe",
+  "status": 200,
+  "ms": 8,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "transcript": "um okay where was i"
+  }
+ },
+ {
+  "at": "2026-10-18T15:20:09.656Z",
+  "scenario": "S2",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 200,
+  "ms": 173,
+  "idempotencyKey": "f7814a7b-0077-4c4f-b16c-a8b26c37886e",
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "utteranceId": "c481182a-8ee0-52d9-a520-a01d03ef055c",
+   "transcript": "um okay where was i",
+   "cardLines": [
+    "● Nothing changed",
+    "Try a name + what you saw"
+   ],
+   "coverage": {
+    "covered": 0,
+    "present": 12
+   },
+   "nextStudent": {
+    "id": "64dd6d7c-7015-4c66-960c-a747e0ff2058",
+    "name": "Priya",
+    "reason": "focus"
+   },
+   "disambiguation": null
+  }
+ },
+ {
+  "at": "2026-10-18T15:20:09.842Z",
+  "scenario": "S2",
+  "method": "GET",
+  "path": "/v1/utterances/c481182a-8ee0-52d9-a520-a01d03ef055c/runs",
+  "status": 200,
+  "ms": 3,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": [
+   {
+    "agent": "router",
+    "summary": "Sorted \"um okay where was i\" into nothing",
+    "status": "ok",
+    "createdAt": "2026-10-18T15:20:09.818Z"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:20:11.332Z",
+  "scenario": "S2",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 10,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:20:13.016Z",
+  "scenario": "S1",
+  "method": "POST",
+  "path": "/v1/transcribe",
+  "status": 200,
+  "ms": 10,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "transcript": "Priya kept her guard up today"
+  }
+ },
+ {
+  "at": "2026-10-18T15:20:13.034Z",
+  "scenario": "S1",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 200,
+  "ms": 191,
+  "idempotencyKey": "16605fe9-8e3b-4d49-96de-77d3d2ac99ff",
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "utteranceId": "0a43e2a2-cc06-5372-bc92-ecb24adbfcb6",
+   "transcript": "Priya kept her guard up today",
+   "cardLines": [
+    "√ Priya · praise · guard"
+   ],
+   "coverage": {
+    "covered": 1,
+    "present": 12
+   },
+   "nextStudent": {
+    "id": "15b2fb6c-d32f-4bfa-80ba-fe8039dde8c2",
+    "name": "Sam",
+    "reason": "guard"
+   },
+   "disambiguation": null
+  }
+ },
+ {
+  "at": "2026-10-18T15:20:13.233Z",
+  "scenario": "S1",
+  "method": "GET",
+  "path": "/v1/utterances/0a43e2a2-cc06-5372-bc92-ecb24adbfcb6/runs",
+  "status": 200,
+  "ms": 4,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": [
+   {
+    "agent": "router",
+    "summary": "Sorted \"Priya kept her guard up today\" into feedback",
+    "status": "ok",
+    "createdAt": "2026-10-18T15:20:13.204Z"
+   },
+   {
+    "agent": "progress",
+    "summary": "Logged praise \"kept her guard up today\" → Priya",
+    "status": "ok",
+    "createdAt": "2026-10-18T15:20:13.221Z"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:20:15.846Z",
+  "scenario": "S1",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 16,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:20:16.929Z",
+  "scenario": "S1",
+  "method": "GET",
+  "path": "/v1/review",
+  "status": 200,
+  "ms": 13,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:20:18.921Z",
+  "scenario": "S1",
+  "method": "POST",
+  "path": "/v1/transcribe",
+  "status": 200,
+  "ms": 7,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "transcript": "Who keeps their guard up?"
+  }
+ },
+ {
+  "at": "2026-10-18T15:20:18.934Z",
+  "scenario": "S1",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 200,
+  "ms": 184,
+  "idempotencyKey": "103c56e4-7c4c-447f-88c2-1a9bd1906e4e",
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "utteranceId": "01d9dec7-828d-5310-8cd3-fd5f0f951da0",
+   "transcript": "Who keeps their guard up?",
+   "cardLines": [
+    "? Who keeps their guard up?"
+   ],
+   "coverage": {
+    "covered": 1,
+    "present": 12
+   },
+   "nextStudent": {
+    "id": "15b2fb6c-d32f-4bfa-80ba-fe8039dde8c2",
+    "name": "Sam",
+    "reason": "guard"
+   },
+   "disambiguation": null,
+   "brief": {
+    "name": "Answer",
+    "lines": [
+     "Good guard: Priya (1)"
+    ]
+   }
+  }
+ },
+ {
+  "at": "2026-10-18T15:20:19.128Z",
+  "scenario": "S1",
+  "method": "GET",
+  "path": "/v1/utterances/01d9dec7-828d-5310-8cd3-fd5f0f951da0/runs",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": [
+   {
+    "agent": "router",
+    "summary": "Sorted \"Who keeps their guard up?\" into question",
+    "status": "ok",
+    "createdAt": "2026-10-18T15:20:19.097Z"
+   },
+   {
+    "agent": "answer",
+    "summary": "Who keeps their guard up?",
+    "status": "ok",
+    "createdAt": "2026-10-18T15:20:19.112Z"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:20:22.386Z",
+  "scenario": "S1",
+  "method": "POST",
+  "path": "/v1/transcribe",
+  "status": 200,
+  "ms": 6,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "transcript": "Who never drops their guard?"
+  }
+ },
+ {
+  "at": "2026-10-18T15:20:22.398Z",
+  "scenario": "S1",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 200,
+  "ms": 186,
+  "idempotencyKey": "dab2aa28-b6e8-4159-b07c-efa6a41f31e3",
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "utteranceId": "b195a8c2-57aa-5b09-9002-c768a155b848",
+   "transcript": "Who never drops their guard?",
+   "cardLines": [
+    "? Who never drops their guard?"
+   ],
+   "coverage": {
+    "covered": 1,
+    "present": 12
+   },
+   "nextStudent": {
+    "id": "15b2fb6c-d32f-4bfa-80ba-fe8039dde8c2",
+    "name": "Sam",
+    "reason": "guard"
+   },
+   "disambiguation": null,
+   "brief": {
+    "name": "Answer",
+    "lines": [
+     "Good guard: Priya (1)"
+    ]
+   }
+  }
+ },
+ {
+  "at": "2026-10-18T15:20:22.593Z",
+  "scenario": "S1",
+  "method": "GET",
+  "path": "/v1/utterances/b195a8c2-57aa-5b09-9002-c768a155b848/runs",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": [
+   {
+    "agent": "router",
+    "summary": "Sorted \"Who never drops their guard?\" into question",
+    "status": "ok",
+    "createdAt": "2026-10-18T15:20:22.559Z"
+   },
+   {
+    "agent": "answer",
+    "summary": "Who never drops their guard?",
+    "status": "ok",
+    "createdAt": "2026-10-18T15:20:22.577Z"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:20:25.860Z",
+  "scenario": "S4",
+  "method": "POST",
+  "path": "/v1/transcribe",
+  "status": 200,
+  "ms": 12,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "transcript": "Maya kept her front stance long"
+  }
+ },
+ {
+  "at": "2026-10-18T15:20:25.878Z",
+  "scenario": "S4",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 200,
+  "ms": 170,
+  "idempotencyKey": "4026897a-51ac-4354-91ee-aab61d0999f3",
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "utteranceId": "3c3fea26-0d20-5b5c-ab64-3f3f987bb882",
+   "transcript": "Maya kept her front stance long",
+   "cardLines": [
+    "√ Maya · praise · stance"
+   ],
+   "coverage": {
+    "covered": 2,
+    "present": 12
+   },
+   "nextStudent": {
+    "id": "15b2fb6c-d32f-4bfa-80ba-fe8039dde8c2",
+    "name": "Sam",
+    "reason": "guard"
+   },
+   "disambiguation": null
+  }
+ },
+ {
+  "at": "2026-10-18T15:20:26.057Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/utterances/3c3fea26-0d20-5b5c-ab64-3f3f987bb882/runs",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": [
+   {
+    "agent": "router",
+    "summary": "Sorted \"Maya kept her front stance long\" into feedback",
+    "status": "ok",
+    "createdAt": "2026-10-18T15:20:26.040Z"
+   },
+   {
+    "agent": "progress",
+    "summary": "Logged praise \"kept her front stance long\" → Maya",
+    "status": "ok",
+    "createdAt": "2026-10-18T15:20:26.044Z"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:20:27.068Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 13,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:20:30.843Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 6,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:20:36.938Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/review",
+  "status": 200,
+  "ms": 11,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:20:37.861Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 13,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:20:44.323Z",
+  "scenario": "S4",
+  "method": "POST",
+  "path": "/v1/transcribe",
+  "status": 200,
+  "ms": 6,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "transcript": "Cal was calm in line-up"
+  }
+ },
+ {
+  "at": "2026-10-18T15:20:44.334Z",
+  "scenario": "S4",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 200,
+  "ms": 170,
+  "idempotencyKey": "cc5329cc-ebd4-4f35-abb1-20660ae111ef",
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "utteranceId": "80bb1035-76d6-57fd-81d9-c130de1392ac",
+   "transcript": "Cal was calm in line-up",
+   "cardLines": [
+    "√ Cal · praise · focus"
+   ],
+   "coverage": {
+    "covered": 3,
+    "present": 12
+   },
+   "nextStudent": {
+    "id": "15b2fb6c-d32f-4bfa-80ba-fe8039dde8c2",
+    "name": "Sam",
+    "reason": "guard"
+   },
+   "disambiguation": null
+  }
+ },
+ {
+  "at": "2026-10-18T15:20:44.513Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/utterances/80bb1035-76d6-57fd-81d9-c130de1392ac/runs",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": [
+   {
+    "agent": "router",
+    "summary": "Sorted \"Cal was calm in line-up\" into feedback",
+    "status": "ok",
+    "createdAt": "2026-10-18T15:20:44.492Z"
+   },
+   {
+    "agent": "progress",
+    "summary": "Logged praise \"was calm in line-up\" → Cal",
+    "status": "ok",
+    "createdAt": "2026-10-18T15:20:44.500Z"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:20:45.849Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 13,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:20:49.206Z",
+  "scenario": "S5",
+  "method": "GET",
+  "path": "/v1/agents/summary",
+  "status": 200,
+  "ms": 10,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:20:49.358Z",
+  "scenario": "S5",
+  "method": "GET",
+  "path": "/v1/settings",
+  "status": 200,
+  "ms": 3,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:20:49.363Z",
+  "scenario": "S5",
+  "method": "GET",
+  "path": "/v1/agents/parent_email",
+  "status": 200,
+  "ms": 4,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:20:49.514Z",
+  "scenario": "S5",
+  "method": "PATCH",
+  "path": "/v1/settings",
+  "status": 200,
+  "ms": 12,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "body": {
+   "autonomy": {
+    "parent_email": "auto"
+   }
+  }
+ },
+ {
+  "at": "2026-10-18T15:20:49.817Z",
+  "scenario": "S5",
+  "method": "POST",
+  "path": "/pair",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": null,
+  "body": {
+   "code": "E2EA4242"
+  }
+ },
+ {
+  "at": "2026-10-18T15:20:49.819Z",
+  "scenario": "S5",
+  "method": "GET",
+  "path": "/v1/status",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…309dd6",
+  "response": {
+   "aiCallsToday": 0,
+   "aiDailyCap": 300,
+   "sttConfigured": true,
+   "mailMode": "auto",
+   "degraded": false,
+   "degradedReasons": [],
+   "aiCallsRemaining": 300,
+   "aiCallsCounted": "anthropic",
+   "day": "2026-10-18"
+  }
+ },
+ {
+  "at": "2026-10-18T15:20:51.147Z",
+  "scenario": "S5",
+  "method": "POST",
+  "path": "/v1/transcribe",
+  "status": 200,
+  "ms": 9,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "transcript": "Dee rolled her ankle and sat out the last drill"
+  }
+ },
+ {
+  "at": "2026-10-18T15:20:51.161Z",
+  "scenario": "S5",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 200,
+  "ms": 189,
+  "idempotencyKey": "7aa7d4c2-8854-4c4f-8807-3593c34128d0",
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "utteranceId": "56100fb4-a41f-5859-9adf-11a31bc9a861",
+   "transcript": "Dee rolled her ankle and sat out the last drill",
+   "cardLines": [
+    "√ Dee",
+    "! urgent · parent note drafting"
+   ],
+   "coverage": {
+    "covered": 4,
+    "present": 12
+   },
+   "nextStudent": {
+    "id": "15b2fb6c-d32f-4bfa-80ba-fe8039dde8c2",
+    "name": "Sam",
+    "reason": "guard"
+   },
+   "disambiguation": null
+  }
+ },
+ {
+  "at": "2026-10-18T15:20:51.358Z",
+  "scenario": "S5",
+  "method": "GET",
+  "path": "/v1/utterances/56100fb4-a41f-5859-9adf-11a31bc9a861/runs",
+  "status": 200,
+  "ms": 3,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": [
+   {
+    "agent": "router",
+    "summary": "Sorted \"Dee rolled her ankle and sat out the last drill\" into feedback (urgent)",
+    "status": "ok",
+    "createdAt": "2026-10-18T15:20:51.323Z"
+   },
+   {
+    "agent": "progress",
+    "summary": "Logged \"rolled her ankle and sat out the last drill\" → Dee",
+    "status": "ok",
+    "createdAt": "2026-10-18T15:20:51.336Z"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:20:53.367Z",
+  "scenario": "S5",
+  "method": "GET",
+  "path": "/v1/utterances/56100fb4-a41f-5859-9adf-11a31bc9a861/runs",
+  "status": 200,
+  "ms": 3,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": [
+   {
+    "agent": "router",
+    "summary": "Sorted \"Dee rolled her ankle and sat out the last drill\" into feedback (urgent)",
+    "status": "ok",
+    "createdAt": "2026-10-18T15:20:51.323Z"
+   },
+   {
+    "agent": "progress",
+    "summary": "Logged \"rolled her ankle and sat out the last drill\" → Dee",
+    "status": "ok",
+    "createdAt": "2026-10-18T15:20:51.336Z"
+   },
+   {
+    "agent": "parent_email",
+    "summary": "Drafted urgent note to Park family (Dee): \"Dee: rolled her ankle and sat out the last drill\"",
+    "status": "ok",
+    "createdAt": "2026-10-18T15:20:51.506Z"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:20:53.746Z",
+  "scenario": "S5",
+  "method": "GET",
+  "path": "/v1/review",
+  "status": 200,
+  "ms": 5,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:20:54.038Z",
+  "scenario": "S5",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 200,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": [
+   {
+    "id": "bc6fdf0c-f4b9-433d-8d3e-4f35bfbe0a79",
+    "name": "PT · Mon 6:00",
+    "mode": "personal_training",
+    "modeLabel": "Personal training",
+    "weekday": 1,
+    "startTime": "18:00"
+   },
+   {
+    "id": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+    "name": "Kids · Tue",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 2,
+    "startTime": "17:00"
+   },
+   {
+    "id": "cfc05306-952c-4d4d-915d-bf8b81e1c5bd",
+    "name": "Algebra · Wed 4:00",
+    "mode": "tutoring",
+    "modeLabel": "Tutoring",
+    "weekday": 3,
+    "startTime": "16:00"
+   },
+   {
+    "id": "10034525-c4b2-48c5-980b-b4732ddc482d",
+    "name": "Kids · Thu",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 4,
+    "startTime": "17:00"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:20:54.160Z",
+  "scenario": "S5",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 9,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:20:54.175Z",
+  "scenario": "S5",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 3,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:20:54.179Z",
+  "scenario": "S5",
+  "method": "GET",
+  "path": "/v1/settings",
+  "status": 200,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:20:55.359Z",
+  "scenario": "S5",
+  "method": "POST",
+  "path": "/v1/transcribe",
+  "status": 200,
+  "ms": 8,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "transcript": "Zed nailed his roundhouse"
+  }
+ },
+ {
+  "at": "2026-10-18T15:20:55.374Z",
+  "scenario": "S5",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 200,
+  "ms": 170,
+  "idempotencyKey": "870ae826-f2e1-41ec-8a5e-4337e56baa63",
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "utteranceId": "a7948efd-4200-5916-8698-0b25bd89eb03",
+   "transcript": "Zed nailed his roundhouse",
+   "cardLines": [
+    "● Saved · pick student in Review"
+   ],
+   "coverage": {
+    "covered": 4,
+    "present": 12
+   },
+   "nextStudent": {
+    "id": "15b2fb6c-d32f-4bfa-80ba-fe8039dde8c2",
+    "name": "Sam",
+    "reason": "guard"
+   },
+   "disambiguation": null
+  }
+ },
+ {
+  "at": "2026-10-18T15:20:55.551Z",
+  "scenario": "S5",
+  "method": "GET",
+  "path": "/v1/utterances/a7948efd-4200-5916-8698-0b25bd89eb03/runs",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": [
+   {
+    "agent": "router",
+    "summary": "Sorted \"Zed nailed his roundhouse\" into feedback",
+    "status": "ok",
+    "createdAt": "2026-10-18T15:20:55.536Z"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:20:56.934Z",
+  "scenario": "S5",
+  "method": "GET",
+  "path": "/v1/review",
+  "status": 200,
+  "ms": 13,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:20:57.410Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/settings",
+  "status": 200,
+  "ms": 3,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:20:57.413Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/status",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "aiCallsToday": 0,
+   "aiDailyCap": 300,
+   "sttConfigured": true,
+   "mailMode": "auto",
+   "degraded": false,
+   "degradedReasons": [],
+   "aiCallsRemaining": 300,
+   "aiCallsCounted": "anthropic",
+   "day": "2026-10-18"
+  }
+ },
+ {
+  "at": "2026-10-18T15:21:00.872Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 200,
+  "ms": 6,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": [
+   {
+    "id": "bc6fdf0c-f4b9-433d-8d3e-4f35bfbe0a79",
+    "name": "PT · Mon 6:00",
+    "mode": "personal_training",
+    "modeLabel": "Personal training",
+    "weekday": 1,
+    "startTime": "18:00"
+   },
+   {
+    "id": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+    "name": "Kids · Tue",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 2,
+    "startTime": "17:00"
+   },
+   {
+    "id": "cfc05306-952c-4d4d-915d-bf8b81e1c5bd",
+    "name": "Algebra · Wed 4:00",
+    "mode": "tutoring",
+    "modeLabel": "Tutoring",
+    "weekday": 3,
+    "startTime": "16:00"
+   },
+   {
+    "id": "10034525-c4b2-48c5-980b-b4732ddc482d",
+    "name": "Kids · Thu",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 4,
+    "startTime": "17:00"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:21:03.874Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 10,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:21:06.894Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 13,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:21:06.908Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/settings",
+  "status": 200,
+  "ms": 5,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:21:10.887Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 15,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:21:18.891Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 14,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:21:19.936Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/review",
+  "status": 200,
+  "ms": 12,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:21:33.891Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 15,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:21:36.896Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 15,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:21:39.937Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/review",
+  "status": 200,
+  "ms": 12,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:21:41.445Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 8,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:21:41.455Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 6,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:21:41.469Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 5,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:21:56.461Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 16,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:21:56.941Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/review",
+  "status": 200,
+  "ms": 15,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:22:02.979Z",
+  "scenario": "S4",
+  "method": "POST",
+  "path": "/v1/transcribe",
+  "status": 200,
+  "ms": 6,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "transcript": "Fay counted her kata out loud"
+  }
+ },
+ {
+  "at": "2026-10-18T15:22:02.993Z",
+  "scenario": "S4",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 200,
+  "ms": 174,
+  "idempotencyKey": "e8593dea-4e21-487d-b7e4-69e345ecbec7",
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "utteranceId": "40fadf8b-3853-5546-93b6-9aae2b89eda4",
+   "transcript": "Fay counted her kata out loud",
+   "cardLines": [
+    "√ Fay · praise · forms"
+   ],
+   "coverage": {
+    "covered": 5,
+    "present": 12
+   },
+   "nextStudent": {
+    "id": "15b2fb6c-d32f-4bfa-80ba-fe8039dde8c2",
+    "name": "Sam",
+    "reason": "guard"
+   },
+   "disambiguation": null
+  }
+ },
+ {
+  "at": "2026-10-18T15:22:03.176Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/utterances/40fadf8b-3853-5546-93b6-9aae2b89eda4/runs",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": [
+   {
+    "agent": "router",
+    "summary": "Sorted \"Fay counted her kata out loud\" into feedback",
+    "status": "ok",
+    "createdAt": "2026-10-18T15:22:03.154Z"
+   },
+   {
+    "agent": "progress",
+    "summary": "Logged praise \"counted her kata out loud\" → Fay",
+    "status": "ok",
+    "createdAt": "2026-10-18T15:22:03.161Z"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:22:11.463Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 11,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:22:11.474Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 8,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:22:11.475Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 11,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:22:16.951Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/review",
+  "status": 200,
+  "ms": 12,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:22:26.461Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 15,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:22:28.463Z",
+  "scenario": "S3",
+  "method": "POST",
+  "path": "/v1/transcribe",
+  "status": 200,
+  "ms": 9,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "transcript": "Leo showed excellent stance control today"
+  }
+ },
+ {
+  "at": "2026-10-18T15:22:28.479Z",
+  "scenario": "S3",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 429,
+  "ms": 0,
+  "idempotencyKey": "e73b18d1-c3a6-4c1b-bd90-3b38ee5b2f49",
+  "replay": null,
+  "auth": "…42582c",
+  "injected": "fail 429"
+ },
+ {
+  "at": "2026-10-18T15:22:39.954Z",
+  "scenario": "S3",
+  "method": "GET",
+  "path": "/v1/review",
+  "status": 200,
+  "ms": 9,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:22:42.023Z",
+  "scenario": "S3",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 28,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:22:42.051Z",
+  "scenario": "S3",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 6,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:22:42.051Z",
+  "scenario": "S3",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 11,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:22:48.622Z",
+  "scenario": "S3",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 429,
+  "ms": 0,
+  "idempotencyKey": "e73b18d1-c3a6-4c1b-bd90-3b38ee5b2f49",
+  "replay": null,
+  "auth": "…42582c",
+  "injected": "fail 429"
+ },
+ {
+  "at": "2026-10-18T15:22:56.470Z",
+  "scenario": "S3",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 35,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:22:56.958Z",
+  "scenario": "S3",
+  "method": "GET",
+  "path": "/v1/review",
+  "status": 200,
+  "ms": 14,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:23:08.667Z",
+  "scenario": "S3",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 429,
+  "ms": 0,
+  "idempotencyKey": "e73b18d1-c3a6-4c1b-bd90-3b38ee5b2f49",
+  "replay": null,
+  "auth": "…42582c",
+  "injected": "fail 429"
+ },
+ {
+  "at": "2026-10-18T15:23:12.252Z",
+  "scenario": "S3",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 16,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:23:16.959Z",
+  "scenario": "S3",
+  "method": "GET",
+  "path": "/health",
+  "status": 200,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:23:16.961Z",
+  "scenario": "S3",
+  "method": "GET",
+  "path": "/v1/review",
+  "status": 200,
+  "ms": 12,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:23:16.961Z",
+  "scenario": "S3",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 200,
+  "ms": 15,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": [
+   {
+    "id": "bc6fdf0c-f4b9-433d-8d3e-4f35bfbe0a79",
+    "name": "PT · Mon 6:00",
+    "mode": "personal_training",
+    "modeLabel": "Personal training",
+    "weekday": 1,
+    "startTime": "18:00"
+   },
+   {
+    "id": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+    "name": "Kids · Tue",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 2,
+    "startTime": "17:00"
+   },
+   {
+    "id": "cfc05306-952c-4d4d-915d-bf8b81e1c5bd",
+    "name": "Algebra · Wed 4:00",
+    "mode": "tutoring",
+    "modeLabel": "Tutoring",
+    "weekday": 3,
+    "startTime": "16:00"
+   },
+   {
+    "id": "10034525-c4b2-48c5-980b-b4732ddc482d",
+    "name": "Kids · Thu",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 4,
+    "startTime": "17:00"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:23:16.977Z",
+  "scenario": "S3",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 25,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:23:16.977Z",
+  "scenario": "S3",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 34,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:23:28.795Z",
+  "scenario": "S3",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 429,
+  "ms": 0,
+  "idempotencyKey": "e73b18d1-c3a6-4c1b-bd90-3b38ee5b2f49",
+  "replay": null,
+  "auth": "…42582c",
+  "injected": "fail 429"
+ },
+ {
+  "at": "2026-10-18T15:23:42.362Z",
+  "scenario": "S3",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 21,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:23:48.927Z",
+  "scenario": "S3",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 429,
+  "ms": 1,
+  "idempotencyKey": "e73b18d1-c3a6-4c1b-bd90-3b38ee5b2f49",
+  "replay": null,
+  "auth": "…42582c",
+  "injected": "fail 429"
+ },
+ {
+  "at": "2026-10-18T15:24:00.953Z",
+  "scenario": "S3",
+  "method": "GET",
+  "path": "/health",
+  "status": 200,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:24:09.054Z",
+  "scenario": "S3",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 200,
+  "ms": 198,
+  "idempotencyKey": "e73b18d1-c3a6-4c1b-bd90-3b38ee5b2f49",
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "utteranceId": "dbcb5b4d-f144-5844-aa4b-64795e695d66",
+   "transcript": "Leo showed excellent stance control today",
+   "cardLines": [
+    "√ Leonardo · praise · stance"
+   ],
+   "coverage": {
+    "covered": 6,
+    "present": 12
+   },
+   "nextStudent": {
+    "id": "15b2fb6c-d32f-4bfa-80ba-fe8039dde8c2",
+    "name": "Sam",
+    "reason": "guard"
+   },
+   "disambiguation": null
+  }
+ },
+ {
+  "at": "2026-10-18T15:24:12.492Z",
+  "scenario": "S3",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 15,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:24:18.962Z",
+  "scenario": "S3",
+  "method": "POST",
+  "path": "/v1/transcribe",
+  "status": 200,
+  "ms": 7,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "transcript": "Ivy had great control in partner drills"
+  }
+ },
+ {
+  "at": "2026-10-18T15:24:18.982Z",
+  "scenario": "S3",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 400,
+  "ms": 0,
+  "idempotencyKey": "63a1f44e-18c5-4ae2-899b-22a5dc4ac50a",
+  "replay": null,
+  "auth": "…42582c",
+  "injected": "fail 400"
+ },
+ {
+  "at": "2026-10-18T15:24:22.758Z",
+  "scenario": "S3",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 200,
+  "ms": 186,
+  "idempotencyKey": "63a1f44e-18c5-4ae2-899b-22a5dc4ac50a",
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "utteranceId": "9839d521-42b9-53ea-beeb-5fd06cf1d6f3",
+   "transcript": "Ivy had great control in partner drills",
+   "cardLines": [
+    "√ Ivy · praise · sparring"
+   ],
+   "coverage": {
+    "covered": 7,
+    "present": 12
+   },
+   "nextStudent": {
+    "id": "15b2fb6c-d32f-4bfa-80ba-fe8039dde8c2",
+    "name": "Sam",
+    "reason": "guard"
+   },
+   "disambiguation": null
+  }
+ },
+ {
+  "at": "2026-10-18T15:24:42.561Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 38,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:24:50.350Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/settings",
+  "status": 200,
+  "ms": 5,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:24:50.361Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/status",
+  "status": 200,
+  "ms": 4,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "aiCallsToday": 0,
+   "aiDailyCap": 300,
+   "sttConfigured": true,
+   "mailMode": "auto",
+   "degraded": false,
+   "degradedReasons": [],
+   "aiCallsRemaining": 300,
+   "aiCallsCounted": "anthropic",
+   "day": "2026-10-18"
+  }
+ },
+ {
+  "at": "2026-10-18T15:24:50.797Z",
+  "scenario": "S4",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": [
+   {
+    "id": "bc6fdf0c-f4b9-433d-8d3e-4f35bfbe0a79",
+    "name": "PT · Mon 6:00",
+    "mode": "personal_training",
+    "modeLabel": "Personal training",
+    "weekday": 1,
+    "startTime": "18:00"
+   },
+   {
+    "id": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+    "name": "Kids · Tue",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 2,
+    "startTime": "17:00"
+   },
+   {
+    "id": "cfc05306-952c-4d4d-915d-bf8b81e1c5bd",
+    "name": "Algebra · Wed 4:00",
+    "mode": "tutoring",
+    "modeLabel": "Tutoring",
+    "weekday": 3,
+    "startTime": "16:00"
+   },
+   {
+    "id": "10034525-c4b2-48c5-980b-b4732ddc482d",
+    "name": "Kids · Thu",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 4,
+    "startTime": "17:00"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:24:50.978Z",
+  "scenario": "S8",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 10,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:24:51.011Z",
+  "scenario": "S8",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 7,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:24:51.019Z",
+  "scenario": "S8",
+  "method": "GET",
+  "path": "/v1/settings",
+  "status": 200,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:24:52.132Z",
+  "scenario": "S8",
+  "method": "POST",
+  "path": "/v1/transcribe",
+  "status": 200,
+  "ms": 6,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "transcript": "Ben listened well in line-up"
+  }
+ },
+ {
+  "at": "2026-10-18T15:24:52.149Z",
+  "scenario": "S8",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 200,
+  "ms": 177,
+  "idempotencyKey": "af7c3b78-4350-4d2d-9919-684a8ccd3db7",
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "utteranceId": "e65e7071-78e5-5b1f-a51b-7058e6cf4ee9",
+   "transcript": "Ben listened well in line-up",
+   "cardLines": [
+    "√ Ben · praise · focus"
+   ],
+   "coverage": {
+    "covered": 8,
+    "present": 12
+   },
+   "nextStudent": {
+    "id": "15b2fb6c-d32f-4bfa-80ba-fe8039dde8c2",
+    "name": "Sam",
+    "reason": "guard"
+   },
+   "disambiguation": null
+  }
+ },
+ {
+  "at": "2026-10-18T15:24:52.339Z",
+  "scenario": "S8",
+  "method": "GET",
+  "path": "/v1/utterances/e65e7071-78e5-5b1f-a51b-7058e6cf4ee9/runs",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": [
+   {
+    "agent": "router",
+    "summary": "Sorted \"Ben listened well in line-up\" into feedback",
+    "status": "ok",
+    "createdAt": "2026-10-18T15:24:52.311Z"
+   },
+   {
+    "agent": "progress",
+    "summary": "Logged praise \"listened well in line-up\" → Ben",
+    "status": "ok",
+    "createdAt": "2026-10-18T15:24:52.322Z"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:24:52.738Z",
+  "scenario": "S8",
+  "method": "POST",
+  "path": "/v1/utterances/e65e7071-78e5-5b1f-a51b-7058e6cf4ee9/undo",
+  "status": 200,
+  "ms": 25,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "body": {},
+  "response": {
+   "ok": true,
+   "reversed": [
+    "Removed Ben note",
+    "Attendance restored (12 present)"
+   ],
+   "cancelled": [],
+   "notReversible": [],
+   "coverage": {
+    "covered": 7,
+    "present": 12
+   }
+  }
+ },
+ {
+  "at": "2026-10-18T15:24:56.558Z",
+  "scenario": "S8",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 200,
+  "ms": 17,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…309dd6",
+  "response": {
+   "utteranceId": "6c22fe8c-d354-425b-9427-2db55ba539ad",
+   "transcript": "everyone is here",
+   "cardLines": [
+    "14 present"
+   ],
+   "coverage": {
+    "covered": 7,
+    "present": 14
+   },
+   "nextStudent": {
+    "id": "15b2fb6c-d32f-4bfa-80ba-fe8039dde8c2",
+    "name": "Sam",
+    "reason": "guard"
+   },
+   "disambiguation": null,
+   "attendanceChanged": true
+  }
+ },
+ {
+  "at": "2026-10-18T15:24:56.589Z",
+  "scenario": "S8",
+  "method": "POST",
+  "path": "/v1/utterances/6c22fe8c-d354-425b-9427-2db55ba539ad/undo",
+  "status": 200,
+  "ms": 12,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…309dd6",
+  "body": {},
+  "response": {
+   "ok": true,
+   "reversed": [
+    "Attendance restored (12 present)"
+   ],
+   "cancelled": [],
+   "notReversible": [],
+   "coverage": {
+    "covered": 7,
+    "present": 12
+   }
+  }
+ },
+ {
+  "at": "2026-10-18T15:24:56.612Z",
+  "scenario": "S8",
+  "method": "POST",
+  "path": "/v1/utterances/6c22fe8c-d354-425b-9427-2db55ba539ad/undo",
+  "status": 409,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…309dd6",
+  "body": {},
+  "response": {
+   "error": "already_undone"
+  }
+ },
+ {
+  "at": "2026-10-18T15:24:56.614Z",
+  "scenario": "S8",
+  "method": "POST",
+  "path": "/v1/utterances/00000000-0000-0000-0000-000000000000/undo",
+  "status": 404,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…309dd6",
+  "body": {},
+  "response": {
+   "error": "utterance not found"
+  }
+ },
+ {
+  "at": "2026-10-18T15:24:56.617Z",
+  "scenario": "S8",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 200,
+  "ms": 170,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…309dd6",
+  "response": {
+   "utteranceId": "d8b5f0d7-c3f9-4106-8e40-3f87f23389c0",
+   "transcript": "Gus bumped his nose in sparring and sat out",
+   "cardLines": [
+    "√ Gus · sparring",
+    "! urgent · parent note drafting"
+   ],
+   "coverage": {
+    "covered": 8,
+    "present": 12
+   },
+   "nextStudent": {
+    "id": "15b2fb6c-d32f-4bfa-80ba-fe8039dde8c2",
+    "name": "Sam",
+    "reason": "guard"
+   },
+   "disambiguation": null
+  }
+ },
+ {
+  "at": "2026-10-18T15:24:56.788Z",
+  "scenario": "S8",
+  "method": "POST",
+  "path": "/v1/utterances/d8b5f0d7-c3f9-4106-8e40-3f87f23389c0/undo",
+  "status": 200,
+  "ms": 13,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…309dd6",
+  "body": {},
+  "response": {
+   "ok": true,
+   "reversed": [
+    "Removed Gus note",
+    "Attendance restored (12 present)"
+   ],
+   "cancelled": [
+    "Cancelled email draft for Gus"
+   ],
+   "notReversible": [],
+   "coverage": {
+    "covered": 7,
+    "present": 12
+   }
+  }
+ },
+ {
+  "at": "2026-10-18T15:25:02.679Z",
+  "scenario": "S9",
+  "method": "POST",
+  "path": "/v1/transcribe",
+  "status": 200,
+  "ms": 9,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "transcript": "Sam hit his head on the mat and sat out"
+  }
+ },
+ {
+  "at": "2026-10-18T15:25:02.700Z",
+  "scenario": "S9",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 200,
+  "ms": 171,
+  "idempotencyKey": "13bcd3c6-c1dc-4cd2-8a47-e132bc0549b6",
+  "replay": null,
+  "auth": "…42582c",
+  "response": {
+   "utteranceId": "8d6cbb12-053e-54a6-9d28-df6108000e6e",
+   "transcript": "Sam hit his head on the mat and sat out",
+   "cardLines": [
+    "√ Sam",
+    "! urgent · parent note drafting"
+   ],
+   "coverage": {
+    "covered": 8,
+    "present": 12
+   },
+   "nextStudent": {
+    "id": "2886505b-a38e-4c38-b0a3-c11f7b9ca044",
+    "name": "Ava",
+    "reason": "guard"
+   },
+   "disambiguation": null
+  },
+  "injected": "response dropped after commit"
+ },
+ {
+  "at": "2026-10-18T15:25:12.714Z",
+  "scenario": "S9",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 15,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:25:22.771Z",
+  "scenario": "S9",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 200,
+  "ms": 8,
+  "idempotencyKey": "13bcd3c6-c1dc-4cd2-8a47-e132bc0549b6",
+  "replay": "true",
+  "auth": "…42582c",
+  "response": {
+   "utteranceId": "8d6cbb12-053e-54a6-9d28-df6108000e6e",
+   "transcript": "Sam hit his head on the mat and sat out",
+   "cardLines": [
+    "√ Sam",
+    "! urgent · parent note drafting"
+   ],
+   "coverage": {
+    "covered": 8,
+    "present": 12
+   },
+   "nextStudent": {
+    "id": "2886505b-a38e-4c38-b0a3-c11f7b9ca044",
+    "name": "Ava",
+    "reason": "guard"
+   },
+   "disambiguation": null
+  }
+ },
+ {
+  "at": "2026-10-18T15:25:26.943Z",
+  "scenario": "S9",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 200,
+  "ms": 177,
+  "idempotencyKey": "47fc6919-f300-449a-9f9a-0c424719b152",
+  "replay": null,
+  "auth": "…309dd6",
+  "response": {
+   "utteranceId": "3ba83e84-3d8f-553b-a7d7-f1bc19332919",
+   "transcript": "Sam hit his head on the mat and sat out",
+   "cardLines": [
+    "√ Sam",
+    "! urgent · parent note drafting"
+   ],
+   "coverage": {
+    "covered": 8,
+    "present": 12
+   },
+   "nextStudent": {
+    "id": "2886505b-a38e-4c38-b0a3-c11f7b9ca044",
+    "name": "Ava",
+    "reason": "guard"
+   },
+   "disambiguation": null
+  },
+  "injected": "response dropped after commit"
+ },
+ {
+  "at": "2026-10-18T15:25:29.631Z",
+  "scenario": "S9",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 200,
+  "ms": 11,
+  "idempotencyKey": "47fc6919-f300-449a-9f9a-0c424719b152",
+  "replay": "true",
+  "auth": "…309dd6",
+  "response": {
+   "utteranceId": "3ba83e84-3d8f-553b-a7d7-f1bc19332919",
+   "transcript": "Sam hit his head on the mat and sat out",
+   "cardLines": [
+    "√ Sam",
+    "! urgent · parent note drafting"
+   ],
+   "coverage": {
+    "covered": 8,
+    "present": 12
+   },
+   "nextStudent": {
+    "id": "2886505b-a38e-4c38-b0a3-c11f7b9ca044",
+    "name": "Ava",
+    "reason": "guard"
+   },
+   "disambiguation": null
+  }
+ },
+ {
+  "at": "2026-10-18T15:25:32.192Z",
+  "scenario": "S10",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 200,
+  "ms": 2538,
+  "idempotencyKey": "3ead78fb-dfaa-4bd5-93dc-4c1767b3b5ab",
+  "replay": null,
+  "auth": "…309dd6",
+  "response": {
+   "utteranceId": "943a8d95-40fb-59b6-8b16-73c965ee34a5",
+   "transcript": "Ben listened well in line-up",
+   "cardLines": [
+    "√ Ben · praise · focus"
+   ],
+   "coverage": {
+    "covered": 9,
+    "present": 12
+   },
+   "nextStudent": {
+    "id": "2886505b-a38e-4c38-b0a3-c11f7b9ca044",
+    "name": "Ava",
+    "reason": "guard"
+   },
+   "disambiguation": null
+  }
+ },
+ {
+  "at": "2026-10-18T15:25:32.494Z",
+  "scenario": "S10",
+  "method": "POST",
+  "path": "/v1/utterance",
+  "status": 409,
+  "ms": 8,
+  "idempotencyKey": "3ead78fb-dfaa-4bd5-93dc-4c1767b3b5ab",
+  "replay": null,
+  "auth": "…309dd6",
+  "response": {
+   "error": "in_progress"
+  }
+ },
+ {
+  "at": "2026-10-18T15:25:36.486Z",
+  "scenario": "S10",
+  "method": "GET",
+  "path": "/health",
+  "status": 200,
+  "ms": 0,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": null
+ },
+ {
+  "at": "2026-10-18T15:25:37.477Z",
+  "scenario": "S10",
+  "method": "POST",
+  "path": "/pair",
+  "status": 200,
+  "ms": 5,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": null,
+  "body": {
+   "code": "E2EA4242"
+  }
+ },
+ {
+  "at": "2026-10-18T15:25:37.486Z",
+  "scenario": "S10",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 200,
+  "ms": 3,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "response": [
+   {
+    "id": "bc6fdf0c-f4b9-433d-8d3e-4f35bfbe0a79",
+    "name": "PT · Mon 6:00",
+    "mode": "personal_training",
+    "modeLabel": "Personal training",
+    "weekday": 1,
+    "startTime": "18:00"
+   },
+   {
+    "id": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+    "name": "Kids · Tue",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 2,
+    "startTime": "17:00"
+   },
+   {
+    "id": "cfc05306-952c-4d4d-915d-bf8b81e1c5bd",
+    "name": "Algebra · Wed 4:00",
+    "mode": "tutoring",
+    "modeLabel": "Tutoring",
+    "weekday": 3,
+    "startTime": "16:00"
+   },
+   {
+    "id": "10034525-c4b2-48c5-980b-b4732ddc482d",
+    "name": "Kids · Thu",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 4,
+    "startTime": "17:00"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:25:37.487Z",
+  "scenario": "S10",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 8,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:25:37.495Z",
+  "scenario": "S10",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 200,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "response": [
+   {
+    "id": "bc6fdf0c-f4b9-433d-8d3e-4f35bfbe0a79",
+    "name": "PT · Mon 6:00",
+    "mode": "personal_training",
+    "modeLabel": "Personal training",
+    "weekday": 1,
+    "startTime": "18:00"
+   },
+   {
+    "id": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+    "name": "Kids · Tue",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 2,
+    "startTime": "17:00"
+   },
+   {
+    "id": "cfc05306-952c-4d4d-915d-bf8b81e1c5bd",
+    "name": "Algebra · Wed 4:00",
+    "mode": "tutoring",
+    "modeLabel": "Tutoring",
+    "weekday": 3,
+    "startTime": "16:00"
+   },
+   {
+    "id": "10034525-c4b2-48c5-980b-b4732ddc482d",
+    "name": "Kids · Thu",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 4,
+    "startTime": "17:00"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:25:37.497Z",
+  "scenario": "S10",
+  "method": "GET",
+  "path": "/v1/onboarding/status",
+  "status": 200,
+  "ms": 3,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:25:37.497Z",
+  "scenario": "S10",
+  "method": "GET",
+  "path": "/v1/review",
+  "status": 200,
+  "ms": 7,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:25:37.517Z",
+  "scenario": "S10",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 4,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:25:37.532Z",
+  "scenario": "S10",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 3,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:25:37.532Z",
+  "scenario": "S10",
+  "method": "GET",
+  "path": "/v1/settings",
+  "status": 200,
+  "ms": 5,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:25:37.630Z",
+  "scenario": "S10",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 5,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:25:37.635Z",
+  "scenario": "S10",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 4,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:25:37.643Z",
+  "scenario": "S10",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 3,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:25:38.469Z",
+  "scenario": "S7",
+  "method": "GET",
+  "path": "/v1/settings",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:25:38.472Z",
+  "scenario": "S7",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:25:41.930Z",
+  "scenario": "S7",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…309dd6"
+ },
+ {
+  "at": "2026-10-18T15:25:41.949Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 200,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "response": [
+   {
+    "id": "bc6fdf0c-f4b9-433d-8d3e-4f35bfbe0a79",
+    "name": "PT · Mon 6:00",
+    "mode": "personal_training",
+    "modeLabel": "Personal training",
+    "weekday": 1,
+    "startTime": "18:00"
+   },
+   {
+    "id": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+    "name": "Kids · Tue",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 2,
+    "startTime": "17:00"
+   },
+   {
+    "id": "cfc05306-952c-4d4d-915d-bf8b81e1c5bd",
+    "name": "Algebra · Wed 4:00",
+    "mode": "tutoring",
+    "modeLabel": "Tutoring",
+    "weekday": 3,
+    "startTime": "16:00"
+   },
+   {
+    "id": "10034525-c4b2-48c5-980b-b4732ddc482d",
+    "name": "Kids · Thu",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 4,
+    "startTime": "17:00"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:25:41.951Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 3,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:25:41.958Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 3,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:25:41.958Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/settings",
+  "status": 200,
+  "ms": 4,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:25:42.103Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/settings",
+  "status": 200,
+  "ms": 3,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:25:42.106Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/status",
+  "status": 200,
+  "ms": 3,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "response": {
+   "aiCallsToday": 0,
+   "aiDailyCap": 300,
+   "sttConfigured": true,
+   "mailMode": "auto",
+   "degraded": false,
+   "degradedReasons": [],
+   "aiCallsRemaining": 300,
+   "aiCallsCounted": "anthropic",
+   "day": "2026-10-18"
+  }
+ },
+ {
+  "at": "2026-10-18T15:25:42.842Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 4,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:25:43.478Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 200,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "response": [
+   {
+    "id": "bc6fdf0c-f4b9-433d-8d3e-4f35bfbe0a79",
+    "name": "PT · Mon 6:00",
+    "mode": "personal_training",
+    "modeLabel": "Personal training",
+    "weekday": 1,
+    "startTime": "18:00"
+   },
+   {
+    "id": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+    "name": "Kids · Tue",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 2,
+    "startTime": "17:00"
+   },
+   {
+    "id": "cfc05306-952c-4d4d-915d-bf8b81e1c5bd",
+    "name": "Algebra · Wed 4:00",
+    "mode": "tutoring",
+    "modeLabel": "Tutoring",
+    "weekday": 3,
+    "startTime": "16:00"
+   },
+   {
+    "id": "10034525-c4b2-48c5-980b-b4732ddc482d",
+    "name": "Kids · Thu",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 4,
+    "startTime": "17:00"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:25:45.097Z",
+  "scenario": "S6",
+  "method": "PATCH",
+  "path": "/v1/classes/10034525-c4b2-48c5-980b-b4732ddc482d",
+  "status": 200,
+  "ms": 7,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "body": {
+   "name": "Kids · Thu (e2e)"
+  },
+  "response": {
+   "id": "10034525-c4b2-48c5-980b-b4732ddc482d",
+   "name": "Kids · Thu (e2e)",
+   "mode": "martial_arts",
+   "modeLabel": "Martial arts",
+   "weekday": 4,
+   "startTime": "17:00"
+  }
+ },
+ {
+  "at": "2026-10-18T15:25:45.106Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 6,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:25:45.112Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 200,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "response": [
+   {
+    "id": "bc6fdf0c-f4b9-433d-8d3e-4f35bfbe0a79",
+    "name": "PT · Mon 6:00",
+    "mode": "personal_training",
+    "modeLabel": "Personal training",
+    "weekday": 1,
+    "startTime": "18:00"
+   },
+   {
+    "id": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+    "name": "Kids · Tue",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 2,
+    "startTime": "17:00"
+   },
+   {
+    "id": "cfc05306-952c-4d4d-915d-bf8b81e1c5bd",
+    "name": "Algebra · Wed 4:00",
+    "mode": "tutoring",
+    "modeLabel": "Tutoring",
+    "weekday": 3,
+    "startTime": "16:00"
+   },
+   {
+    "id": "10034525-c4b2-48c5-980b-b4732ddc482d",
+    "name": "Kids · Thu (e2e)",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 4,
+    "startTime": "17:00"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:25:47.237Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/settings",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:25:47.238Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/status",
+  "status": 200,
+  "ms": 3,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "response": {
+   "aiCallsToday": 0,
+   "aiDailyCap": 300,
+   "sttConfigured": true,
+   "mailMode": "auto",
+   "degraded": false,
+   "degradedReasons": [],
+   "aiCallsRemaining": 300,
+   "aiCallsCounted": "anthropic",
+   "day": "2026-10-18"
+  }
+ },
+ {
+  "at": "2026-10-18T15:25:47.645Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 200,
+  "ms": 10,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "response": [
+   {
+    "id": "bc6fdf0c-f4b9-433d-8d3e-4f35bfbe0a79",
+    "name": "PT · Mon 6:00",
+    "mode": "personal_training",
+    "modeLabel": "Personal training",
+    "weekday": 1,
+    "startTime": "18:00"
+   },
+   {
+    "id": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+    "name": "Kids · Tue",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 2,
+    "startTime": "17:00"
+   },
+   {
+    "id": "cfc05306-952c-4d4d-915d-bf8b81e1c5bd",
+    "name": "Algebra · Wed 4:00",
+    "mode": "tutoring",
+    "modeLabel": "Tutoring",
+    "weekday": 3,
+    "startTime": "16:00"
+   },
+   {
+    "id": "10034525-c4b2-48c5-980b-b4732ddc482d",
+    "name": "Kids · Thu (e2e)",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 4,
+    "startTime": "17:00"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:25:47.649Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 16,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:25:47.666Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/review",
+  "status": 200,
+  "ms": 5,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:25:47.680Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/notes/7f878e87-b4c5-4167-b731-d973fe24d46f/candidates",
+  "status": 200,
+  "ms": 4,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "response": {
+   "classId": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+   "className": "Kids · Tue",
+   "capturedAt": "2026-10-18T15:20:55.539Z",
+   "students": [
+    {
+     "id": "2886505b-a38e-4c38-b0a3-c11f7b9ca044",
+     "name": "Ava Kim",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "dbedcfd6-1e7b-4b65-899e-124b2851a838",
+     "name": "Ben Ortiz",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "119697d2-406f-4faf-bb74-a6504a6637ef",
+     "name": "Cal Wu",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "25215b30-c650-4ade-89e9-b8097a490125",
+     "name": "Dee Park",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "441af041-700f-4d7b-8dfd-fc820dc7d87c",
+     "name": "Eli Shah",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "570dc273-3aea-4815-abc4-3cea1d7df07d",
+     "name": "Fay Ng",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "bf0a23eb-76f2-49c7-8167-bcaf8b7254fb",
+     "name": "Gus Hill",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "e56b61d6-4e00-45a0-8a5e-0c6c1b4e831d",
+     "name": "Ivy Cruz",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "68a78f3f-b7f3-4c0b-9e8c-af737eb48c74",
+     "name": "Jake Ross",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "10943afb-7c8f-4348-baed-431944550d9b",
+     "name": "Leonardo Diaz",
+     "nickname": "Leo",
+     "aliases": []
+    },
+    {
+     "id": "7cb61e5d-a8c5-497f-8b27-d97144c60155",
+     "name": "Maya Chen",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "e8141a2b-ebee-45fb-aecc-e5e409824ea3",
+     "name": "Mia Lopez",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "64dd6d7c-7015-4c66-960c-a747e0ff2058",
+     "name": "Priya Rao",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "15b2fb6c-d32f-4bfa-80ba-fe8039dde8c2",
+     "name": "Sam Lee",
+     "nickname": null,
+     "aliases": []
+    }
+   ]
+  }
+ },
+ {
+  "at": "2026-10-18T15:25:51.446Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 200,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "response": [
+   {
+    "id": "bc6fdf0c-f4b9-433d-8d3e-4f35bfbe0a79",
+    "name": "PT · Mon 6:00",
+    "mode": "personal_training",
+    "modeLabel": "Personal training",
+    "weekday": 1,
+    "startTime": "18:00"
+   },
+   {
+    "id": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+    "name": "Kids · Tue",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 2,
+    "startTime": "17:00"
+   },
+   {
+    "id": "cfc05306-952c-4d4d-915d-bf8b81e1c5bd",
+    "name": "Algebra · Wed 4:00",
+    "mode": "tutoring",
+    "modeLabel": "Tutoring",
+    "weekday": 3,
+    "startTime": "16:00"
+   },
+   {
+    "id": "10034525-c4b2-48c5-980b-b4732ddc482d",
+    "name": "Kids · Thu (e2e)",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 4,
+    "startTime": "17:00"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:25:51.446Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/students",
+  "status": 200,
+  "ms": 3,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "response": [
+   {
+    "id": "1dfc2f74-38f9-4d6d-9cdf-d36b1d432f05",
+    "name": "Ava Brooks",
+    "nickname": null,
+    "belt": "grade 8",
+    "aliases": []
+   },
+   {
+    "id": "2886505b-a38e-4c38-b0a3-c11f7b9ca044",
+    "name": "Ava Kim",
+    "nickname": null,
+    "belt": "green",
+    "aliases": []
+   },
+   {
+    "id": "dbedcfd6-1e7b-4b65-899e-124b2851a838",
+    "name": "Ben Ortiz",
+    "nickname": null,
+    "belt": "white",
+    "aliases": []
+   },
+   {
+    "id": "119697d2-406f-4faf-bb74-a6504a6637ef",
+    "name": "Cal Wu",
+    "nickname": null,
+    "belt": "yellow",
+    "aliases": []
+   },
+   {
+    "id": "25215b30-c650-4ade-89e9-b8097a490125",
+    "name": "Dee Park",
+    "nickname": null,
+    "belt": "orange",
+    "aliases": []
+   },
+   {
+    "id": "39d25b49-cc69-4bcb-8f4b-005248e1cf4a",
+    "name": "Derek Owens",
+    "nickname": null,
+    "belt": "client",
+    "aliases": []
+   },
+   {
+    "id": "441af041-700f-4d7b-8dfd-fc820dc7d87c",
+    "name": "Eli Shah",
+    "nickname": null,
+    "belt": "white",
+    "aliases": []
+   },
+   {
+    "id": "570dc273-3aea-4815-abc4-3cea1d7df07d",
+    "name": "Fay Ng",
+    "nickname": null,
+    "belt": "yellow",
+    "aliases": []
+   },
+   {
+    "id": "bf0a23eb-76f2-49c7-8167-bcaf8b7254fb",
+    "name": "Gus Hill",
+    "nickname": null,
+    "belt": "green",
+    "aliases": []
+   },
+   {
+    "id": "e56b61d6-4e00-45a0-8a5e-0c6c1b4e831d",
+    "name": "Ivy Cruz",
+    "nickname": null,
+    "belt": "orange",
+    "aliases": []
+   },
+   {
+    "id": "68a78f3f-b7f3-4c0b-9e8c-af737eb48c74",
+    "name": "Jake Ross",
+    "nickname": null,
+    "belt": "white",
+    "aliases": []
+   },
+   {
+    "id": "8f531a76-6df7-464d-bdae-1c508eac1e97",
+    "name": "Lena Fischer",
+    "nickname": null,
+    "belt": "client",
+    "aliases": []
+   },
+   {
+    "id": "10943afb-7c8f-4348-baed-431944550d9b",
+    "name": "Leonardo Diaz",
+    "nickname": "Leo",
+    "belt": "yellow",
+    "aliases": []
+   },
+   {
+    "id": "566b2b8c-ee46-498a-b6da-766be3f45f2c",
+    "name": "Maria Gomez",
+    "nickname": null,
+    "belt": "client",
+    "aliases": []
+   },
+   {
+    "id": "7cb61e5d-a8c5-497f-8b27-d97144c60155",
+    "name": "Maya Chen",
+    "nickname": null,
+    "belt": "yellow",
+    "aliases": []
+   },
+   {
+    "id": "e8141a2b-ebee-45fb-aecc-e5e409824ea3",
+    "name": "Mia Lopez",
+    "nickname": null,
+    "belt": "white",
+    "aliases": []
+   },
+   {
+    "id": "25465b43-270a-4a5d-92d2-a2062638b18f",
+    "name": "Noah Kim",
+    "nickname": null,
+    "belt": "grade 7",
+    "aliases": []
+   },
+   {
+    "id": "64dd6d7c-7015-4c66-960c-a747e0ff2058",
+    "name": "Priya Rao",
+    "nickname": null,
+    "belt": "orange",
+    "aliases": []
+   },
+   {
+    "id": "af795c67-0ce2-4207-a34d-2883ada066a3",
+    "name": "Priyanka Shah",
+    "nickname": null,
+    "belt": "client",
+    "aliases": []
+   },
+   {
+    "id": "15b2fb6c-d32f-4bfa-80ba-fe8039dde8c2",
+    "name": "Sam Lee",
+    "nickname": null,
+    "belt": "green",
+    "aliases": []
+   },
+   {
+    "id": "ec2e796a-a322-401b-b1af-eed5b48f8c63",
+    "name": "Sam Patel",
+    "nickname": null,
+    "belt": "grade 8",
+    "aliases": []
+   },
+   {
+    "id": "305d532b-ee19-4bac-bcda-9f73d69eb99e",
+    "name": "Tom Becker",
+    "nickname": null,
+    "belt": "client",
+    "aliases": []
+   },
+   {
+    "id": "e7fbd9fc-3cfa-4ab3-93d0-d5d69ead8e49",
+    "name": "Zoe Alvarez",
+    "nickname": null,
+    "belt": "grade 8",
+    "aliases": []
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:25:51.604Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "response": [
+   {
+    "id": "bc6fdf0c-f4b9-433d-8d3e-4f35bfbe0a79",
+    "name": "PT · Mon 6:00",
+    "mode": "personal_training",
+    "modeLabel": "Personal training",
+    "weekday": 1,
+    "startTime": "18:00"
+   },
+   {
+    "id": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+    "name": "Kids · Tue",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 2,
+    "startTime": "17:00"
+   },
+   {
+    "id": "cfc05306-952c-4d4d-915d-bf8b81e1c5bd",
+    "name": "Algebra · Wed 4:00",
+    "mode": "tutoring",
+    "modeLabel": "Tutoring",
+    "weekday": 3,
+    "startTime": "16:00"
+   },
+   {
+    "id": "10034525-c4b2-48c5-980b-b4732ddc482d",
+    "name": "Kids · Thu (e2e)",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 4,
+    "startTime": "17:00"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:25:52.617Z",
+  "scenario": "S6",
+  "method": "POST",
+  "path": "/v1/students",
+  "status": 201,
+  "ms": 4,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "body": {
+   "name": "Nova Testcase",
+   "classIds": [
+    "a1cb66fe-b240-4abb-97b9-7a4e5db1d511"
+   ],
+   "guardians": [
+    {
+     "name": "Testcase family",
+     "email": "nova-guardian@example.invalid"
+    }
+   ]
+  },
+  "response": {
+   "id": "480b90d2-b152-42b0-b525-7ed18646d6a9",
+   "name": "Nova Testcase",
+   "nickname": null,
+   "belt": "new",
+   "aliases": [],
+   "rankSince": null,
+   "classIds": [
+    "a1cb66fe-b240-4abb-97b9-7a4e5db1d511"
+   ],
+   "guardians": [
+    {
+     "name": "Testcase family",
+     "email": "nova-guardian@example.invalid"
+    }
+   ]
+  }
+ },
+ {
+  "at": "2026-10-18T15:25:52.624Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/students",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "response": [
+   {
+    "id": "1dfc2f74-38f9-4d6d-9cdf-d36b1d432f05",
+    "name": "Ava Brooks",
+    "nickname": null,
+    "belt": "grade 8",
+    "aliases": []
+   },
+   {
+    "id": "2886505b-a38e-4c38-b0a3-c11f7b9ca044",
+    "name": "Ava Kim",
+    "nickname": null,
+    "belt": "green",
+    "aliases": []
+   },
+   {
+    "id": "dbedcfd6-1e7b-4b65-899e-124b2851a838",
+    "name": "Ben Ortiz",
+    "nickname": null,
+    "belt": "white",
+    "aliases": []
+   },
+   {
+    "id": "119697d2-406f-4faf-bb74-a6504a6637ef",
+    "name": "Cal Wu",
+    "nickname": null,
+    "belt": "yellow",
+    "aliases": []
+   },
+   {
+    "id": "25215b30-c650-4ade-89e9-b8097a490125",
+    "name": "Dee Park",
+    "nickname": null,
+    "belt": "orange",
+    "aliases": []
+   },
+   {
+    "id": "39d25b49-cc69-4bcb-8f4b-005248e1cf4a",
+    "name": "Derek Owens",
+    "nickname": null,
+    "belt": "client",
+    "aliases": []
+   },
+   {
+    "id": "441af041-700f-4d7b-8dfd-fc820dc7d87c",
+    "name": "Eli Shah",
+    "nickname": null,
+    "belt": "white",
+    "aliases": []
+   },
+   {
+    "id": "570dc273-3aea-4815-abc4-3cea1d7df07d",
+    "name": "Fay Ng",
+    "nickname": null,
+    "belt": "yellow",
+    "aliases": []
+   },
+   {
+    "id": "bf0a23eb-76f2-49c7-8167-bcaf8b7254fb",
+    "name": "Gus Hill",
+    "nickname": null,
+    "belt": "green",
+    "aliases": []
+   },
+   {
+    "id": "e56b61d6-4e00-45a0-8a5e-0c6c1b4e831d",
+    "name": "Ivy Cruz",
+    "nickname": null,
+    "belt": "orange",
+    "aliases": []
+   },
+   {
+    "id": "68a78f3f-b7f3-4c0b-9e8c-af737eb48c74",
+    "name": "Jake Ross",
+    "nickname": null,
+    "belt": "white",
+    "aliases": []
+   },
+   {
+    "id": "8f531a76-6df7-464d-bdae-1c508eac1e97",
+    "name": "Lena Fischer",
+    "nickname": null,
+    "belt": "client",
+    "aliases": []
+   },
+   {
+    "id": "10943afb-7c8f-4348-baed-431944550d9b",
+    "name": "Leonardo Diaz",
+    "nickname": "Leo",
+    "belt": "yellow",
+    "aliases": []
+   },
+   {
+    "id": "566b2b8c-ee46-498a-b6da-766be3f45f2c",
+    "name": "Maria Gomez",
+    "nickname": null,
+    "belt": "client",
+    "aliases": []
+   },
+   {
+    "id": "7cb61e5d-a8c5-497f-8b27-d97144c60155",
+    "name": "Maya Chen",
+    "nickname": null,
+    "belt": "yellow",
+    "aliases": []
+   },
+   {
+    "id": "e8141a2b-ebee-45fb-aecc-e5e409824ea3",
+    "name": "Mia Lopez",
+    "nickname": null,
+    "belt": "white",
+    "aliases": []
+   },
+   {
+    "id": "25465b43-270a-4a5d-92d2-a2062638b18f",
+    "name": "Noah Kim",
+    "nickname": null,
+    "belt": "grade 7",
+    "aliases": []
+   },
+   {
+    "id": "480b90d2-b152-42b0-b525-7ed18646d6a9",
+    "name": "Nova Testcase",
+    "nickname": null,
+    "belt": "new",
+    "aliases": []
+   },
+   {
+    "id": "64dd6d7c-7015-4c66-960c-a747e0ff2058",
+    "name": "Priya Rao",
+    "nickname": null,
+    "belt": "orange",
+    "aliases": []
+   },
+   {
+    "id": "af795c67-0ce2-4207-a34d-2883ada066a3",
+    "name": "Priyanka Shah",
+    "nickname": null,
+    "belt": "client",
+    "aliases": []
+   },
+   {
+    "id": "15b2fb6c-d32f-4bfa-80ba-fe8039dde8c2",
+    "name": "Sam Lee",
+    "nickname": null,
+    "belt": "green",
+    "aliases": []
+   },
+   {
+    "id": "ec2e796a-a322-401b-b1af-eed5b48f8c63",
+    "name": "Sam Patel",
+    "nickname": null,
+    "belt": "grade 8",
+    "aliases": []
+   },
+   {
+    "id": "305d532b-ee19-4bac-bcda-9f73d69eb99e",
+    "name": "Tom Becker",
+    "nickname": null,
+    "belt": "client",
+    "aliases": []
+   },
+   {
+    "id": "e7fbd9fc-3cfa-4ab3-93d0-d5d69ead8e49",
+    "name": "Zoe Alvarez",
+    "nickname": null,
+    "belt": "grade 8",
+    "aliases": []
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:25:54.762Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/students/441af041-700f-4d7b-8dfd-fc820dc7d87c",
+  "status": 200,
+  "ms": 6,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "response": {
+   "id": "441af041-700f-4d7b-8dfd-fc820dc7d87c",
+   "name": "Eli Shah",
+   "belt": "white",
+   "age": 7,
+   "classCount": 13,
+   "issues": [],
+   "notes": [],
+   "rankSince": "2026-09-27",
+   "metrics": [],
+   "brief": {
+    "name": "Eli Shah",
+    "lines": [
+     "Eli · white · 3 wk",
+     "Att ●●●●●● steady"
+    ]
+   },
+   "reportCard": null,
+   "nickname": null,
+   "aliases": [],
+   "guardians": [
+    {
+     "name": "Shah family",
+     "email": "guardian-10@example.invalid"
+    }
+   ],
+   "classIds": [
+    "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+    "10034525-c4b2-48c5-980b-b4732ddc482d"
+   ]
+  }
+ },
+ {
+  "at": "2026-10-18T15:25:54.774Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/students",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "response": [
+   {
+    "id": "1dfc2f74-38f9-4d6d-9cdf-d36b1d432f05",
+    "name": "Ava Brooks",
+    "nickname": null,
+    "belt": "grade 8",
+    "aliases": []
+   },
+   {
+    "id": "2886505b-a38e-4c38-b0a3-c11f7b9ca044",
+    "name": "Ava Kim",
+    "nickname": null,
+    "belt": "green",
+    "aliases": []
+   },
+   {
+    "id": "dbedcfd6-1e7b-4b65-899e-124b2851a838",
+    "name": "Ben Ortiz",
+    "nickname": null,
+    "belt": "white",
+    "aliases": []
+   },
+   {
+    "id": "119697d2-406f-4faf-bb74-a6504a6637ef",
+    "name": "Cal Wu",
+    "nickname": null,
+    "belt": "yellow",
+    "aliases": []
+   },
+   {
+    "id": "25215b30-c650-4ade-89e9-b8097a490125",
+    "name": "Dee Park",
+    "nickname": null,
+    "belt": "orange",
+    "aliases": []
+   },
+   {
+    "id": "39d25b49-cc69-4bcb-8f4b-005248e1cf4a",
+    "name": "Derek Owens",
+    "nickname": null,
+    "belt": "client",
+    "aliases": []
+   },
+   {
+    "id": "441af041-700f-4d7b-8dfd-fc820dc7d87c",
+    "name": "Eli Shah",
+    "nickname": null,
+    "belt": "white",
+    "aliases": []
+   },
+   {
+    "id": "570dc273-3aea-4815-abc4-3cea1d7df07d",
+    "name": "Fay Ng",
+    "nickname": null,
+    "belt": "yellow",
+    "aliases": []
+   },
+   {
+    "id": "bf0a23eb-76f2-49c7-8167-bcaf8b7254fb",
+    "name": "Gus Hill",
+    "nickname": null,
+    "belt": "green",
+    "aliases": []
+   },
+   {
+    "id": "e56b61d6-4e00-45a0-8a5e-0c6c1b4e831d",
+    "name": "Ivy Cruz",
+    "nickname": null,
+    "belt": "orange",
+    "aliases": []
+   },
+   {
+    "id": "68a78f3f-b7f3-4c0b-9e8c-af737eb48c74",
+    "name": "Jake Ross",
+    "nickname": null,
+    "belt": "white",
+    "aliases": []
+   },
+   {
+    "id": "8f531a76-6df7-464d-bdae-1c508eac1e97",
+    "name": "Lena Fischer",
+    "nickname": null,
+    "belt": "client",
+    "aliases": []
+   },
+   {
+    "id": "10943afb-7c8f-4348-baed-431944550d9b",
+    "name": "Leonardo Diaz",
+    "nickname": "Leo",
+    "belt": "yellow",
+    "aliases": []
+   },
+   {
+    "id": "566b2b8c-ee46-498a-b6da-766be3f45f2c",
+    "name": "Maria Gomez",
+    "nickname": null,
+    "belt": "client",
+    "aliases": []
+   },
+   {
+    "id": "7cb61e5d-a8c5-497f-8b27-d97144c60155",
+    "name": "Maya Chen",
+    "nickname": null,
+    "belt": "yellow",
+    "aliases": []
+   },
+   {
+    "id": "e8141a2b-ebee-45fb-aecc-e5e409824ea3",
+    "name": "Mia Lopez",
+    "nickname": null,
+    "belt": "white",
+    "aliases": []
+   },
+   {
+    "id": "25465b43-270a-4a5d-92d2-a2062638b18f",
+    "name": "Noah Kim",
+    "nickname": null,
+    "belt": "grade 7",
+    "aliases": []
+   },
+   {
+    "id": "480b90d2-b152-42b0-b525-7ed18646d6a9",
+    "name": "Nova Testcase",
+    "nickname": null,
+    "belt": "new",
+    "aliases": []
+   },
+   {
+    "id": "64dd6d7c-7015-4c66-960c-a747e0ff2058",
+    "name": "Priya Rao",
+    "nickname": null,
+    "belt": "orange",
+    "aliases": []
+   },
+   {
+    "id": "af795c67-0ce2-4207-a34d-2883ada066a3",
+    "name": "Priyanka Shah",
+    "nickname": null,
+    "belt": "client",
+    "aliases": []
+   },
+   {
+    "id": "15b2fb6c-d32f-4bfa-80ba-fe8039dde8c2",
+    "name": "Sam Lee",
+    "nickname": null,
+    "belt": "green",
+    "aliases": []
+   },
+   {
+    "id": "ec2e796a-a322-401b-b1af-eed5b48f8c63",
+    "name": "Sam Patel",
+    "nickname": null,
+    "belt": "grade 8",
+    "aliases": []
+   },
+   {
+    "id": "305d532b-ee19-4bac-bcda-9f73d69eb99e",
+    "name": "Tom Becker",
+    "nickname": null,
+    "belt": "client",
+    "aliases": []
+   },
+   {
+    "id": "e7fbd9fc-3cfa-4ab3-93d0-d5d69ead8e49",
+    "name": "Zoe Alvarez",
+    "nickname": null,
+    "belt": "grade 8",
+    "aliases": []
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:25:54.915Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 200,
+  "ms": 3,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "response": [
+   {
+    "id": "bc6fdf0c-f4b9-433d-8d3e-4f35bfbe0a79",
+    "name": "PT · Mon 6:00",
+    "mode": "personal_training",
+    "modeLabel": "Personal training",
+    "weekday": 1,
+    "startTime": "18:00"
+   },
+   {
+    "id": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+    "name": "Kids · Tue",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 2,
+    "startTime": "17:00"
+   },
+   {
+    "id": "cfc05306-952c-4d4d-915d-bf8b81e1c5bd",
+    "name": "Algebra · Wed 4:00",
+    "mode": "tutoring",
+    "modeLabel": "Tutoring",
+    "weekday": 3,
+    "startTime": "16:00"
+   },
+   {
+    "id": "10034525-c4b2-48c5-980b-b4732ddc482d",
+    "name": "Kids · Thu (e2e)",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 4,
+    "startTime": "17:00"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:25:55.713Z",
+  "scenario": "S6",
+  "method": "PATCH",
+  "path": "/v1/students/441af041-700f-4d7b-8dfd-fc820dc7d87c",
+  "status": 200,
+  "ms": 4,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "body": {
+   "nickname": "Eli-E2E"
+  },
+  "response": {
+   "id": "441af041-700f-4d7b-8dfd-fc820dc7d87c",
+   "name": "Eli Shah",
+   "nickname": "Eli-E2E",
+   "belt": "white",
+   "aliases": [],
+   "rankSince": "2026-09-27",
+   "classIds": [
+    "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+    "10034525-c4b2-48c5-980b-b4732ddc482d"
+   ],
+   "guardians": [
+    {
+     "name": "Shah family",
+     "email": "guardian-10@example.invalid"
+    }
+   ]
+  }
+ },
+ {
+  "at": "2026-10-18T15:25:55.720Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/students/441af041-700f-4d7b-8dfd-fc820dc7d87c",
+  "status": 200,
+  "ms": 6,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "response": {
+   "id": "441af041-700f-4d7b-8dfd-fc820dc7d87c",
+   "name": "Eli Shah",
+   "belt": "white",
+   "age": 7,
+   "classCount": 13,
+   "issues": [],
+   "notes": [],
+   "rankSince": "2026-09-27",
+   "metrics": [],
+   "brief": {
+    "name": "Eli Shah",
+    "lines": [
+     "Eli · white · 3 wk",
+     "Att ●●●●●● steady"
+    ]
+   },
+   "reportCard": null,
+   "nickname": "Eli-E2E",
+   "aliases": [],
+   "guardians": [
+    {
+     "name": "Shah family",
+     "email": "guardian-10@example.invalid"
+    }
+   ],
+   "classIds": [
+    "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+    "10034525-c4b2-48c5-980b-b4732ddc482d"
+   ]
+  }
+ },
+ {
+  "at": "2026-10-18T15:25:57.494Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/review",
+  "status": 200,
+  "ms": 12,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:25:58.792Z",
+  "scenario": "S6",
+  "method": "DELETE",
+  "path": "/v1/students/441af041-700f-4d7b-8dfd-fc820dc7d87c",
+  "status": 200,
+  "ms": 7,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "response": {
+   "ok": true
+  }
+ },
+ {
+  "at": "2026-10-18T15:25:58.801Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/students",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "response": [
+   {
+    "id": "1dfc2f74-38f9-4d6d-9cdf-d36b1d432f05",
+    "name": "Ava Brooks",
+    "nickname": null,
+    "belt": "grade 8",
+    "aliases": []
+   },
+   {
+    "id": "2886505b-a38e-4c38-b0a3-c11f7b9ca044",
+    "name": "Ava Kim",
+    "nickname": null,
+    "belt": "green",
+    "aliases": []
+   },
+   {
+    "id": "dbedcfd6-1e7b-4b65-899e-124b2851a838",
+    "name": "Ben Ortiz",
+    "nickname": null,
+    "belt": "white",
+    "aliases": []
+   },
+   {
+    "id": "119697d2-406f-4faf-bb74-a6504a6637ef",
+    "name": "Cal Wu",
+    "nickname": null,
+    "belt": "yellow",
+    "aliases": []
+   },
+   {
+    "id": "25215b30-c650-4ade-89e9-b8097a490125",
+    "name": "Dee Park",
+    "nickname": null,
+    "belt": "orange",
+    "aliases": []
+   },
+   {
+    "id": "39d25b49-cc69-4bcb-8f4b-005248e1cf4a",
+    "name": "Derek Owens",
+    "nickname": null,
+    "belt": "client",
+    "aliases": []
+   },
+   {
+    "id": "570dc273-3aea-4815-abc4-3cea1d7df07d",
+    "name": "Fay Ng",
+    "nickname": null,
+    "belt": "yellow",
+    "aliases": []
+   },
+   {
+    "id": "bf0a23eb-76f2-49c7-8167-bcaf8b7254fb",
+    "name": "Gus Hill",
+    "nickname": null,
+    "belt": "green",
+    "aliases": []
+   },
+   {
+    "id": "e56b61d6-4e00-45a0-8a5e-0c6c1b4e831d",
+    "name": "Ivy Cruz",
+    "nickname": null,
+    "belt": "orange",
+    "aliases": []
+   },
+   {
+    "id": "68a78f3f-b7f3-4c0b-9e8c-af737eb48c74",
+    "name": "Jake Ross",
+    "nickname": null,
+    "belt": "white",
+    "aliases": []
+   },
+   {
+    "id": "8f531a76-6df7-464d-bdae-1c508eac1e97",
+    "name": "Lena Fischer",
+    "nickname": null,
+    "belt": "client",
+    "aliases": []
+   },
+   {
+    "id": "10943afb-7c8f-4348-baed-431944550d9b",
+    "name": "Leonardo Diaz",
+    "nickname": "Leo",
+    "belt": "yellow",
+    "aliases": []
+   },
+   {
+    "id": "566b2b8c-ee46-498a-b6da-766be3f45f2c",
+    "name": "Maria Gomez",
+    "nickname": null,
+    "belt": "client",
+    "aliases": []
+   },
+   {
+    "id": "7cb61e5d-a8c5-497f-8b27-d97144c60155",
+    "name": "Maya Chen",
+    "nickname": null,
+    "belt": "yellow",
+    "aliases": []
+   },
+   {
+    "id": "e8141a2b-ebee-45fb-aecc-e5e409824ea3",
+    "name": "Mia Lopez",
+    "nickname": null,
+    "belt": "white",
+    "aliases": []
+   },
+   {
+    "id": "25465b43-270a-4a5d-92d2-a2062638b18f",
+    "name": "Noah Kim",
+    "nickname": null,
+    "belt": "grade 7",
+    "aliases": []
+   },
+   {
+    "id": "480b90d2-b152-42b0-b525-7ed18646d6a9",
+    "name": "Nova Testcase",
+    "nickname": null,
+    "belt": "new",
+    "aliases": []
+   },
+   {
+    "id": "64dd6d7c-7015-4c66-960c-a747e0ff2058",
+    "name": "Priya Rao",
+    "nickname": null,
+    "belt": "orange",
+    "aliases": []
+   },
+   {
+    "id": "af795c67-0ce2-4207-a34d-2883ada066a3",
+    "name": "Priyanka Shah",
+    "nickname": null,
+    "belt": "client",
+    "aliases": []
+   },
+   {
+    "id": "15b2fb6c-d32f-4bfa-80ba-fe8039dde8c2",
+    "name": "Sam Lee",
+    "nickname": null,
+    "belt": "green",
+    "aliases": []
+   },
+   {
+    "id": "ec2e796a-a322-401b-b1af-eed5b48f8c63",
+    "name": "Sam Patel",
+    "nickname": null,
+    "belt": "grade 8",
+    "aliases": []
+   },
+   {
+    "id": "305d532b-ee19-4bac-bcda-9f73d69eb99e",
+    "name": "Tom Becker",
+    "nickname": null,
+    "belt": "client",
+    "aliases": []
+   },
+   {
+    "id": "e7fbd9fc-3cfa-4ab3-93d0-d5d69ead8e49",
+    "name": "Zoe Alvarez",
+    "nickname": null,
+    "belt": "grade 8",
+    "aliases": []
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:26:00.942Z",
+  "scenario": "S6",
+  "method": "POST",
+  "path": "/pair",
+  "status": 200,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": null,
+  "body": {
+   "code": "E2EA4242"
+  }
+ },
+ {
+  "at": "2026-10-18T15:26:00.946Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "response": [
+   {
+    "id": "bc6fdf0c-f4b9-433d-8d3e-4f35bfbe0a79",
+    "name": "PT · Mon 6:00",
+    "mode": "personal_training",
+    "modeLabel": "Personal training",
+    "weekday": 1,
+    "startTime": "18:00"
+   },
+   {
+    "id": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+    "name": "Kids · Tue",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 2,
+    "startTime": "17:00"
+   },
+   {
+    "id": "cfc05306-952c-4d4d-915d-bf8b81e1c5bd",
+    "name": "Algebra · Wed 4:00",
+    "mode": "tutoring",
+    "modeLabel": "Tutoring",
+    "weekday": 3,
+    "startTime": "16:00"
+   },
+   {
+    "id": "10034525-c4b2-48c5-980b-b4732ddc482d",
+    "name": "Kids · Thu (e2e)",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 4,
+    "startTime": "17:00"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:26:00.948Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 4,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:26:00.954Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/insights",
+  "status": 200,
+  "ms": 3,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:26:00.954Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/settings",
+  "status": 200,
+  "ms": 4,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:26:01.100Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/settings",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a"
+ },
+ {
+  "at": "2026-10-18T15:26:01.100Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/status",
+  "status": 200,
+  "ms": 4,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "response": {
+   "aiCallsToday": 0,
+   "aiDailyCap": 300,
+   "sttConfigured": true,
+   "mailMode": "auto",
+   "degraded": false,
+   "degradedReasons": [],
+   "aiCallsRemaining": 300,
+   "aiCallsCounted": "anthropic",
+   "day": "2026-10-18"
+  }
+ },
+ {
+  "at": "2026-10-18T15:26:02.186Z",
+  "scenario": "S6",
+  "method": "POST",
+  "path": "/v1/tokens/revoke-others",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "body": {}
+ },
+ {
+  "at": "2026-10-18T15:26:04.309Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 401,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…729a45",
+  "response": {
+   "error": "bad token"
+  }
+ },
+ {
+  "at": "2026-10-18T15:26:04.310Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 200,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "response": [
+   {
+    "id": "bc6fdf0c-f4b9-433d-8d3e-4f35bfbe0a79",
+    "name": "PT · Mon 6:00",
+    "mode": "personal_training",
+    "modeLabel": "Personal training",
+    "weekday": 1,
+    "startTime": "18:00"
+   },
+   {
+    "id": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+    "name": "Kids · Tue",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 2,
+    "startTime": "17:00"
+   },
+   {
+    "id": "cfc05306-952c-4d4d-915d-bf8b81e1c5bd",
+    "name": "Algebra · Wed 4:00",
+    "mode": "tutoring",
+    "modeLabel": "Tutoring",
+    "weekday": 3,
+    "startTime": "16:00"
+   },
+   {
+    "id": "10034525-c4b2-48c5-980b-b4732ddc482d",
+    "name": "Kids · Thu (e2e)",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 4,
+    "startTime": "17:00"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:26:04.363Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/review",
+  "status": 401,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…42582c"
+ },
+ {
+  "at": "2026-10-18T15:26:05.565Z",
+  "scenario": "S6",
+  "method": "POST",
+  "path": "/pair",
+  "status": 200,
+  "ms": 10,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": null,
+  "body": {
+   "code": "E2EA4242"
+  }
+ },
+ {
+  "at": "2026-10-18T15:26:05.587Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 200,
+  "ms": 3,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…cc0ec3",
+  "response": [
+   {
+    "id": "bc6fdf0c-f4b9-433d-8d3e-4f35bfbe0a79",
+    "name": "PT · Mon 6:00",
+    "mode": "personal_training",
+    "modeLabel": "Personal training",
+    "weekday": 1,
+    "startTime": "18:00"
+   },
+   {
+    "id": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+    "name": "Kids · Tue",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 2,
+    "startTime": "17:00"
+   },
+   {
+    "id": "cfc05306-952c-4d4d-915d-bf8b81e1c5bd",
+    "name": "Algebra · Wed 4:00",
+    "mode": "tutoring",
+    "modeLabel": "Tutoring",
+    "weekday": 3,
+    "startTime": "16:00"
+   },
+   {
+    "id": "10034525-c4b2-48c5-980b-b4732ddc482d",
+    "name": "Kids · Thu (e2e)",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 4,
+    "startTime": "17:00"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:26:05.592Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 200,
+  "ms": 9,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…cc0ec3"
+ },
+ {
+  "at": "2026-10-18T15:26:05.602Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/review",
+  "status": 200,
+  "ms": 4,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…cc0ec3"
+ },
+ {
+  "at": "2026-10-18T15:26:05.606Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/onboarding/status",
+  "status": 200,
+  "ms": 3,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…cc0ec3"
+ },
+ {
+  "at": "2026-10-18T15:26:05.606Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/review",
+  "status": 200,
+  "ms": 8,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…cc0ec3"
+ },
+ {
+  "at": "2026-10-18T15:26:05.634Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/notes/7f878e87-b4c5-4167-b731-d973fe24d46f/candidates",
+  "status": 200,
+  "ms": 4,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…cc0ec3",
+  "response": {
+   "classId": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+   "className": "Kids · Tue",
+   "capturedAt": "2026-10-18T15:20:55.539Z",
+   "students": [
+    {
+     "id": "2886505b-a38e-4c38-b0a3-c11f7b9ca044",
+     "name": "Ava Kim",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "dbedcfd6-1e7b-4b65-899e-124b2851a838",
+     "name": "Ben Ortiz",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "119697d2-406f-4faf-bb74-a6504a6637ef",
+     "name": "Cal Wu",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "25215b30-c650-4ade-89e9-b8097a490125",
+     "name": "Dee Park",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "570dc273-3aea-4815-abc4-3cea1d7df07d",
+     "name": "Fay Ng",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "bf0a23eb-76f2-49c7-8167-bcaf8b7254fb",
+     "name": "Gus Hill",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "e56b61d6-4e00-45a0-8a5e-0c6c1b4e831d",
+     "name": "Ivy Cruz",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "68a78f3f-b7f3-4c0b-9e8c-af737eb48c74",
+     "name": "Jake Ross",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "10943afb-7c8f-4348-baed-431944550d9b",
+     "name": "Leonardo Diaz",
+     "nickname": "Leo",
+     "aliases": []
+    },
+    {
+     "id": "7cb61e5d-a8c5-497f-8b27-d97144c60155",
+     "name": "Maya Chen",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "e8141a2b-ebee-45fb-aecc-e5e409824ea3",
+     "name": "Mia Lopez",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "480b90d2-b152-42b0-b525-7ed18646d6a9",
+     "name": "Nova Testcase",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "64dd6d7c-7015-4c66-960c-a747e0ff2058",
+     "name": "Priya Rao",
+     "nickname": null,
+     "aliases": []
+    },
+    {
+     "id": "15b2fb6c-d32f-4bfa-80ba-fe8039dde8c2",
+     "name": "Sam Lee",
+     "nickname": null,
+     "aliases": []
+    }
+   ]
+  }
+ },
+ {
+  "at": "2026-10-18T15:26:06.949Z",
+  "scenario": "S6",
+  "method": "POST",
+  "path": "/v1/unpair",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "body": {},
+  "response": {
+   "ok": true
+  }
+ },
+ {
+  "at": "2026-10-18T15:26:09.569Z",
+  "scenario": "S6",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 401,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…19e57a",
+  "response": {
+   "error": "bad token"
+  }
+ },
+ {
+  "at": "2026-10-18T15:26:09.572Z",
+  "scenario": "S12",
+  "method": "POST",
+  "path": "/pair",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": null,
+  "body": {
+   "code": "E2EA4242"
+  }
+ },
+ {
+  "at": "2026-10-18T15:26:09.574Z",
+  "scenario": "S12",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 200,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…a0d5c0",
+  "response": [
+   {
+    "id": "bc6fdf0c-f4b9-433d-8d3e-4f35bfbe0a79",
+    "name": "PT · Mon 6:00",
+    "mode": "personal_training",
+    "modeLabel": "Personal training",
+    "weekday": 1,
+    "startTime": "18:00"
+   },
+   {
+    "id": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+    "name": "Kids · Tue",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 2,
+    "startTime": "17:00"
+   },
+   {
+    "id": "cfc05306-952c-4d4d-915d-bf8b81e1c5bd",
+    "name": "Algebra · Wed 4:00",
+    "mode": "tutoring",
+    "modeLabel": "Tutoring",
+    "weekday": 3,
+    "startTime": "16:00"
+   },
+   {
+    "id": "10034525-c4b2-48c5-980b-b4732ddc482d",
+    "name": "Kids · Thu (e2e)",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 4,
+    "startTime": "17:00"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:26:09.576Z",
+  "scenario": "S12",
+  "method": "POST",
+  "path": "/v1/unpair",
+  "status": 200,
+  "ms": 0,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…a0d5c0",
+  "body": {},
+  "response": {
+   "ok": true
+  }
+ },
+ {
+  "at": "2026-10-18T15:26:09.577Z",
+  "scenario": "S12",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 401,
+  "ms": 0,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…a0d5c0",
+  "response": {
+   "error": "bad token"
+  }
+ },
+ {
+  "at": "2026-10-18T15:26:09.628Z",
+  "scenario": "S11",
+  "method": "POST",
+  "path": "/pair",
+  "status": 200,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": null,
+  "body": {
+   "code": "E2EA4242"
+  }
+ },
+ {
+  "at": "2026-10-18T15:26:09.630Z",
+  "scenario": "S11",
+  "method": "POST",
+  "path": "/pair",
+  "status": 200,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": null,
+  "body": {
+   "code": "E2EB4242"
+  }
+ },
+ {
+  "at": "2026-10-18T15:26:09.632Z",
+  "scenario": "S11",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 200,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…8a8220",
+  "response": [
+   {
+    "id": "bc6fdf0c-f4b9-433d-8d3e-4f35bfbe0a79",
+    "name": "PT · Mon 6:00",
+    "mode": "personal_training",
+    "modeLabel": "Personal training",
+    "weekday": 1,
+    "startTime": "18:00"
+   },
+   {
+    "id": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+    "name": "Kids · Tue",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 2,
+    "startTime": "17:00"
+   },
+   {
+    "id": "cfc05306-952c-4d4d-915d-bf8b81e1c5bd",
+    "name": "Algebra · Wed 4:00",
+    "mode": "tutoring",
+    "modeLabel": "Tutoring",
+    "weekday": 3,
+    "startTime": "16:00"
+   },
+   {
+    "id": "10034525-c4b2-48c5-980b-b4732ddc482d",
+    "name": "Kids · Thu (e2e)",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 4,
+    "startTime": "17:00"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:26:09.644Z",
+  "scenario": "S11",
+  "method": "GET",
+  "path": "/v1/students/64dd6d7c-7015-4c66-960c-a747e0ff2058",
+  "status": 404,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…4c0d14",
+  "response": {
+   "error": "student not found"
+  }
+ },
+ {
+  "at": "2026-10-18T15:26:09.646Z",
+  "scenario": "S11",
+  "method": "GET",
+  "path": "/v1/today",
+  "status": 404,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…4c0d14"
+ },
+ {
+  "at": "2026-10-18T15:26:09.647Z",
+  "scenario": "S11",
+  "method": "GET",
+  "path": "/v1/notes/8f9449a0-2131-44a0-9c57-53169b024654/candidates",
+  "status": 404,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…4c0d14",
+  "response": {
+   "error": "note not found"
+  }
+ },
+ {
+  "at": "2026-10-18T15:26:09.648Z",
+  "scenario": "S11",
+  "method": "GET",
+  "path": "/v1/students/64dd6d7c-7015-4c66-960c-a747e0ff2058/brief",
+  "status": 404,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…4c0d14",
+  "response": {
+   "error": "student not found"
+  }
+ },
+ {
+  "at": "2026-10-18T15:26:09.649Z",
+  "scenario": "S11",
+  "method": "PATCH",
+  "path": "/v1/students/64dd6d7c-7015-4c66-960c-a747e0ff2058",
+  "status": 404,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…4c0d14",
+  "body": {
+   "aliases": [
+    "hijack"
+   ]
+  },
+  "response": {
+   "error": "student not found"
+  }
+ },
+ {
+  "at": "2026-10-18T15:26:09.651Z",
+  "scenario": "S11",
+  "method": "DELETE",
+  "path": "/v1/students/64dd6d7c-7015-4c66-960c-a747e0ff2058",
+  "status": 404,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…4c0d14",
+  "response": {
+   "error": "student not found"
+  }
+ },
+ {
+  "at": "2026-10-18T15:26:09.652Z",
+  "scenario": "S11",
+  "method": "POST",
+  "path": "/v1/sessions",
+  "status": 404,
+  "ms": 2,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…4c0d14",
+  "body": {
+   "classId": "a1cb66fe-b240-4abb-97b9-7a4e5db1d511"
+  }
+ },
+ {
+  "at": "2026-10-18T15:26:09.655Z",
+  "scenario": "S11",
+  "method": "PATCH",
+  "path": "/v1/classes/a1cb66fe-b240-4abb-97b9-7a4e5db1d511",
+  "status": 404,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…4c0d14",
+  "body": {
+   "name": "hijacked"
+  },
+  "response": {
+   "error": "class not found"
+  }
+ },
+ {
+  "at": "2026-10-18T15:26:09.658Z",
+  "scenario": "S11",
+  "method": "POST",
+  "path": "/v1/notes/8f9449a0-2131-44a0-9c57-53169b024654/assign",
+  "status": 404,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…4c0d14",
+  "body": {
+   "studentId": "502e98b7-4d6d-4fe0-9d31-0e54d1c61ab0"
+  }
+ },
+ {
+  "at": "2026-10-18T15:26:09.660Z",
+  "scenario": "S11",
+  "method": "GET",
+  "path": "/v1/classes",
+  "status": 200,
+  "ms": 0,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…4c0d14",
+  "response": [
+   {
+    "id": "eb58d410-b321-43c5-8de3-4f3e291d2395",
+    "name": "Rivera Teens · Sat",
+    "mode": "martial_arts",
+    "modeLabel": "Martial arts",
+    "weekday": 6,
+    "startTime": "10:00"
+   }
+  ]
+ },
+ {
+  "at": "2026-10-18T15:26:09.661Z",
+  "scenario": "S11",
+  "method": "GET",
+  "path": "/v1/students",
+  "status": 200,
+  "ms": 1,
+  "idempotencyKey": null,
+  "replay": null,
+  "auth": "…4c0d14",
+  "response": [
+   {
+    "id": "502e98b7-4d6d-4fe0-9d31-0e54d1c61ab0",
+    "name": "Quinn Ortega",
+    "nickname": null,
+    "belt": "blue",
+    "aliases": []
+   },
+   {
+    "id": "3733ea1d-ef00-4ce3-8a9d-d72dce324191",
+    "name": "Rosa Vance",
+    "nickname": null,
+    "belt": "blue",
+    "aliases": []
+   },
+   {
+    "id": "39538451-bdbc-4a45-b591-ce654add8293",
+    "name": "Theo Marsh",
+    "nickname": null,
+    "belt": "blue",
+    "aliases": []
+   }
+  ]
+ }
+]

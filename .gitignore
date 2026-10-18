@@ -8,3 +8,4 @@ dist
 *.ehpk
 api/api/
 api/public/
+scripts/e2e/.run/

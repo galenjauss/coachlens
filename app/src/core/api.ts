@@ -76,18 +76,31 @@ const UndoReply = UndoResponse.extend({ coverage: Coverage.nullable().optional()
 export type UndoReply = z.infer<typeof UndoReply>
 export type UtterancePayload = { sessionId: string; drillId: string | null; mode: 'note' | 'attendance'; text: string | null; audio: Blob | null }
 
-/** A token read (bridge storage) that hangs longer than this counts as no token: the request still goes (401 → pair). */
+/**
+ * A token read (bridge storage) that hangs longer than this never blocks the request. It falls back to the last token
+ * this client read; with none, the request goes without auth (401 → pair).
+ */
 export const TOKEN_READ_TIMEOUT_MS = 3000
-async function readToken(getToken: () => Promise<string | null>): Promise<string | null> {
+/** `known`: the read answered (a token, or definitely none). False when it stalled or threw: the token is unknown. */
+type TokenRead = { token: string | null; known: boolean }
+async function readToken(getToken: () => Promise<string | null>): Promise<TokenRead> {
   let timer: ReturnType<typeof setTimeout> | undefined
-  const late = new Promise<null>(r => { timer = setTimeout(() => r(null), TOKEN_READ_TIMEOUT_MS) })
-  try { return await Promise.race([getToken().catch(() => null), late]) } finally { clearTimeout(timer) }
+  const late = new Promise<TokenRead>(r => { timer = setTimeout(() => r({ token: null, known: false }), TOKEN_READ_TIMEOUT_MS) })
+  const read = getToken().then(token => ({ token, known: true }), () => ({ token: null, known: false }))
+  try { return await Promise.race([read, late]) } finally { clearTimeout(timer) }
 }
 
 export function createApi(baseUrl: string, getToken: () => Promise<string | null>, fetchImpl: typeof fetch = (...a) => fetch(...a)) {
+  /**
+   * E2E fix (batch 5): the last token read successfully. A bridge-storage read can stall for seconds while the glasses
+   * stream mic audio; that stall must not send the request without auth, get a 401 and log the coach out.
+   */
+  let lastToken: string | null = null
   async function req<T>(path: string, init: RequestInit & { json?: unknown; timeoutMs?: number } = {}, schema?: z.ZodType<T>): Promise<T> {
     const headers = new Headers(init.headers)
-    const token = await readToken(getToken)
+    const read = await readToken(getToken)
+    if (read.known) lastToken = read.token || null
+    const token = read.known ? read.token : lastToken
     if (token) headers.set('Authorization', `Bearer ${token}`)
     let body = init.body
     if (init.json !== undefined) { headers.set('Content-Type', 'application/json'); body = JSON.stringify(init.json) }
@@ -106,7 +119,10 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
     } finally { clearTimeout(timer) }
     if (!res.ok) {
       const msg = raw && typeof raw === 'object' ? (raw as { error?: unknown }).error : undefined
-      if (res.status === 401 && path !== '/pair') bus.emit('unauthorized', undefined) // token no longer valid: re-pair
+      // The token no longer works: re-pair. Not when the token could not be read (a storage stall says nothing
+      // about the stored token; re-pairing would wipe a valid one, possibly one a re-pair just wrote).
+      // Only a token read for this request counts: a cached one may already have been replaced by a re-pair.
+      if (res.status === 401 && path !== '/pair' && read.known) bus.emit('unauthorized', undefined)
       throw new ApiError(res.status, typeof msg === 'string' ? msg : res.statusText, parseRetryAfter(res.headers.get('retry-after')))
     }
     if (!schema) return (raw ?? {}) as T

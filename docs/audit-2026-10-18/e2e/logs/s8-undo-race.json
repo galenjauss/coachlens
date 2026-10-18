@@ -1,0 +1,31 @@
+{
+  "undo": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "reversed": [
+        "Removed Gus note",
+        "Attendance restored (12 present)"
+      ],
+      "cancelled": [
+        "Cancelled email draft for Gus"
+      ],
+      "notReversible": [],
+      "coverage": {
+        "covered": 7,
+        "present": 12
+      }
+    },
+    "headers": {
+      "access-control-expose-headers": "Idempotent-Replay",
+      "connection": "keep-alive",
+      "content-length": "181",
+      "content-type": "application/json",
+      "date": "Sun, 18 Oct 2026 15:24:56 GMT",
+      "keep-alive": "timeout=5",
+      "vary": "Origin"
+    }
+  },
+  "draftsAfter": [],
+  "mail": []
+}

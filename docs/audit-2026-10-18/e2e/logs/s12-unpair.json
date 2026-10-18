@@ -1,0 +1,23 @@
+{
+  "before": 200,
+  "unpair": {
+    "status": 200,
+    "body": {
+      "ok": true
+    },
+    "headers": {
+      "access-control-expose-headers": "Idempotent-Replay",
+      "connection": "keep-alive",
+      "content-length": "11",
+      "content-type": "application/json",
+      "date": "Sun, 18 Oct 2026 15:26:09 GMT",
+      "keep-alive": "timeout=5",
+      "vary": "Origin"
+    }
+  },
+  "after": 401,
+  "phone": {
+    "status": 200,
+    "tokenAfter": 401
+  }
+}

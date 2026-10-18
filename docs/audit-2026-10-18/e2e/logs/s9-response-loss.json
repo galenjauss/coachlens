@@ -1,0 +1,38 @@
+{
+  "key": "47fc6919-f300-449a-9f9a-0c424719b152",
+  "first": "network error: terminated",
+  "retry": {
+    "status": 200,
+    "body": {
+      "utteranceId": "3ba83e84-3d8f-553b-a7d7-f1bc19332919",
+      "transcript": "Sam hit his head on the mat and sat out",
+      "cardLines": [
+        "√ Sam",
+        "! urgent · parent note drafting"
+      ],
+      "coverage": {
+        "covered": 8,
+        "present": 12
+      },
+      "nextStudent": {
+        "id": "2886505b-a38e-4c38-b0a3-c11f7b9ca044",
+        "name": "Ava",
+        "reason": "guard"
+      },
+      "disambiguation": null
+    },
+    "headers": {
+      "access-control-expose-headers": "Idempotent-Replay",
+      "connection": "keep-alive",
+      "content-length": "318",
+      "content-type": "application/json",
+      "date": "Sun, 18 Oct 2026 15:25:29 GMT",
+      "idempotent-replay": "true",
+      "keep-alive": "timeout=5",
+      "vary": "Origin"
+    }
+  },
+  "addedNotes": 1,
+  "addedDrafts": 1,
+  "mail": []
+}
