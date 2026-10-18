@@ -4,12 +4,18 @@
  *   ?fixture=<name>   one fixture
  *   ?fixture=remote   follow the dev server's /__fixture control (vite.config.ts): one simulator stays open
  *                     while scripts/sim-shots.sh switches fixtures; each switch is acknowledged once painted.
+ *                     A flow frame name (fixturesFlows.ts, `<flow>F<letter>`) is painted statically: the real
+ *                     render() at the frame's fixed clock through the real Glasses sender (no controller, so
+ *                     the peek clock does not tick away between the paint and the screenshot).
  */
 import { NOD } from '../config'
 import { Outbox } from '../core/outbox'
 import { memoryKV } from '../core/storage'
 import { startLens, type LensBridge, type LensHandle } from './controller'
 import { FIXTURE_NAMES, fixtureState, isFixtureName, noopApi, type FixtureName } from './fixtures'
+import { flowFrame } from './fixturesFlows'
+import { Glasses } from './glasses'
+import { render } from './render'
 
 const POLL_MS = 300
 
@@ -26,12 +32,20 @@ export async function bootFixture(bridge: LensBridge, name: string): Promise<voi
     return
   }
   let lens: LensHandle | null = null
+  let painter: Glasses | null = null
   let current: string | null = null
   for (;;) {
     try {
       const { want, shown } = (await (await fetch('/__fixture', { cache: 'no-store' })).json()) as { want: string | null; shown: string | null }
-      if (want && want !== current && isFixtureName(want)) {
+      const frame = want && want !== current ? flowFrame(want) : null
+      if (frame) {
+        if (lens) { lens.stop(); lens = null; painter = null }
+        painter ??= new Glasses(bridge)
+        await painter.show(render(frame.state, frame.now))
+        current = want
+      } else if (want && want !== current && isFixtureName(want)) {
         lens?.stop()
+        painter = null
         lens = await show(bridge, want)
         current = want
       }

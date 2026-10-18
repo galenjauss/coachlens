@@ -1,0 +1,215 @@
+{
+  "pairing": [
+    {
+      "file": "phone/pairing/01.png",
+      "caption": "Pairing: enter the code from your setup to connect phone and glasses",
+      "holdMs": 1500,
+      "crops": []
+    }
+  ],
+  "today": [
+    {
+      "file": "phone/today/01.png",
+      "caption": "Today opens on the next class (PT · Mon 6:00), class picker on top",
+      "holdMs": 1200,
+      "crops": []
+    },
+    {
+      "file": "phone/today/02.png",
+      "caption": "Tap Kids · Tue: theme, forms due, focus from notes",
+      "holdMs": 1500,
+      "crops": []
+    },
+    {
+      "file": "phone/today/03.png",
+      "caption": "\"From your agents\": 3 of 7 new insights, each with a next step and Do it",
+      "holdMs": 2500,
+      "crops": [
+        {
+          "file": "phone/today/03-agents-card.png",
+          "what": "From your agents card"
+        }
+      ]
+    },
+    {
+      "file": "phone/today/04.png",
+      "caption": "The plan card: Drill deck, 9 items · 47 min, first drills",
+      "holdMs": 1500,
+      "crops": [
+        {
+          "file": "phone/today/04-plan-card.png",
+          "what": "plan card"
+        }
+      ]
+    }
+  ],
+  "review": [
+    {
+      "file": "phone/review/01.png",
+      "caption": "Review: Dee's urgent parent email and two billing flags wait for the coach",
+      "holdMs": 2000,
+      "crops": [
+        {
+          "file": "phone/review/01-dee-email.png",
+          "what": "Dee email draft card"
+        }
+      ]
+    },
+    {
+      "file": "phone/review/02.png",
+      "caption": "Open the Dee draft to edit: subject and warm 3-sentence body, Send when ready",
+      "holdMs": 2500,
+      "crops": []
+    }
+  ],
+  "agents": [
+    {
+      "file": "phone/agents/01.png",
+      "caption": "Agents: one tile per agent, red needs you, amber waits for review, green is done",
+      "holdMs": 2500,
+      "crops": [
+        {
+          "file": "phone/agents/01-parent-tile.png",
+          "what": "red Parent emails tile (1 urgent)"
+        }
+      ]
+    }
+  ],
+  "parentEmail": [
+    {
+      "file": "phone/parentEmail/01.png",
+      "caption": "Parent emails: currently on Auto (sends on its own)",
+      "holdMs": 1500,
+      "crops": [
+        {
+          "file": "phone/parentEmail/01-autonomy.png",
+          "what": "Auto · Review · Off control"
+        }
+      ]
+    },
+    {
+      "file": "phone/parentEmail/02.png",
+      "caption": "Tap Review: drafts wait for your OK before anything is sent",
+      "holdMs": 2000,
+      "crops": [
+        {
+          "file": "phone/parentEmail/02-autonomy.png",
+          "what": "Auto · Review · Off control"
+        }
+      ]
+    }
+  ],
+  "insights": [
+    {
+      "file": "phone/insights/01.png",
+      "caption": "Insights: what the agents noticed, and what they can do about it",
+      "holdMs": 2000,
+      "crops": []
+    },
+    {
+      "file": "phone/insights/02.png",
+      "caption": "More insights: Eli needs a note, Jake missed 3, Leo billing, Priya resolved",
+      "holdMs": 2000,
+      "crops": []
+    }
+  ],
+  "priya": [
+    {
+      "file": "phone/priya/01.png",
+      "caption": "Priya's profile: the lens brief lines, attendance dots, rank",
+      "holdMs": 2500,
+      "crops": [
+        {
+          "file": "phone/priya/01-brief.png",
+          "what": "profile brief card"
+        }
+      ]
+    },
+    {
+      "file": "phone/priya/02.png",
+      "caption": "Metrics and nicknames",
+      "holdMs": 1200,
+      "crops": []
+    },
+    {
+      "file": "phone/priya/03.png",
+      "caption": "Working on, and every coach note in her own words",
+      "holdMs": 1800,
+      "crops": []
+    }
+  ],
+  "deck": [
+    {
+      "file": "phone/deck/01.png",
+      "caption": "Deck editor: 9 drills, reorder, cues, focus kids",
+      "holdMs": 1800,
+      "crops": []
+    },
+    {
+      "file": "phone/deck/02.png",
+      "caption": "\"Start from…\": repeat last class, copy a plan, blank, or let AI draft",
+      "holdMs": 2200,
+      "crops": [
+        {
+          "file": "phone/deck/02-sheet.png",
+          "what": "Start from sheet"
+        }
+      ]
+    }
+  ],
+  "onboarding": [
+    {
+      "file": "phone/onboarding/01.png",
+      "caption": "Setup step 1 of 6: what do you teach?",
+      "holdMs": 1800,
+      "crops": []
+    },
+    {
+      "file": "phone/onboarding/02.png",
+      "caption": "Pick Martial arts: belts, forms and drill decks",
+      "holdMs": 1500,
+      "crops": []
+    }
+  ],
+  "doIt": [
+    {
+      "file": "phone/doIt/01.png",
+      "caption": "Gus may be ready to test: next step, draft testing email",
+      "holdMs": 1500,
+      "crops": [
+        {
+          "file": "phone/doIt/01-gus.png",
+          "what": "Gus insight row"
+        }
+      ]
+    },
+    {
+      "file": "phone/doIt/02.png",
+      "caption": "Do it: Working… (the parent-email agent drafts it)",
+      "holdMs": 1200,
+      "crops": [
+        {
+          "file": "phone/doIt/02-gus.png",
+          "what": "Gus insight row"
+        }
+      ]
+    },
+    {
+      "file": "phone/doIt/03.png",
+      "caption": "Done: ✓ Email drafted for review",
+      "holdMs": 2200,
+      "crops": [
+        {
+          "file": "phone/doIt/03-gus.png",
+          "what": "Gus insight row"
+        }
+      ]
+    },
+    {
+      "file": "phone/doIt/04.png",
+      "caption": "Review now holds the Gus testing email next to Dee's",
+      "holdMs": 2200,
+      "crops": []
+    }
+  ]
+}

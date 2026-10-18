@@ -1,0 +1,424 @@
+{
+  "home": [
+    {
+      "file": "lens/home/01.png",
+      "caption": "Home: today's class, Kids · Tue (1/4), tap to start",
+      "holdMs": 1600,
+      "screen": "home"
+    },
+    {
+      "file": "lens/home/02.png",
+      "caption": "Swipe: Kids · Thu (2/4)",
+      "holdMs": 900,
+      "screen": "home"
+    },
+    {
+      "file": "lens/home/03.png",
+      "caption": "Swipe: PT · Mon 6:00 (3/4), personal training",
+      "holdMs": 1200,
+      "screen": "home"
+    }
+  ],
+  "lobby": [
+    {
+      "file": "lens/lobby/01.png",
+      "caption": "Lobby: class, start time, plan length, first drills",
+      "holdMs": 900,
+      "screen": "lobby"
+    },
+    {
+      "file": "lens/lobby/02.png",
+      "caption": "Lobby with the agents' top insight: ★ Gus ready to test",
+      "holdMs": 2000,
+      "screen": "lobby"
+    }
+  ],
+  "planning": [
+    {
+      "file": "lens/planning/01.png",
+      "caption": "Double-tap in the lobby: planning by voice opens the mic",
+      "holdMs": 700,
+      "screen": "planning"
+    },
+    {
+      "file": "lens/planning/02.png",
+      "caption": "● Planning · 0:05, the transcript so far",
+      "holdMs": 900,
+      "screen": "planning"
+    },
+    {
+      "file": "lens/planning/03.png",
+      "caption": "● Planning · 0:10, \"…a shorter warm-up\"",
+      "holdMs": 900,
+      "screen": "planning"
+    },
+    {
+      "file": "lens/planning/04.png",
+      "caption": "● Planning · 0:15, \"…add partner sparring\"",
+      "holdMs": 1400,
+      "screen": "planning"
+    }
+  ],
+  "planResult": [
+    {
+      "file": "lens/planResult/01.png",
+      "caption": "Tap to apply: transcribing the last of the talk",
+      "holdMs": 700,
+      "screen": "planApplying"
+    },
+    {
+      "file": "lens/planResult/02.png",
+      "caption": "Thinking · updating the plan",
+      "holdMs": 1000,
+      "screen": "planApplying"
+    },
+    {
+      "file": "lens/planResult/03.png",
+      "caption": "PLAN UPDATED: the diff (added, removed, re-timed), 2× to undo",
+      "holdMs": 2400,
+      "screen": "planResult"
+    }
+  ],
+  "peek": [
+    {
+      "file": "lens/peek/01.png",
+      "caption": "Peek: guard-up jab drill, 3:45 left, bar advancing",
+      "holdMs": 700,
+      "screen": "peek"
+    },
+    {
+      "file": "lens/peek/02.png",
+      "caption": "Peek: guard-up jab drill, 3:30 left, bar advancing",
+      "holdMs": 700,
+      "screen": "peek"
+    },
+    {
+      "file": "lens/peek/03.png",
+      "caption": "Peek: guard-up jab drill, 3:15 left, bar advancing",
+      "holdMs": 700,
+      "screen": "peek"
+    },
+    {
+      "file": "lens/peek/04.png",
+      "caption": "Peek: guard-up jab drill, 3:00 left, bar advancing, next kid: Mia",
+      "holdMs": 700,
+      "screen": "peek"
+    },
+    {
+      "file": "lens/peek/05.png",
+      "caption": "Peek: guard-up jab drill, 2:45 left, bar advancing, next kid: Mia",
+      "holdMs": 700,
+      "screen": "peek"
+    },
+    {
+      "file": "lens/peek/06.png",
+      "caption": "Peek: guard-up jab drill, 2:30 left, bar advancing, next kid: Mia",
+      "holdMs": 700,
+      "screen": "peek"
+    }
+  ],
+  "peekTick": [
+    {
+      "file": "lens/peekTick/01.png",
+      "caption": "Peek clock, per-second tick: 3:45 left",
+      "holdMs": 1000,
+      "screen": "peek"
+    },
+    {
+      "file": "lens/peekTick/02.png",
+      "caption": "Peek clock, per-second tick: 3:44 left",
+      "holdMs": 1000,
+      "screen": "peek"
+    },
+    {
+      "file": "lens/peekTick/03.png",
+      "caption": "Peek clock, per-second tick: 3:43 left",
+      "holdMs": 1000,
+      "screen": "peek"
+    },
+    {
+      "file": "lens/peekTick/04.png",
+      "caption": "Peek clock, per-second tick: 3:42 left",
+      "holdMs": 1000,
+      "screen": "peek"
+    },
+    {
+      "file": "lens/peekTick/05.png",
+      "caption": "Peek clock, per-second tick: 3:41 left",
+      "holdMs": 1000,
+      "screen": "peek"
+    }
+  ],
+  "recording": [
+    {
+      "file": "lens/recording/01.png",
+      "caption": "Tap: recording opens, waiting for the glasses mic",
+      "holdMs": 500,
+      "screen": "recording"
+    },
+    {
+      "file": "lens/recording/02.png",
+      "caption": "● LISTENING 0:01",
+      "holdMs": 500,
+      "screen": "recording"
+    },
+    {
+      "file": "lens/recording/03.png",
+      "caption": "○ LISTENING 0:01 (pulse)",
+      "holdMs": 500,
+      "screen": "recording"
+    },
+    {
+      "file": "lens/recording/04.png",
+      "caption": "● LISTENING 0:02",
+      "holdMs": 500,
+      "screen": "recording"
+    },
+    {
+      "file": "lens/recording/05.png",
+      "caption": "○ LISTENING 0:02 (pulse)",
+      "holdMs": 500,
+      "screen": "recording"
+    }
+  ],
+  "note": [
+    {
+      "file": "lens/note/01.png",
+      "caption": "Tap to stop: HEARD",
+      "holdMs": 400,
+      "screen": "sending"
+    },
+    {
+      "file": "lens/note/02.png",
+      "caption": "SENDING",
+      "holdMs": 500,
+      "screen": "sending"
+    },
+    {
+      "file": "lens/note/03.png",
+      "caption": "THINKING",
+      "holdMs": 500,
+      "screen": "sending"
+    },
+    {
+      "file": "lens/note/04.png",
+      "caption": "THINKING (dots)",
+      "holdMs": 500,
+      "screen": "sending"
+    },
+    {
+      "file": "lens/note/05.png",
+      "caption": "Transcript first: what you said, agents still sorting",
+      "holdMs": 1100,
+      "screen": "card"
+    },
+    {
+      "file": "lens/note/06.png",
+      "caption": "The card: √ Priya · guard (3rd time), agents working",
+      "holdMs": 700,
+      "screen": "card"
+    },
+    {
+      "file": "lens/note/07.png",
+      "caption": "Agent progress: .. sorted · .. plan",
+      "holdMs": 600,
+      "screen": "card"
+    },
+    {
+      "file": "lens/note/08.png",
+      "caption": "ok sorted",
+      "holdMs": 600,
+      "screen": "card"
+    },
+    {
+      "file": "lens/note/09.png",
+      "caption": "ok sorted · ok report",
+      "holdMs": 600,
+      "screen": "card"
+    },
+    {
+      "file": "lens/note/10.png",
+      "caption": "All agents done: ok sorted · ok report · ok plan",
+      "holdMs": 2200,
+      "screen": "card"
+    }
+  ],
+  "rollCall": [
+    {
+      "file": "lens/rollCall/01.png",
+      "caption": "Lobby tap: starting class",
+      "holdMs": 500,
+      "screen": "lobby"
+    },
+    {
+      "file": "lens/rollCall/02.png",
+      "caption": "Roll call opens: say \"Everyone except …\"",
+      "holdMs": 900,
+      "screen": "attendance"
+    },
+    {
+      "file": "lens/rollCall/03.png",
+      "caption": "● LISTENING 0:02 (coach: \"everyone except Mia\")",
+      "holdMs": 600,
+      "screen": "attendance"
+    },
+    {
+      "file": "lens/rollCall/04.png",
+      "caption": "○ LISTENING 0:02",
+      "holdMs": 600,
+      "screen": "attendance"
+    },
+    {
+      "file": "lens/rollCall/05.png",
+      "caption": "THINKING",
+      "holdMs": 600,
+      "screen": "sending"
+    },
+    {
+      "file": "lens/rollCall/06.png",
+      "caption": "ROLL CALL DONE: 13 present · absent: Mia",
+      "holdMs": 2000,
+      "screen": "attendanceDone"
+    },
+    {
+      "file": "lens/rollCall/07.png",
+      "caption": "Tap: the first drill starts on peek",
+      "holdMs": 1200,
+      "screen": "peek"
+    }
+  ],
+  "banner": [
+    {
+      "file": "lens/banner/01.png",
+      "caption": "Peek mid-drill",
+      "holdMs": 700,
+      "screen": "peek"
+    },
+    {
+      "file": "lens/banner/02.png",
+      "caption": "Insight banner: ★ Jake's back after 3 missed",
+      "holdMs": 2200,
+      "screen": "peek"
+    }
+  ],
+  "urgent": [
+    {
+      "file": "lens/urgent/01.png",
+      "caption": "Transcript first: \"Dee rolled her ankle…\"",
+      "holdMs": 1000,
+      "screen": "card"
+    },
+    {
+      "file": "lens/urgent/02.png",
+      "caption": "Card: √ Dee · injury, ! urgent · parent note drafting",
+      "holdMs": 900,
+      "screen": "card"
+    },
+    {
+      "file": "lens/urgent/03.png",
+      "caption": "ok sorted · .. email",
+      "holdMs": 700,
+      "screen": "card"
+    },
+    {
+      "file": "lens/urgent/04.png",
+      "caption": "ok sorted · ok email: the parent email is drafted for review",
+      "holdMs": 2200,
+      "screen": "card"
+    }
+  ],
+  "pr": [
+    {
+      "file": "lens/pr/01.png",
+      "caption": "PT class: transcript first, \"Maria hit 225 on deadlift\"",
+      "holdMs": 900,
+      "screen": "card"
+    },
+    {
+      "file": "lens/pr/02.png",
+      "caption": "Card: √ Maria · deadlift 225 lb (PR +10)",
+      "holdMs": 900,
+      "screen": "card"
+    },
+    {
+      "file": "lens/pr/03.png",
+      "caption": "ok sorted · ok logged",
+      "holdMs": 2000,
+      "screen": "card"
+    }
+  ],
+  "brief": [
+    {
+      "file": "lens/brief/01.png",
+      "caption": "Transcript first: \"How's Priya doing?\"",
+      "holdMs": 900,
+      "screen": "card"
+    },
+    {
+      "file": "lens/brief/02.png",
+      "caption": "Brief: Priya Rao, five glanceable lines",
+      "holdMs": 2600,
+      "screen": "card"
+    },
+    {
+      "file": "lens/brief/03.png",
+      "caption": "Swipe: page 2, what you said",
+      "holdMs": 1000,
+      "screen": "card"
+    }
+  ],
+  "answer": [
+    {
+      "file": "lens/answer/01.png",
+      "caption": "Transcript first: \"Who is forgetting to keep their guard up?\"",
+      "holdMs": 1000,
+      "screen": "card"
+    },
+    {
+      "file": "lens/answer/02.png",
+      "caption": "ANSWER: Guard: Priya (3), Sam (3), Ava (1), Ben (1)",
+      "holdMs": 2600,
+      "screen": "card"
+    }
+  ],
+  "wrapup": [
+    {
+      "file": "lens/wrapup/01.png",
+      "caption": "Double-tap: End class?",
+      "holdMs": 700,
+      "screen": "confirmEnd"
+    },
+    {
+      "file": "lens/wrapup/02.png",
+      "caption": "CLASS DONE: wrapping up",
+      "holdMs": 500,
+      "screen": "wrapup"
+    },
+    {
+      "file": "lens/wrapup/03.png",
+      "caption": "End-of-class summary",
+      "holdMs": 800,
+      "screen": "wrapup"
+    },
+    {
+      "file": "lens/wrapup/04.png",
+      "caption": "Summary with the top insight: ★ Jake's back after 3 missed",
+      "holdMs": 2400,
+      "screen": "wrapup"
+    }
+  ],
+  "dark": [
+    {
+      "file": "lens/dark/01.png",
+      "caption": "Peek",
+      "holdMs": 700,
+      "screen": "peek"
+    },
+    {
+      "file": "lens/dark/02.png",
+      "caption": "Nod: lens off (fully dark)",
+      "holdMs": 1500,
+      "screen": "dark"
+    }
+  ]
+}

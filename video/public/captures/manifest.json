@@ -1,0 +1,864 @@
+{
+  "about": "Real CoachLens footage. lens/: the official Even Hub simulator (v0.9.5) rendering real LensStates (reached through the real reducer, drawn by the real render()); 576×288 RGBA PNG, alpha = lit pixels. phone/: the real phone UI against the local api with the demo seed, driven by real taps; 860×1864 (430×932 CSS px at 2x), tight crops alongside. holdMs = suggested hold per frame.",
+  "lens": {
+    "home": {
+      "kind": "lens",
+      "size": [
+        576,
+        288
+      ],
+      "frames": [
+        {
+          "file": "lens/home/01.png",
+          "caption": "Home: today's class, Kids · Tue (1/4), tap to start",
+          "holdMs": 1600,
+          "screen": "home"
+        },
+        {
+          "file": "lens/home/02.png",
+          "caption": "Swipe: Kids · Thu (2/4)",
+          "holdMs": 900,
+          "screen": "home"
+        },
+        {
+          "file": "lens/home/03.png",
+          "caption": "Swipe: PT · Mon 6:00 (3/4), personal training",
+          "holdMs": 1200,
+          "screen": "home"
+        }
+      ]
+    },
+    "lobby": {
+      "kind": "lens",
+      "size": [
+        576,
+        288
+      ],
+      "frames": [
+        {
+          "file": "lens/lobby/01.png",
+          "caption": "Lobby: class, start time, plan length, first drills",
+          "holdMs": 900,
+          "screen": "lobby"
+        },
+        {
+          "file": "lens/lobby/02.png",
+          "caption": "Lobby with the agents' top insight: ★ Gus ready to test",
+          "holdMs": 2000,
+          "screen": "lobby"
+        }
+      ]
+    },
+    "planning": {
+      "kind": "lens",
+      "size": [
+        576,
+        288
+      ],
+      "frames": [
+        {
+          "file": "lens/planning/01.png",
+          "caption": "Double-tap in the lobby: planning by voice opens the mic",
+          "holdMs": 700,
+          "screen": "planning"
+        },
+        {
+          "file": "lens/planning/02.png",
+          "caption": "● Planning · 0:05, the transcript so far",
+          "holdMs": 900,
+          "screen": "planning"
+        },
+        {
+          "file": "lens/planning/03.png",
+          "caption": "● Planning · 0:10, \"…a shorter warm-up\"",
+          "holdMs": 900,
+          "screen": "planning"
+        },
+        {
+          "file": "lens/planning/04.png",
+          "caption": "● Planning · 0:15, \"…add partner sparring\"",
+          "holdMs": 1400,
+          "screen": "planning"
+        }
+      ]
+    },
+    "planResult": {
+      "kind": "lens",
+      "size": [
+        576,
+        288
+      ],
+      "frames": [
+        {
+          "file": "lens/planResult/01.png",
+          "caption": "Tap to apply: transcribing the last of the talk",
+          "holdMs": 700,
+          "screen": "planApplying"
+        },
+        {
+          "file": "lens/planResult/02.png",
+          "caption": "Thinking · updating the plan",
+          "holdMs": 1000,
+          "screen": "planApplying"
+        },
+        {
+          "file": "lens/planResult/03.png",
+          "caption": "PLAN UPDATED: the diff (added, removed, re-timed), 2× to undo",
+          "holdMs": 2400,
+          "screen": "planResult"
+        }
+      ]
+    },
+    "peek": {
+      "kind": "lens",
+      "size": [
+        576,
+        288
+      ],
+      "frames": [
+        {
+          "file": "lens/peek/01.png",
+          "caption": "Peek: guard-up jab drill, 3:45 left, bar advancing",
+          "holdMs": 700,
+          "screen": "peek"
+        },
+        {
+          "file": "lens/peek/02.png",
+          "caption": "Peek: guard-up jab drill, 3:30 left, bar advancing",
+          "holdMs": 700,
+          "screen": "peek"
+        },
+        {
+          "file": "lens/peek/03.png",
+          "caption": "Peek: guard-up jab drill, 3:15 left, bar advancing",
+          "holdMs": 700,
+          "screen": "peek"
+        },
+        {
+          "file": "lens/peek/04.png",
+          "caption": "Peek: guard-up jab drill, 3:00 left, bar advancing, next kid: Mia",
+          "holdMs": 700,
+          "screen": "peek"
+        },
+        {
+          "file": "lens/peek/05.png",
+          "caption": "Peek: guard-up jab drill, 2:45 left, bar advancing, next kid: Mia",
+          "holdMs": 700,
+          "screen": "peek"
+        },
+        {
+          "file": "lens/peek/06.png",
+          "caption": "Peek: guard-up jab drill, 2:30 left, bar advancing, next kid: Mia",
+          "holdMs": 700,
+          "screen": "peek"
+        }
+      ]
+    },
+    "peekTick": {
+      "kind": "lens",
+      "size": [
+        576,
+        288
+      ],
+      "frames": [
+        {
+          "file": "lens/peekTick/01.png",
+          "caption": "Peek clock, per-second tick: 3:45 left",
+          "holdMs": 1000,
+          "screen": "peek"
+        },
+        {
+          "file": "lens/peekTick/02.png",
+          "caption": "Peek clock, per-second tick: 3:44 left",
+          "holdMs": 1000,
+          "screen": "peek"
+        },
+        {
+          "file": "lens/peekTick/03.png",
+          "caption": "Peek clock, per-second tick: 3:43 left",
+          "holdMs": 1000,
+          "screen": "peek"
+        },
+        {
+          "file": "lens/peekTick/04.png",
+          "caption": "Peek clock, per-second tick: 3:42 left",
+          "holdMs": 1000,
+          "screen": "peek"
+        },
+        {
+          "file": "lens/peekTick/05.png",
+          "caption": "Peek clock, per-second tick: 3:41 left",
+          "holdMs": 1000,
+          "screen": "peek"
+        }
+      ]
+    },
+    "recording": {
+      "kind": "lens",
+      "size": [
+        576,
+        288
+      ],
+      "frames": [
+        {
+          "file": "lens/recording/01.png",
+          "caption": "Tap: recording opens, waiting for the glasses mic",
+          "holdMs": 500,
+          "screen": "recording"
+        },
+        {
+          "file": "lens/recording/02.png",
+          "caption": "● LISTENING 0:01",
+          "holdMs": 500,
+          "screen": "recording"
+        },
+        {
+          "file": "lens/recording/03.png",
+          "caption": "○ LISTENING 0:01 (pulse)",
+          "holdMs": 500,
+          "screen": "recording"
+        },
+        {
+          "file": "lens/recording/04.png",
+          "caption": "● LISTENING 0:02",
+          "holdMs": 500,
+          "screen": "recording"
+        },
+        {
+          "file": "lens/recording/05.png",
+          "caption": "○ LISTENING 0:02 (pulse)",
+          "holdMs": 500,
+          "screen": "recording"
+        }
+      ]
+    },
+    "note": {
+      "kind": "lens",
+      "size": [
+        576,
+        288
+      ],
+      "frames": [
+        {
+          "file": "lens/note/01.png",
+          "caption": "Tap to stop: HEARD",
+          "holdMs": 400,
+          "screen": "sending"
+        },
+        {
+          "file": "lens/note/02.png",
+          "caption": "SENDING",
+          "holdMs": 500,
+          "screen": "sending"
+        },
+        {
+          "file": "lens/note/03.png",
+          "caption": "THINKING",
+          "holdMs": 500,
+          "screen": "sending"
+        },
+        {
+          "file": "lens/note/04.png",
+          "caption": "THINKING (dots)",
+          "holdMs": 500,
+          "screen": "sending"
+        },
+        {
+          "file": "lens/note/05.png",
+          "caption": "Transcript first: what you said, agents still sorting",
+          "holdMs": 1100,
+          "screen": "card"
+        },
+        {
+          "file": "lens/note/06.png",
+          "caption": "The card: √ Priya · guard (3rd time), agents working",
+          "holdMs": 700,
+          "screen": "card"
+        },
+        {
+          "file": "lens/note/07.png",
+          "caption": "Agent progress: .. sorted · .. plan",
+          "holdMs": 600,
+          "screen": "card"
+        },
+        {
+          "file": "lens/note/08.png",
+          "caption": "ok sorted",
+          "holdMs": 600,
+          "screen": "card"
+        },
+        {
+          "file": "lens/note/09.png",
+          "caption": "ok sorted · ok report",
+          "holdMs": 600,
+          "screen": "card"
+        },
+        {
+          "file": "lens/note/10.png",
+          "caption": "All agents done: ok sorted · ok report · ok plan",
+          "holdMs": 2200,
+          "screen": "card"
+        }
+      ]
+    },
+    "rollCall": {
+      "kind": "lens",
+      "size": [
+        576,
+        288
+      ],
+      "frames": [
+        {
+          "file": "lens/rollCall/01.png",
+          "caption": "Lobby tap: starting class",
+          "holdMs": 500,
+          "screen": "lobby"
+        },
+        {
+          "file": "lens/rollCall/02.png",
+          "caption": "Roll call opens: say \"Everyone except …\"",
+          "holdMs": 900,
+          "screen": "attendance"
+        },
+        {
+          "file": "lens/rollCall/03.png",
+          "caption": "● LISTENING 0:02 (coach: \"everyone except Mia\")",
+          "holdMs": 600,
+          "screen": "attendance"
+        },
+        {
+          "file": "lens/rollCall/04.png",
+          "caption": "○ LISTENING 0:02",
+          "holdMs": 600,
+          "screen": "attendance"
+        },
+        {
+          "file": "lens/rollCall/05.png",
+          "caption": "THINKING",
+          "holdMs": 600,
+          "screen": "sending"
+        },
+        {
+          "file": "lens/rollCall/06.png",
+          "caption": "ROLL CALL DONE: 13 present · absent: Mia",
+          "holdMs": 2000,
+          "screen": "attendanceDone"
+        },
+        {
+          "file": "lens/rollCall/07.png",
+          "caption": "Tap: the first drill starts on peek",
+          "holdMs": 1200,
+          "screen": "peek"
+        }
+      ]
+    },
+    "banner": {
+      "kind": "lens",
+      "size": [
+        576,
+        288
+      ],
+      "frames": [
+        {
+          "file": "lens/banner/01.png",
+          "caption": "Peek mid-drill",
+          "holdMs": 700,
+          "screen": "peek"
+        },
+        {
+          "file": "lens/banner/02.png",
+          "caption": "Insight banner: ★ Jake's back after 3 missed",
+          "holdMs": 2200,
+          "screen": "peek"
+        }
+      ]
+    },
+    "urgent": {
+      "kind": "lens",
+      "size": [
+        576,
+        288
+      ],
+      "frames": [
+        {
+          "file": "lens/urgent/01.png",
+          "caption": "Transcript first: \"Dee rolled her ankle…\"",
+          "holdMs": 1000,
+          "screen": "card"
+        },
+        {
+          "file": "lens/urgent/02.png",
+          "caption": "Card: √ Dee · injury, ! urgent · parent note drafting",
+          "holdMs": 900,
+          "screen": "card"
+        },
+        {
+          "file": "lens/urgent/03.png",
+          "caption": "ok sorted · .. email",
+          "holdMs": 700,
+          "screen": "card"
+        },
+        {
+          "file": "lens/urgent/04.png",
+          "caption": "ok sorted · ok email: the parent email is drafted for review",
+          "holdMs": 2200,
+          "screen": "card"
+        }
+      ]
+    },
+    "pr": {
+      "kind": "lens",
+      "size": [
+        576,
+        288
+      ],
+      "frames": [
+        {
+          "file": "lens/pr/01.png",
+          "caption": "PT class: transcript first, \"Maria hit 225 on deadlift\"",
+          "holdMs": 900,
+          "screen": "card"
+        },
+        {
+          "file": "lens/pr/02.png",
+          "caption": "Card: √ Maria · deadlift 225 lb (PR +10)",
+          "holdMs": 900,
+          "screen": "card"
+        },
+        {
+          "file": "lens/pr/03.png",
+          "caption": "ok sorted · ok logged",
+          "holdMs": 2000,
+          "screen": "card"
+        }
+      ]
+    },
+    "brief": {
+      "kind": "lens",
+      "size": [
+        576,
+        288
+      ],
+      "frames": [
+        {
+          "file": "lens/brief/01.png",
+          "caption": "Transcript first: \"How's Priya doing?\"",
+          "holdMs": 900,
+          "screen": "card"
+        },
+        {
+          "file": "lens/brief/02.png",
+          "caption": "Brief: Priya Rao, five glanceable lines",
+          "holdMs": 2600,
+          "screen": "card"
+        },
+        {
+          "file": "lens/brief/03.png",
+          "caption": "Swipe: page 2, what you said",
+          "holdMs": 1000,
+          "screen": "card"
+        }
+      ]
+    },
+    "answer": {
+      "kind": "lens",
+      "size": [
+        576,
+        288
+      ],
+      "frames": [
+        {
+          "file": "lens/answer/01.png",
+          "caption": "Transcript first: \"Who is forgetting to keep their guard up?\"",
+          "holdMs": 1000,
+          "screen": "card"
+        },
+        {
+          "file": "lens/answer/02.png",
+          "caption": "ANSWER: Guard: Priya (3), Sam (3), Ava (1), Ben (1)",
+          "holdMs": 2600,
+          "screen": "card"
+        }
+      ]
+    },
+    "wrapup": {
+      "kind": "lens",
+      "size": [
+        576,
+        288
+      ],
+      "frames": [
+        {
+          "file": "lens/wrapup/01.png",
+          "caption": "Double-tap: End class?",
+          "holdMs": 700,
+          "screen": "confirmEnd"
+        },
+        {
+          "file": "lens/wrapup/02.png",
+          "caption": "CLASS DONE: wrapping up",
+          "holdMs": 500,
+          "screen": "wrapup"
+        },
+        {
+          "file": "lens/wrapup/03.png",
+          "caption": "End-of-class summary",
+          "holdMs": 800,
+          "screen": "wrapup"
+        },
+        {
+          "file": "lens/wrapup/04.png",
+          "caption": "Summary with the top insight: ★ Jake's back after 3 missed",
+          "holdMs": 2400,
+          "screen": "wrapup"
+        }
+      ]
+    },
+    "dark": {
+      "kind": "lens",
+      "size": [
+        576,
+        288
+      ],
+      "frames": [
+        {
+          "file": "lens/dark/01.png",
+          "caption": "Peek",
+          "holdMs": 700,
+          "screen": "peek"
+        },
+        {
+          "file": "lens/dark/02.png",
+          "caption": "Nod: lens off (fully dark)",
+          "holdMs": 1500,
+          "screen": "dark"
+        }
+      ]
+    }
+  },
+  "phone": {
+    "pairing": {
+      "kind": "phone",
+      "size": [
+        860,
+        1864
+      ],
+      "cssViewport": [
+        430,
+        932
+      ],
+      "frames": [
+        {
+          "file": "phone/pairing/01.png",
+          "caption": "Pairing: enter the code from your setup to connect phone and glasses",
+          "holdMs": 1500,
+          "crops": []
+        }
+      ]
+    },
+    "today": {
+      "kind": "phone",
+      "size": [
+        860,
+        1864
+      ],
+      "cssViewport": [
+        430,
+        932
+      ],
+      "frames": [
+        {
+          "file": "phone/today/01.png",
+          "caption": "Today opens on the next class (PT · Mon 6:00), class picker on top",
+          "holdMs": 1200,
+          "crops": []
+        },
+        {
+          "file": "phone/today/02.png",
+          "caption": "Tap Kids · Tue: theme, forms due, focus from notes",
+          "holdMs": 1500,
+          "crops": []
+        },
+        {
+          "file": "phone/today/03.png",
+          "caption": "\"From your agents\": 3 of 7 new insights, each with a next step and Do it",
+          "holdMs": 2500,
+          "crops": [
+            {
+              "file": "phone/today/03-agents-card.png",
+              "what": "From your agents card"
+            }
+          ]
+        },
+        {
+          "file": "phone/today/04.png",
+          "caption": "The plan card: Drill deck, 9 items · 47 min, first drills",
+          "holdMs": 1500,
+          "crops": [
+            {
+              "file": "phone/today/04-plan-card.png",
+              "what": "plan card"
+            }
+          ]
+        }
+      ]
+    },
+    "review": {
+      "kind": "phone",
+      "size": [
+        860,
+        1864
+      ],
+      "cssViewport": [
+        430,
+        932
+      ],
+      "frames": [
+        {
+          "file": "phone/review/01.png",
+          "caption": "Review: Dee's urgent parent email and two billing flags wait for the coach",
+          "holdMs": 2000,
+          "crops": [
+            {
+              "file": "phone/review/01-dee-email.png",
+              "what": "Dee email draft card"
+            }
+          ]
+        },
+        {
+          "file": "phone/review/02.png",
+          "caption": "Open the Dee draft to edit: subject and warm 3-sentence body, Send when ready",
+          "holdMs": 2500,
+          "crops": []
+        }
+      ]
+    },
+    "agents": {
+      "kind": "phone",
+      "size": [
+        860,
+        1864
+      ],
+      "cssViewport": [
+        430,
+        932
+      ],
+      "frames": [
+        {
+          "file": "phone/agents/01.png",
+          "caption": "Agents: one tile per agent, red needs you, amber waits for review, green is done",
+          "holdMs": 2500,
+          "crops": [
+            {
+              "file": "phone/agents/01-parent-tile.png",
+              "what": "red Parent emails tile (1 urgent)"
+            }
+          ]
+        }
+      ]
+    },
+    "parentEmail": {
+      "kind": "phone",
+      "size": [
+        860,
+        1864
+      ],
+      "cssViewport": [
+        430,
+        932
+      ],
+      "frames": [
+        {
+          "file": "phone/parentEmail/01.png",
+          "caption": "Parent emails: currently on Auto (sends on its own)",
+          "holdMs": 1500,
+          "crops": [
+            {
+              "file": "phone/parentEmail/01-autonomy.png",
+              "what": "Auto · Review · Off control"
+            }
+          ]
+        },
+        {
+          "file": "phone/parentEmail/02.png",
+          "caption": "Tap Review: drafts wait for your OK before anything is sent",
+          "holdMs": 2000,
+          "crops": [
+            {
+              "file": "phone/parentEmail/02-autonomy.png",
+              "what": "Auto · Review · Off control"
+            }
+          ]
+        }
+      ]
+    },
+    "insights": {
+      "kind": "phone",
+      "size": [
+        860,
+        1864
+      ],
+      "cssViewport": [
+        430,
+        932
+      ],
+      "frames": [
+        {
+          "file": "phone/insights/01.png",
+          "caption": "Insights: what the agents noticed, and what they can do about it",
+          "holdMs": 2000,
+          "crops": []
+        },
+        {
+          "file": "phone/insights/02.png",
+          "caption": "More insights: Eli needs a note, Jake missed 3, Leo billing, Priya resolved",
+          "holdMs": 2000,
+          "crops": []
+        }
+      ]
+    },
+    "priya": {
+      "kind": "phone",
+      "size": [
+        860,
+        1864
+      ],
+      "cssViewport": [
+        430,
+        932
+      ],
+      "frames": [
+        {
+          "file": "phone/priya/01.png",
+          "caption": "Priya's profile: the lens brief lines, attendance dots, rank",
+          "holdMs": 2500,
+          "crops": [
+            {
+              "file": "phone/priya/01-brief.png",
+              "what": "profile brief card"
+            }
+          ]
+        },
+        {
+          "file": "phone/priya/02.png",
+          "caption": "Metrics and nicknames",
+          "holdMs": 1200,
+          "crops": []
+        },
+        {
+          "file": "phone/priya/03.png",
+          "caption": "Working on, and every coach note in her own words",
+          "holdMs": 1800,
+          "crops": []
+        }
+      ]
+    },
+    "deck": {
+      "kind": "phone",
+      "size": [
+        860,
+        1864
+      ],
+      "cssViewport": [
+        430,
+        932
+      ],
+      "frames": [
+        {
+          "file": "phone/deck/01.png",
+          "caption": "Deck editor: 9 drills, reorder, cues, focus kids",
+          "holdMs": 1800,
+          "crops": []
+        },
+        {
+          "file": "phone/deck/02.png",
+          "caption": "\"Start from…\": repeat last class, copy a plan, blank, or let AI draft",
+          "holdMs": 2200,
+          "crops": [
+            {
+              "file": "phone/deck/02-sheet.png",
+              "what": "Start from sheet"
+            }
+          ]
+        }
+      ]
+    },
+    "onboarding": {
+      "kind": "phone",
+      "size": [
+        860,
+        1864
+      ],
+      "cssViewport": [
+        430,
+        932
+      ],
+      "frames": [
+        {
+          "file": "phone/onboarding/01.png",
+          "caption": "Setup step 1 of 6: what do you teach?",
+          "holdMs": 1800,
+          "crops": []
+        },
+        {
+          "file": "phone/onboarding/02.png",
+          "caption": "Pick Martial arts: belts, forms and drill decks",
+          "holdMs": 1500,
+          "crops": []
+        }
+      ]
+    },
+    "doIt": {
+      "kind": "phone",
+      "size": [
+        860,
+        1864
+      ],
+      "cssViewport": [
+        430,
+        932
+      ],
+      "frames": [
+        {
+          "file": "phone/doIt/01.png",
+          "caption": "Gus may be ready to test: next step, draft testing email",
+          "holdMs": 1500,
+          "crops": [
+            {
+              "file": "phone/doIt/01-gus.png",
+              "what": "Gus insight row"
+            }
+          ]
+        },
+        {
+          "file": "phone/doIt/02.png",
+          "caption": "Do it: Working… (the parent-email agent drafts it)",
+          "holdMs": 1200,
+          "crops": [
+            {
+              "file": "phone/doIt/02-gus.png",
+              "what": "Gus insight row"
+            }
+          ]
+        },
+        {
+          "file": "phone/doIt/03.png",
+          "caption": "Done: ✓ Email drafted for review",
+          "holdMs": 2200,
+          "crops": [
+            {
+              "file": "phone/doIt/03-gus.png",
+              "what": "Gus insight row"
+            }
+          ]
+        },
+        {
+          "file": "phone/doIt/04.png",
+          "caption": "Review now holds the Gus testing email next to Dee's",
+          "holdMs": 2200,
+          "crops": []
+        }
+      ]
+    }
+  }
+}
