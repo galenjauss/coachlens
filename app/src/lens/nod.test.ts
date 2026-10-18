@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { NOD } from '../config'
 import { MIN_DIP_MS, NodDetector, type NodConfig } from './nod'
 
-const cfg: NodConfig = { enabled: true, axis: 'y', threshold: 0.3, windowMs: 600, cooldownMs: 1500 }
+const cfg: NodConfig = { enabled: true, axis: 'y', threshold: 0.3, windowMs: 1500, cooldownMs: 1500 }
 
 /** Feed (time, y) samples; returns the times at which the detector fired. */
 function feed(d: NodDetector, clock: { t: number }, samples: [number, number][]): number[] {
@@ -15,6 +15,32 @@ const make = (c: NodConfig = cfg) => { const clock = { t: 0 }; return { clock, d
 const nod = (t: number, down = 0.6, rest = 0.1): [number, number][] => [[t, down], [t + 100, down], [t + 200, down], [t + 300, rest]]
 
 describe('NodDetector', () => {
+  it('a slow ~1.2 s nod fires (the dip is not absorbed into the resting value)', () => {
+    const { d, clock } = make()
+    const ys = [0.1, 0.1, 0.1, 0.18, 0.28, 0.4, 0.5, 0.6, 0.6, 0.6, 0.6, 0.55, 0.45, 0.35, 0.25, 0.12]
+    const samples = ys.map((y, i): [number, number] => [i * 100, y]) // ~1.2 s from leaving rest to back
+    expect(feed(d, clock, samples)).toEqual([1400]) // 0.25 is back within threshold/2 of rest
+  })
+
+  it('a fast ~300 ms nod fires', () => {
+    const { d, clock } = make()
+    expect(feed(d, clock, [[0, 0.1], [100, 0.1], [200, 0.6], [300, 0.6], [400, 0.6], [500, 0.1]])).toEqual([500])
+  })
+
+  it('looking down and staying down for 3 s (then coming back up) never fires', () => {
+    const { d, clock } = make()
+    const down: [number, number][] = Array.from({ length: 30 }, (_, i) => [100 + i * 100, 0.6])
+    expect(feed(d, clock, [[0, 0.1], ...down, [3100, 0.4], [3200, 0.2], [3300, 0.1], [3400, 0.1]])).toEqual([])
+  })
+
+  it('looking down slowly, staying, then slowly back up never fires', () => {
+    const { d, clock } = make()
+    const slowDown: [number, number][] = Array.from({ length: 20 }, (_, i) => [i * 100, 0.1 + i * 0.03]) // 2 s down
+    const stay: [number, number][] = Array.from({ length: 20 }, (_, i) => [2000 + i * 100, 0.7]) // 2 s held
+    const slowUp: [number, number][] = Array.from({ length: 20 }, (_, i) => [4000 + i * 100, 0.7 - i * 0.03]) // 2 s up
+    expect(feed(d, clock, [...slowDown, ...stay, ...slowUp])).toEqual([])
+  })
+
   it('a deliberate ~300 ms nod fires once, on the way back', () => {
     const { d, clock } = make()
     expect(feed(d, clock, [[0, 0.1], [100, 0.1], ...nod(200)])).toEqual([500])
@@ -40,19 +66,14 @@ describe('NodDetector', () => {
 
   it('needs a real return (within threshold/2 of rest) inside the window', () => {
     const { d, clock } = make()
-    // half-way back only, then the window runs out
-    expect(feed(d, clock, [[0, 0.1], [100, 0.6], [200, 0.6], [300, 0.35], [400, 0.35], [800, 0.1]])).toEqual([])
+    // half-way back only, until the 1.5 s window runs out
+    expect(feed(d, clock, [[0, 0.1], [100, 0.6], [200, 0.6], [300, 0.35], [1000, 0.35], [1700, 0.35], [1800, 0.1]])).toEqual([])
   })
 
-  it('ignores a dip held longer than 600 ms (looking down is not a nod)', () => {
+  it('a slow posture drift (+0.3 over 6 s) never fires: the resting value follows it', () => {
     const { d, clock } = make()
-    expect(feed(d, clock, [[0, 0.1], [100, 0.6], [400, 0.6], [701, 0.6], [800, 0.6], [900, 0.1]])).toEqual([])
-  })
-
-  it('ignores a slow tilt: the resting value follows it (time-based)', () => {
-    const { d, clock } = make()
-    const ramp: [number, number][] = Array.from({ length: 40 }, (_, i) => [i * 100, 0.1 + i * 0.02]) // +0.8 over 4 s
-    expect(feed(d, clock, [...ramp, ...ramp.slice().reverse().map(([, y], i): [number, number] => [4000 + i * 100, y])])).toEqual([])
+    const drift: [number, number][] = Array.from({ length: 60 }, (_, i) => [i * 100, 0.1 + i * 0.005])
+    expect(feed(d, clock, [...drift, ...drift.slice().reverse().map(([, y], i): [number, number] => [6000 + i * 100, y])])).toEqual([])
   })
 
   it('negative threshold means the value goes down while nodding', () => {

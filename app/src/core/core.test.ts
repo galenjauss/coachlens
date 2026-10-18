@@ -3,7 +3,7 @@ import { pcmToWav, toB64, fromB64 } from './wav'
 import { Outbox } from './outbox'
 import { memoryKV } from './storage'
 import { ApiError, NetworkError, createApi } from './api'
-import { Recorder } from './audio'
+import { LOUD_RMS, levelOf, NOISE_FLOOR_RMS, Recorder, rms, waveform, WAVE_BARS, WAVE_GLYPHS } from './audio'
 
 const form = { sessionId: 's', drillId: null, mode: 'note' as const, audioB64: null, text: 'hi' }
 const res = (id: string) => ({ utteranceId: id, transcript: 'hi', cardLines: [], coverage: { covered: 0, present: 0 }, nextStudent: null, disambiguation: null })
@@ -209,11 +209,11 @@ describe('recorder', () => {
     r.push(new Uint8Array(1000))
     expect(await r.stop()).toEqual({ wav: null, bytes: 1000, reason: 'too_short' })
   })
-  it('switchToPhone opens the phone mic once; bars() reflects arriving audio', async () => {
+  it('switchToPhone opens the phone mic once; wave() reflects arriving audio', async () => {
     const calls: unknown[][] = []
     const r = new Recorder({ audioControl: async (...a: unknown[]) => { calls.push(a); return true } })
     await r.start()
-    expect(r.bars()).toBe(0)
+    expect(r.wave()).toBe('')
     expect(await r.switchToPhone()).toBe(true)
     expect(await r.switchToPhone()).toBe(false)
     expect(r.source).toBe('phone')
@@ -221,7 +221,38 @@ describe('recorder', () => {
     const loud = new Uint8Array(3200); const v = new DataView(loud.buffer)
     for (let i = 0; i < 1600; i++) v.setInt16(i * 2, i % 2 ? 4000 : -4000, true)
     r.push(loud)
-    expect(r.bars()).toBe(5)
+    expect(r.wave()).toBe(`${'▁'.repeat(WAVE_BARS - 1)}${WAVE_GLYPHS[levelOf(4000)]}`)
+  })
+})
+
+describe('waveform mic indicator', () => {
+  const tone = (amp: number, n = 1600) => { const b = new Uint8Array(n * 2); const v = new DataView(b.buffer); for (let i = 0; i < n; i++) v.setInt16(i * 2, i % 2 ? amp : -amp, true); return b }
+  it('maps RMS to 8 levels with a soft noise floor (log-spaced, clamped)', () => {
+    expect(rms(tone(1000))).toBeCloseTo(1000)
+    expect(levelOf(0)).toBe(0)
+    expect(levelOf(NOISE_FLOOR_RMS)).toBe(0) // at the floor: silent
+    expect(levelOf(NOISE_FLOOR_RMS * 1.2)).toBe(0) // just above: still the lowest bar
+    expect(levelOf(LOUD_RMS)).toBe(7)
+    expect(levelOf(30000)).toBe(7)
+    const ladder = [200, 400, 800, 1600, 3200, 6000].map(levelOf)
+    expect(ladder).toEqual([...ladder].sort((a, b) => a - b)) // monotonic
+    expect(new Set(ladder).size).toBeGreaterThan(4)
+  })
+  it('scrolls: newest bar on the right, oldest drop off the left, padded with ▁', () => {
+    expect(waveform([7], 4)).toBe('▁▁▁█')
+    expect(waveform([0, 1, 2, 3, 4, 5, 6, 7], 4)).toBe('▅▆▇█')
+    expect([...waveform([3, 3, 3])].length).toBe(WAVE_BARS)
+  })
+  it('the recorder adds one bar per chunk and scrolls left as audio arrives', async () => {
+    const r = new Recorder({ audioControl: async () => true })
+    await r.start()
+    r.push(tone(LOUD_RMS))
+    const first = r.wave()
+    expect([...first].at(-1)).toBe('█')
+    r.push(tone(10))
+    const second = [...r.wave()]
+    expect(second.at(-1)).toBe('▁')
+    expect(second.at(-2)).toBe('█') // the loud bar moved one step left
   })
 })
 

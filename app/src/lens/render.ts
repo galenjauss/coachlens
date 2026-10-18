@@ -143,11 +143,11 @@ function card(s: LensState, now: number): PageSpec {
   ] }
 }
 
-/** "Hearing you" line: level dots + seconds, or a waiting hint; says when the phone mic took over. */
+/** "Hearing you" line: scrolling waveform + seconds, or a waiting hint; says when the phone mic took over. */
 function micLine(s: LensState): string {
   const m = s.mic
   if (!m) return ''
-  const level = m.bars ? `${'●'.repeat(m.bars)}${'○'.repeat(5 - m.bars)} ${m.seconds}s` : `○○○○○ waiting for audio… ${m.seconds}s`
+  const level = m.wave ? `${m.wave} ${m.seconds}s` : `waiting for audio… ${m.seconds}s`
   return m.source === 'phone' ? `${level} · Using phone mic` : level
 }
 

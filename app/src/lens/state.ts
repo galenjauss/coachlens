@@ -34,8 +34,10 @@ export interface LensState {
   wrapup: WrapUp | null
   /** A capture in progress; `at` = when it started (the recording header shows a static time from it). */
   pending: { mode: Mode; returnTo: Screen; viaLongPress: boolean; at: number } | null
-  /** Live "hearing you" indicator while recording: seconds, level 0..5, which mic. */
-  mic: { seconds: number; bars: number; source: MicSource } | null
+  /** The idle screen a nod turned dark (a nod or tap brings it back). */
+  darkFrom: 'home' | 'peek' | 'deck' | null
+  /** Live "hearing you" indicator while recording: seconds, scrolling waveform ('' = no audio yet), which mic. */
+  mic: { seconds: number; wave: string; source: MicSource } | null
   attendanceLines: string[]
   status: string | null
   loadError: string | null
@@ -54,7 +56,7 @@ export type LensEvent =
   | { type: 'sessionStarted'; res: StartSessionResponse; resumed: boolean; now: number }
   | { type: 'utteranceResult'; res: UtteranceResponse }
   | { type: 'utteranceQueued' } | { type: 'utteranceEmpty'; reason: EmptyReason } | { type: 'micFailed' }
-  | { type: 'micLevel'; seconds: number; bars: number; source: MicSource }
+  | { type: 'micLevel'; seconds: number; wave: string; source: MicSource }
   | { type: 'coverageUpdated'; coverage: Coverage; nextStudent: NextStudent | null }
   | { type: 'runsLoaded'; utteranceId: string; runs: UtteranceRun[] | null; final: boolean }
   | { type: 'wrapupLoaded'; wrapup: WrapUp }

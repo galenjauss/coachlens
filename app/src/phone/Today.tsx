@@ -15,7 +15,12 @@ export function Today({ api, kv, onOpenDeck, onSetup }: { api: Api; kv: KV; onOp
   const [actionErr, setActionErr] = useState<string | null>(null)
   const classRef = useRef<string | null | undefined>(undefined)
   classRef.current = classId
-  useEffect(() => { void kv.get(CLASS_ID_KEY).then(v => setClassId(v || null), () => setClassId(null)) }, [kv])
+  useEffect(() => {
+    void kv.get(CLASS_ID_KEY).then(v => setClassId(v || null), () => setClassId(null))
+    // A storage read that never answers must not leave Today on "Loading…": fall back to the default class.
+    const t = setTimeout(() => setClassId(c => (c === undefined ? null : c)), 3000)
+    return () => clearTimeout(t)
+  }, [kv])
 
   function clearStoredClass() {
     setClassId(null)

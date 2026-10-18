@@ -12,6 +12,11 @@ export class ApiError extends Error {
 export class NetworkError extends Error {}
 
 export type Api = ReturnType<typeof createApi>
+/**
+ * A request that hangs (dead serverless instance, stalled radio) fails instead of leaving a screen on
+ * "Loading…" forever. Generous: a first plan draft can take 15–30 s.
+ */
+export const REQUEST_TIMEOUT_MS = 45_000
 /** One agent run started by an utterance (GET /v1/utterances/:id/runs). Status kept loose: the server may add values. */
 export const UtteranceRun = z.object({ agent: z.string(), summary: z.string(), status: z.string(), createdAt: z.string() })
 export type UtteranceRun = z.infer<typeof UtteranceRun>
@@ -24,9 +29,16 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
     if (token) headers.set('Authorization', `Bearer ${token}`)
     let body = init.body
     if (init.json !== undefined) { headers.set('Content-Type', 'application/json'); body = JSON.stringify(init.json) }
+    const ctl = new AbortController()
+    const timer = setTimeout(() => ctl.abort(), REQUEST_TIMEOUT_MS)
     let res: Response
-    try { res = await fetchImpl(`${baseUrl}${path}`, { ...init, headers, body }) } catch (e) { throw new NetworkError(e instanceof Error ? e.message : 'network') }
-    const raw: unknown = await res.json().catch(() => undefined)
+    let raw: unknown
+    try {
+      try { res = await fetchImpl(`${baseUrl}${path}`, { ...init, headers, body, signal: ctl.signal }) } catch (e) {
+        throw new NetworkError(ctl.signal.aborted ? 'timeout' : e instanceof Error ? e.message : 'network')
+      }
+      raw = await res.json().catch(() => undefined)
+    } finally { clearTimeout(timer) }
     if (!res.ok) {
       const msg = raw && typeof raw === 'object' ? (raw as { error?: unknown }).error : undefined
       throw new ApiError(res.status, typeof msg === 'string' ? msg : res.statusText)

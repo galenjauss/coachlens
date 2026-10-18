@@ -168,15 +168,15 @@ describe('render', () => {
     expect(render({ ...s, screen: 'home' }, 0).texts.find(t => t.name === 'foot')?.content).toBe('2×: exit')
   })
   it('recording panel: drill + time header, listening body with the (wrapping) next-feedback line', () => {
-    const rec = { ...s, screen: 'recording' as const, pending: { mode: 'note' as const, returnTo: 'peek' as const, viaLongPress: false, at: 79_000 }, mic: { seconds: 0, bars: 0, source: 'glasses' as const } }
+    const rec = { ...s, screen: 'recording' as const, pending: { mode: 'note' as const, returnTo: 'peek' as const, viaLongPress: false, at: 79_000 }, mic: { seconds: 0, wave: '', source: 'glasses' as const } }
     const p = render(rec, 79_000)
     expect(p.texts.find(t => t.name === 'hdr')?.content).toBe('HORSE STANCE HOLDS · 3m left')
     expect(p.texts.find(t => t.name === 'body')?.content).toBe('● Listening… speak, then tap\n\n> Next feedback: Priya (guard)')
-    expect(p.texts.find(t => t.name === 'mic')?.content).toBe('○○○○○ waiting for audio… 0s')
+    expect(p.texts.find(t => t.name === 'mic')?.content).toBe('waiting for audio… 0s')
     // static time: minutes later the header still shows the time from when recording started
     expect(render(rec, 79_000 + 120_000).texts.find(t => t.name === 'hdr')?.content).toBe('HORSE STANCE HOLDS · 3m left')
-    expect(render({ ...rec, mic: { seconds: 3, bars: 3, source: 'glasses' } }, 0).texts.find(t => t.name === 'mic')?.content).toBe('●●●○○ 3s')
-    expect(render({ ...rec, mic: { seconds: 2, bars: 2, source: 'phone' } }, 0).texts.find(t => t.name === 'mic')?.content).toBe('●●○○○ 2s · Using phone mic')
+    expect(render({ ...rec, mic: { seconds: 3, wave: '▂▅▇▃▆█▄▂▁▃▁▁▂▃', source: 'glasses' } }, 0).texts.find(t => t.name === 'mic')?.content).toBe('▂▅▇▃▆█▄▂▁▃▁▁▂▃ 3s')
+    expect(render({ ...rec, mic: { seconds: 2, wave: '▁▂▃', source: 'phone' } }, 0).texts.find(t => t.name === 'mic')?.content).toBe('▁▂▃ 2s · Using phone mic')
   })
   it('long-press recording says speak, then release', () => {
     const p = render({ ...s, screen: 'recording', pending: { mode: 'note', returnTo: 'dark', viaLongPress: true, at: 0 } }, 0)

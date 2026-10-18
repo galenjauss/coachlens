@@ -184,13 +184,21 @@ describe('lens controller', () => {
     } finally { off() }
   })
 
-  it('the phone readout opening turns the IMU on at home; closing turns it off', async () => {
+  it('IMU is on from lens start (home, before class) and off on exit', async () => {
     const b = await boot()
-    expect(b.raw.imuControl).not.toHaveBeenCalled()
-    bus.emit('imuDebug', true); await flush()
-    expect(b.raw.imuControl).toHaveBeenLastCalledWith(true, ImuReportPace.P100)
-    bus.emit('imuDebug', false); await flush()
+    expect(b.raw.imuControl).toHaveBeenCalledWith(true, ImuReportPace.P100)
+    b.emit(dbl); await flush() // home double-tap: exit
     expect(b.raw.imuControl).toHaveBeenLastCalledWith(false)
+    expect(b.raw.shutDownPageContainer).toHaveBeenCalledWith(1)
+  })
+
+  it('a nod on home turns the lens dark before class; another nod brings home back', async () => {
+    const b = await boot()
+    await nod(b)
+    expect(b.sent.at(-1)).toBe('rebuild:')
+    await vi.advanceTimersByTimeAsync(2000)
+    await nod(b)
+    expect(b.sent.at(-1)).toMatch(/COACHLENS/)
   })
 
   it('tap in dark wakes the lens and does not open the mic', async () => {
@@ -262,7 +270,7 @@ describe('lens controller', () => {
     expect(b.sent.join('\n')).toContain('Time · next: Holds')
   })
 
-  it('endSession failure shows a peek instead of a stuck spinner; success turns IMU off', async () => {
+  it('endSession failure shows a peek instead of a stuck spinner; success shows wrap-up (IMU stays on for nods)', async () => {
     const endSession = vi.fn().mockRejectedValueOnce(new ApiError(500, 'x')).mockResolvedValueOnce(wrap)
     const b = await toPeek(fakeApi({ endSession }))
     b.emit(dbl); await flush() // confirmEnd
@@ -272,7 +280,7 @@ describe('lens controller', () => {
     b.emit(dbl); await flush()
     b.emit(tap); await flush() // end → succeeds
     expect(b.sent.join('\n')).toContain('CLASS DONE · 40 min')
-    expect(b.raw.imuControl).toHaveBeenLastCalledWith(false)
+    expect(b.raw.imuControl).not.toHaveBeenCalledWith(false)
   })
 
   it('an empty transcript (422) from a note shows a retry peek, not a stuck "Sending"', async () => {
@@ -420,7 +428,7 @@ describe('lens controller', () => {
       for (let i = 0; i < 10; i++) { b.emit(pcm(3200)); await vi.advanceTimersByTimeAsync(100) }
       const mic = b.sent.slice(n).filter(x => x.startsWith('upgrade:mic='))
       expect(mic.length).toBeLessThanOrEqual(1000 / MIC_METER_MS)
-      expect(mic.at(-1)).toMatch(/^upgrade:mic=●○○○○ 1s$/)
+      expect(mic.at(-1)).toMatch(/^upgrade:mic=[▁▂▃▄▅▆▇█]{14} 1s$/)
     })
 
     it('no glasses audio within 1.5 s → switches to the phone mic and says so', async () => {
@@ -441,10 +449,10 @@ describe('lens controller', () => {
       expect(b.raw.audioControl.mock.calls).toEqual([[false], [true, AudioInputSource.Phone]])
       b.emit({ audioEvent: { audioPcm: new Uint8Array(3200).fill(200), source: AudioInputSource.Glasses } }) // late glasses audio
       await vi.advanceTimersByTimeAsync(MIC_METER_MS)
-      expect(b.sent.at(-1)).toMatch(/^upgrade:mic=○○○○○ waiting for audio… \ds · Using phone mic$/)
+      expect(b.sent.at(-1)).toMatch(/^upgrade:mic=waiting for audio… \ds · Using phone mic$/)
       b.emit({ audioEvent: { audioPcm: new Uint8Array(3200).fill(200), source: AudioInputSource.Phone } })
       await vi.advanceTimersByTimeAsync(MIC_METER_MS)
-      expect(b.sent.at(-1)).toMatch(/^upgrade:mic=●+○* \ds · Using phone mic$/)
+      expect(b.sent.at(-1)).toMatch(/^upgrade:mic=[▁▂▃▄▅▆▇█]{13}█ \ds · Using phone mic$/)
     })
 
     it('glasses audio arriving in time → no phone fallback', async () => {

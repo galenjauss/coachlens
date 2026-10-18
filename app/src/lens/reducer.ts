@@ -13,7 +13,7 @@ export function initialState(firstRunSeen: boolean): LensState {
   return {
     screen: firstRunSeen ? 'home' : 'firstRun', today: null, classes: [], selectedClassId: null, session: null, active: null,
     coverage: { covered: 0, present: 0 }, nextStudent: null, card: null, disambiguation: null, wrapup: null,
-    pending: null, mic: null, attendanceLines: [], status: null, loadError: null, starting: false,
+    pending: null, mic: null, darkFrom: null, attendanceLines: [], status: null, loadError: null, starting: false,
   }
 }
 
@@ -21,7 +21,16 @@ const drills = (s: LensState) => s.today?.deck.drills ?? []
 
 /** The class-time rest screen. It stays up (no auto-hide); a status line expires after STATUS_MS. */
 function peek(s: LensState, status: string | null = null, ...effects: Effect[]): R {
-  return done({ ...s, screen: 'peek', status }, ...effects, ...(status ? [expire] : []))
+  return done({ ...s, screen: 'peek', status, darkFrom: null }, ...effects, ...(status ? [expire] : []))
+}
+
+/** Screens a nod may turn dark: idle ones only (never while recording, sending, or with the card up). */
+const NOD_IDLE = new Set<Screen>(['home', 'peek', 'deck'])
+
+/** Light the lens again on the idle screen it was on before going dark. */
+function wake(s: LensState): R {
+  const to = s.darkFrom ?? (s.session ? 'peek' : 'home')
+  return to === 'peek' ? peek(s) : done({ ...s, screen: to, darkFrom: null })
 }
 
 function startDrill(s: LensState, index: number, now: number): R {
@@ -47,8 +56,8 @@ function resumeDrill(s: LensState, now: number): R {
 }
 
 function record(s: LensState, mode: Mode, returnTo: Screen, viaLongPress: boolean, now: number): R {
-  return done({ ...s, screen: mode === 'attendance' ? 'attendance' : 'recording', pending: { mode, returnTo, viaLongPress, at: now },
-    mic: { seconds: 0, bars: 0, source: 'glasses' }, status: null }, { type: 'startMic' })
+  return done({ ...s, screen: mode === 'attendance' ? 'attendance' : 'recording', pending: { mode, returnTo, viaLongPress, at: now }, darkFrom: null,
+    mic: { seconds: 0, wave: '', source: 'glasses' }, status: null }, { type: 'startMic' })
 }
 
 /** Why nothing was sent, in words the coach can act on. */
@@ -103,7 +112,9 @@ function dataEvent(s: LensState, e: LensEvent, now: number): R | null {
     case 'loadFailed': return done({ ...s, loadError: e.message }) // a pending lens pick stays: tap retries it
     case 'coverageUpdated': return done({ ...s, coverage: e.coverage, nextStudent: e.nextStudent })
     case 'resumed': return done(s, { type: 'loadToday' }, { type: 'loadClasses' }, { type: 'flushOutbox' })
-    case 'startRequested': return s.screen === 'home' ? homeTap(s) : done(s)
+    case 'startRequested':
+      if (s.screen === 'dark' && !s.session) return homeTap({ ...s, screen: 'home', darkFrom: null }) // phone "Start" while the lens was off
+      return s.screen === 'home' ? homeTap(s) : done(s)
     case 'actionFailed': {
       if (s.screen === 'wrapup' && !s.wrapup) return peek(s, `Couldn't end class · ${e.message}`)
       return done({ ...s, starting: false, loadError: s.screen === 'home' ? e.message : s.loadError })
@@ -118,8 +129,8 @@ function dataEvent(s: LensState, e: LensEvent, now: number): R | null {
     case 'utteranceEmpty': return back(s, emptyStatus(s.pending?.mode, e.reason))
     case 'micLevel': {
       const m = s.mic
-      if ((s.screen !== 'recording' && s.screen !== 'attendance') || (m && m.seconds === e.seconds && m.bars === e.bars && m.source === e.source)) return done(s)
-      return done({ ...s, mic: { seconds: e.seconds, bars: e.bars, source: e.source } })
+      if ((s.screen !== 'recording' && s.screen !== 'attendance') || (m && m.seconds === e.seconds && m.wave === e.wave && m.source === e.source)) return done(s)
+      return done({ ...s, mic: { seconds: e.seconds, wave: e.wave, source: e.source } })
     }
     case 'utteranceResult': return utteranceResult(s, e)
     case 'runsLoaded': {
@@ -129,8 +140,8 @@ function dataEvent(s: LensState, e: LensEvent, now: number): R | null {
     case 'wrapupLoaded': return done({ ...s, screen: 'wrapup', wrapup: e.wrapup })
     case 'statusExpired': return s.status ? done({ ...s, status: null }) : done(s)
     case 'nod':
-      if (s.screen === 'peek') return done({ ...s, screen: 'dark', status: null })
-      return s.screen === 'dark' ? peek(s) : done(s)
+      if (NOD_IDLE.has(s.screen)) return done({ ...s, screen: 'dark', status: null, darkFrom: s.screen as 'home' | 'peek' | 'deck' })
+      return s.screen === 'dark' ? wake(s) : done(s)
     case 'timerEnded': {
       if (!s.session || !s.active || (s.screen !== 'dark' && s.screen !== 'peek')) return done(s)
       const list = drills(s)
@@ -168,9 +179,10 @@ export function reduce(s: LensState, e: LensEvent): R {
     case 'attendanceDone':
       return e.type === 'tap' ? startDrill(s, 0, now) : done(s)
     case 'dark':
-      // The lens is off by choice: a tap only wakes it (never records). Other gestures work as in peek.
-      if (e.type === 'tap') return peek(s)
-      return restGesture(s, e, now)
+      // The lens is off by choice: a tap only wakes it (never records). Before class any gesture wakes
+      // it (never exits); during class the other gestures work as in peek.
+      if (e.type === 'tap' || !s.session) return wake(s)
+      return restGesture({ ...s, darkFrom: null }, e, now)
     case 'peek':
       if (e.type === 'tap') return record(s, 'note', 'peek', false, now)
       return restGesture(s, e, now)
@@ -216,7 +228,7 @@ export function reduce(s: LensState, e: LensEvent): R {
     case 'wrapup': {
       if (!s.wrapup && e.type === 'doubleTap') return peek(s)
       if (!s.wrapup || !s.session) return done(s)
-      const reset = { ...s, screen: 'home' as const, session: null, active: null, wrapup: null, card: null, status: null, coverage: { covered: 0, present: 0 }, nextStudent: null }
+      const reset = { ...s, screen: 'home' as const, darkFrom: null, session: null, active: null, wrapup: null, card: null, status: null, coverage: { covered: 0, present: 0 }, nextStudent: null }
       if (e.type === 'tap') return done(reset, { type: 'remind', sessionId: s.session.id, studentIds: s.wrapup.missed.map(m => m.id) }, { type: 'loadToday' })
       if (e.type === 'doubleTap') return done(reset, { type: 'loadToday' })
       return done(s)

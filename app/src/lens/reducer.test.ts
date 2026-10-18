@@ -59,10 +59,40 @@ describe('lens reducer', () => {
     expect(run(inDark(), { type: 'nod' }).state.screen).toBe('peek')
   })
 
-  it('nod does nothing outside peek/dark (home, recording, card)', () => {
-    expect(run(initialState(true), { type: 'nod' }).state.screen).toBe('home')
+  it('nod toggles dark on any idle screen (home, peek, deck) and wakes back to that same screen', () => {
+    const home = run(initialState(true), { type: 'todayLoaded', today }).state
+    let r = run(home, { type: 'nod' })
+    expect(r.state).toMatchObject({ screen: 'dark', darkFrom: 'home' })
+    expect(run(r.state, { type: 'nod' }).state.screen).toBe('home')
+    expect(run(r.state, { type: 'tap' }).state.screen).toBe('home') // tap wakes
+    const dbl = run(r.state, { type: 'doubleTap' })
+    expect(dbl.state.screen).toBe('home') // before class: wakes, never exits from dark
+    expect(dbl.effects).toEqual([])
+    const deck = run(inPeek(), { type: 'swipeDown' }).state
+    r = run(deck, { type: 'nod' })
+    expect(r.state).toMatchObject({ screen: 'dark', darkFrom: 'deck' })
+    expect(run(r.state, { type: 'nod' }).state.screen).toBe('deck')
+    r = run(inPeek(), { type: 'nod' }, { type: 'nod' })
+    expect(r.state.screen).toBe('peek')
+  })
+
+  it('nod never acts while recording, sending, on the card, or on other screens', () => {
     const rec = run(inPeek(), { type: 'tap' }).state
     expect(reduce(rec, { type: 'nod' }).state).toBe(rec)
+    const sending = run(rec, { type: 'tap', now: Date.now() + 1000 }).state
+    expect(sending.screen).toBe('sending')
+    expect(reduce(sending, { type: 'nod' }).state).toBe(sending)
+    const card = run(inPeek(), { type: 'tap' }, { type: 'tap' }, { type: 'utteranceResult', res: { utteranceId: 'u', transcript: 't', cardLines: ['✓ x'], coverage: cov, nextStudent: null, disambiguation: null } }).state
+    expect(card.screen).toBe('card')
+    expect(reduce(card, { type: 'nod' }).state).toBe(card)
+    const first = initialState(false)
+    expect(reduce(first, { type: 'nod' }).state).toBe(first)
+  })
+
+  it('phone "Start" while the lens is dark before class wakes and starts', () => {
+    const dark = run(initialState(true), { type: 'todayLoaded', today }, { type: 'nod' }).state
+    const r = run(dark, { type: 'startRequested' })
+    expect(r.effects).toContainEqual({ type: 'startSession', classId: 'c1' })
   })
 
   it('peek is persistent during class: no hide timer, ticks of time do not leave it', () => {
@@ -136,13 +166,13 @@ describe('lens reducer', () => {
   it('recording keeps a start time (static header) and a live mic indicator; micLevel only applies while recording', () => {
     let r = run(inPeek(), { type: 'tap', now: 5000 })
     expect(r.state.pending?.at).toBe(5000)
-    expect(r.state.mic).toEqual({ seconds: 0, bars: 0, source: 'glasses' })
-    r = run(r.state, { type: 'micLevel', seconds: 2, bars: 3, source: 'phone' })
-    expect(r.state.mic).toEqual({ seconds: 2, bars: 3, source: 'phone' })
-    const same = reduce(r.state, { type: 'micLevel', seconds: 2, bars: 3, source: 'phone' })
+    expect(r.state.mic).toEqual({ seconds: 0, wave: '', source: 'glasses' })
+    r = run(r.state, { type: 'micLevel', seconds: 2, wave: '▂▅▇', source: 'phone' })
+    expect(r.state.mic).toEqual({ seconds: 2, wave: '▂▅▇', source: 'phone' })
+    const same = reduce(r.state, { type: 'micLevel', seconds: 2, wave: '▂▅▇', source: 'phone' })
     expect(same.state).toBe(r.state)
     const p = inPeek()
-    expect(reduce(p, { type: 'micLevel', seconds: 1, bars: 1, source: 'glasses' }).state).toBe(p)
+    expect(reduce(p, { type: 'micLevel', seconds: 1, wave: '▁', source: 'glasses' }).state).toBe(p)
   })
 
   it('runsLoaded updates only the matching card', () => {

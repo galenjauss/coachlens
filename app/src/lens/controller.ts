@@ -4,7 +4,6 @@ import { MAX_RECORD_MS, Recorder, type StopResult } from '../core/audio'
 import { bus } from '../core/bus'
 import type { FlushResult, Outbox, OutboxItem } from '../core/outbox'
 import { KEYS, type KV } from '../core/storage'
-import { readImuDebug } from '../core/imuDebug'
 import { CLASS_ID_KEY } from '../phone/classPref'
 import { fromB64, toB64 } from '../core/wav'
 import { RUNS_MAX_MS, RUNS_POLL_MS, runsDone } from './agentRuns'
@@ -45,7 +44,16 @@ function slot() {
   return { clear, set(ms: number, fn: () => void) { clear(); h = setTimeout(() => { h = null; fn() }, ms) } }
 }
 
-const errText = (e: unknown) => (e instanceof ApiError && e.status === 401 ? 'Not paired' : e instanceof ApiError ? `Server error ${e.status}` : 'Offline')
+const errText = (e: unknown) => (e instanceof ApiError && e.status === 401 ? 'Not paired' : e instanceof ApiError ? `Server error ${e.status}`
+  : e instanceof NetworkError && e.message === 'timeout' ? 'Server not responding' : 'Offline')
+
+/** A KV read that hangs (bridge storage) must not block loading: fall back after `ms`. */
+function kvGet(kv: KV, key: string, ms = 3000): Promise<string | null> {
+  return Promise.race([
+    kv.get(key).catch(e => { console.warn('[kv] read failed', key, e); return null }),
+    new Promise<null>(r => setTimeout(() => r(null), ms)),
+  ])
+}
 
 async function readFirstRunSeen(kv: KV): Promise<boolean> {
   try { return Boolean(await kv.get(KEYS.firstRunSeen)) } catch (e) { console.error('[lens] kv read failed', e); return false }
@@ -59,7 +67,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
   let recStartedAt = 0
   let state: LensState = initialState(await readFirstRunSeen(d.kv))
   let imuOn = false
-  let imuDebug = false // phone readout open (read from KV below)
+  let exited = false
   let todaySeq = 0 // only the latest today request may land (swiping classes fires several)
   let runsPoll: { utteranceId: string; stop(): void } | null = null
 
@@ -80,11 +88,10 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     const minutes = (st: LensState) => st.today?.deck.drills.find(x => x.id === st.active?.drillId)?.minutes
     if (state.active?.drillId !== prev.active?.drillId || state.active?.startedAt !== prev.active?.startedAt) armDrillTimer()
     else if (e.type === 'todayLoaded' && state.active && minutes(state) !== minutes(prev)) armDrillTimer()
-    void syncImu()
   }
 
-  /** The IMU runs while a class is live (nod toggle) or while the phone readout is open (calibration). */
-  const syncImu = () => setImu(Boolean(state.session && !state.wrapup) || imuDebug)
+  /** The IMU runs from lens start until exit: a nod toggles the lens on any idle screen, before class too. */
+  const syncImu = () => setImu(!exited)
 
   function armDrillTimer(): void {
     timers.timerEnded.clear()
@@ -154,7 +161,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
   async function loadToday(): Promise<void> {
     const seq = ++todaySeq
     try {
-      const today = await d.api.today((await d.kv.get(CLASS_ID_KEY)) || undefined)
+      const today = await d.api.today((await kvGet(d.kv, CLASS_ID_KEY)) || undefined)
       if (seq === todaySeq) dispatch({ type: 'todayLoaded', today })
     } catch (e) {
       if (seq === todaySeq) dispatch({ type: 'loadFailed', message: errText(e) })
@@ -192,7 +199,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     timers.recordMax.clear(); timers.micFallback.clear(); timers.micMeter.clear()
   }
 
-  const micLevel = () => ({ type: 'micLevel' as const, seconds: Math.floor((Date.now() - recStartedAt) / 1000), bars: recorder.bars(), source: recorder.source })
+  const micLevel = () => ({ type: 'micLevel' as const, seconds: Math.floor((Date.now() - recStartedAt) / 1000), wave: recorder.wave(), source: recorder.source })
 
   /** Refresh the "hearing you" line every MIC_METER_MS while recording (the reducer drops no-change updates). */
   function meter(): void {
@@ -222,8 +229,8 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
         return
       case 'selectClass':
         todaySeq += 1 // anything in flight is for the previous class
-        await d.kv.set(CLASS_ID_KEY, eff.classId)
-        bus.emit('classChanged', eff.classId) // the phone follows; our own listener reloads today
+        try { await d.kv.set(CLASS_ID_KEY, eff.classId) } catch (e) { console.warn('[lens] could not save the class choice', e) }
+        bus.emit('classChanged', eff.classId) // the phone follows; our own listener reloads today (never left loading)
         return
       case 'pollRuns': return pollRuns(eff.utteranceId)
       case 'startSession': {
@@ -274,7 +281,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
       case 'expireStatus': return timers.status.set(eff.ms, () => dispatch({ type: 'statusExpired' }))
       case 'flushOutbox': return flush(null)
       case 'exit':
-        imuDebug = false
+        exited = true
         await setImu(false)
         await d.bridge.shutDownPageContainer(1)
         return
@@ -312,7 +319,6 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
   const offStart = bus.on('startClass', () => dispatch({ type: 'startRequested' }))
   const offClass = bus.on('classChanged', () => { void run({ type: 'loadToday' }) })
   const offDeck = bus.on('deckChanged', () => { void run({ type: 'loadToday' }) }) // phone edited/accepted a plan: the lens reloads it
-  const offImuDebug = bus.on('imuDebug', on => { imuDebug = on; void syncImu() })
   // Ticks land just after whole seconds of the running drill, so the clock text changes on every tick.
   let tick: ReturnType<typeof setTimeout> | null = null
   const scheduleTick = () => {
@@ -327,13 +333,13 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
 
   await paint() // never a black screen: the first page goes up immediately
   if (state.screen !== 'firstRun') { void run({ type: 'loadToday' }); void run({ type: 'loadClasses' }) }
-  void readImuDebug(d.kv).then(on => { imuDebug = imuDebug || on; void syncImu() })
+  void syncImu() // IMU on from lens start (nod works on home too); off on exit
   void run({ type: 'flushOutbox' })
 
   return {
     dispatch,
     stop() {
-      unsubscribe(); offPaired(); offStart(); offClass(); offDeck(); offImuDebug(); if (tick) clearTimeout(tick)
+      unsubscribe(); offPaired(); offStart(); offClass(); offDeck(); if (tick) clearTimeout(tick)
       runsPoll?.stop()
       glasses.dispose()
       for (const t of Object.values(timers)) t.clear()

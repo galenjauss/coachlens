@@ -11,8 +11,28 @@ export type EmptyReason = 'no_audio' | 'too_short' | 'not_understood'
 type AudioBridge = { audioControl(isOpen: boolean, source?: AudioInputSource): Promise<boolean> }
 export type StopResult = { wav: Uint8Array; bytes: number } | { wav: null; bytes: number; reason: Exclude<EmptyReason, 'not_understood'> }
 
+/** Even's documented block glyphs, quietest → loudest. */
+export const WAVE_GLYPHS = '▁▂▃▄▅▆▇█'
+/** Bars in the scrolling waveform (newest on the right). */
+export const WAVE_BARS = 14
+/** Soft noise floor and "loud" reference (s16 RMS); levels are log-spaced between them. */
+export const NOISE_FLOOR_RMS = 150
+export const LOUD_RMS = 6000
+
+/** RMS → level 0..7: at/under the noise floor is 0, then log-spaced up to LOUD_RMS (clamped). */
+export function levelOf(r: number): number {
+  if (!(r > NOISE_FLOOR_RMS)) return 0
+  return Math.max(0, Math.min(7, Math.round((Math.log(r / NOISE_FLOOR_RMS) / Math.log(LOUD_RMS / NOISE_FLOOR_RMS)) * 7)))
+}
+
+/** The last `n` levels as block glyphs, left-padded with the quietest glyph; newest on the right. */
+export function waveform(levels: number[], n = WAVE_BARS): string {
+  const recent = levels.slice(-n)
+  return WAVE_GLYPHS[0]!.repeat(n - recent.length) + recent.map(l => WAVE_GLYPHS[Math.max(0, Math.min(7, l))]).join('')
+}
+
 /** RMS of little-endian s16 PCM. */
-function rms(pcm: Uint8Array): number {
+export function rms(pcm: Uint8Array): number {
   const n = Math.floor(pcm.length / 2)
   if (!n) return 0
   const view = new DataView(pcm.buffer, pcm.byteOffset, n * 2)
@@ -23,7 +43,7 @@ function rms(pcm: Uint8Array): number {
 
 export class Recorder {
   private chunks: Uint8Array[] = []
-  private level = 0
+  private levels: number[] = []
   recording = false
   source: MicSource = 'glasses'
   bytes = 0
@@ -33,7 +53,7 @@ export class Recorder {
     if (this.recording) return
     this.chunks = []
     this.bytes = 0
-    this.level = 0
+    this.levels = []
     this.source = 'glasses'
     this.recording = true
     try {
@@ -59,7 +79,7 @@ export class Recorder {
       this.source = 'phone'
       this.chunks = []
       this.bytes = 0
-      this.level = 0
+      this.levels = []
       return true
     } catch (e) {
       console.warn('[mic] phone mic unavailable; staying on the glasses mic', e)
@@ -79,13 +99,13 @@ export class Recorder {
     if (source && source !== this.source) return
     this.chunks.push(pcm)
     this.bytes += pcm.length
-    this.level = Math.max(rms(pcm), this.level * 0.6) // decays between chunks
+    this.levels.push(levelOf(rms(pcm))) // one bar per chunk
+    if (this.levels.length > 64) this.levels = this.levels.slice(-WAVE_BARS)
   }
 
-  /** Live level 0..5 for the "hearing you" bar. */
-  bars(): number {
-    if (!this.bytes) return 0
-    return Math.max(1, Math.min(5, Math.ceil(this.level / 800)))
+  /** Scrolling waveform of recent chunk levels ('' until audio arrives). */
+  wave(): string {
+    return this.levels.length ? waveform(this.levels) : ''
   }
 
   async stop(): Promise<StopResult> {

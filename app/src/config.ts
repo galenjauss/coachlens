@@ -11,11 +11,11 @@ export const API_URL: string = (import.meta.env.VITE_API_URL as string | undefin
  */
 // Calibrated on Galen's G2: x rests ≈ -0.11 and dips to ≈ -0.55 on a nod (y barely moves), so the dip
 // is ≈ -0.44 from the resting value; the threshold is about half of that, below the baseline.
-export const NOD: NodConfig = { enabled: true, axis: 'x', threshold: -0.22, windowMs: 600, cooldownMs: 1200 }
+export const NOD: NodConfig = { enabled: true, axis: 'x', threshold: -0.22, windowMs: 1500, cooldownMs: 1200 }
 /**
  * IMU report pace while class runs (or the readout is open). SDK range P100…P1000; the SDK default is
- * P100. The nod detector needs ≥ 2 dipped samples ≥ 120 ms apart plus the return inside 600 ms, so
- * keep this at P100–P200 (P300+ cannot fit three samples in the window). The readout shows the rate.
+ * P100. The nod detector needs ≥ 2 dipped samples ≥ 120 ms apart and a return within 1.5 s, so keep
+ * this at P100–P300 (a fast ~300 ms nod needs ~P100). The IMU runs from lens start until exit.
  */
 export const IMU_PACE: ImuReportPace = ImuReportPace.P100
 export const IMU_LOG: boolean = import.meta.env.VITE_IMU_LOG === '1'
