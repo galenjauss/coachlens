@@ -1,6 +1,5 @@
 import { and, asc, desc, eq, inArray, lt } from 'drizzle-orm'
-import { z } from 'zod'
-import { Alternatives, DeckDiff, DrillDraft, type Deck, type ModeConfig } from '@matside/shared'
+import type { Deck, DrillDraft, ModeConfig } from '@matside/shared'
 import type { Db } from '../db/client'
 import type { Deps } from '../deps'
 import { classes, deckDiffs, decks, drills, enrollments, issues, preferences, students } from '../db/schema'
@@ -8,6 +7,7 @@ import { applyDiff, totalMinutes } from '../logic/deckDiff'
 import { nextDateForWeekday } from '../logic/dates'
 import { findDeck, getDeck } from '../services/decks'
 import { curriculumFor, modeForClass } from '../services/context'
+import { normalizeAlternatives, normalizeDeck, normalizeDiff, RawAlternatives, RawDeckDiff, RawDraftOut, starterDeck } from '../logic/planNormalize'
 import { withRun } from './runs'
 
 const AUDIENCE: Record<ModeConfig['id'], string> = {
@@ -34,8 +34,6 @@ export function plannerInstructions(mode: ModeConfig): string {
 - Keep names ≤40 chars. ${mode.guardrails}`
 }
 
-const DraftOut = z.object({ drills: z.array(DrillDraft).min(5).max(12) }) // tutoring plans are 5-8 items
-
 async function planningContext(deps: Deps, classId: string, forDate: string) {
   const { db } = deps
   const mode = await modeForClass(db, classId)
@@ -59,7 +57,7 @@ async function planningContext(deps: Deps, classId: string, forDate: string) {
     `Last class: ${lastDrills.map(d => `${d.name} (${d.startedAt ? 'ran' : 'skipped'})`).join(', ') || 'none'}`,
     `Remembered preferences: ${prefs.map(p => p.text).join(' | ') || 'none'}`,
   ].join('\n')
-  return { text, theme: cur?.theme ?? 'General skills', mode, instructions: plannerInstructions(mode) }
+  return { text, theme: cur?.theme ?? 'General skills', mode, instructions: plannerInstructions(mode), rosterIds: new Set(ids) }
 }
 
 export async function draftDeck(deps: Deps, classId: string, forDate: string, utteranceId: string | null = null): Promise<string | null> {
@@ -71,7 +69,18 @@ export async function draftDeck(deps: Deps, classId: string, forDate: string, ut
   }
   return withRun(deps, { agent: 'planner', trigger: 'draft', sessionId: null, utteranceId }, async () => {
     const ctx = await planningContext(deps, classId, forDate)
-    const out = await deps.llm.object({ name: 'planner.draft', instructions: ctx.instructions, prompt: `Plan the class on ${forDate}.\n${ctx.text}`, schema: DraftOut })
+    // The model gets a loose schema; limits are enforced in code. Any failure (error, budget, bad output)
+    // falls back to the mode's starter deck so Today always has a plan.
+    let fellBack: string | null = null
+    let out: { drills: DrillDraft[] }
+    try {
+      const raw = await deps.llm.object({ name: 'planner.draft', instructions: ctx.instructions, prompt: `Plan the class on ${forDate}.\n${ctx.text}`, schema: RawDraftOut })
+      out = { drills: normalizeDeck(raw.drills, ctx.mode.id, ctx.rosterIds) }
+    } catch (e) {
+      fellBack = e instanceof Error ? e.message : String(e)
+      console.error('[planner] draft fell back to starter deck:', fellBack)
+      out = { drills: starterDeck(ctx.mode.id) }
+    }
     const [deck] = await deps.db.insert(decks).values({ classId, forDate }).onConflictDoNothing().returning()
     if (!deck) {
       const raced = await findDeck(deps.db, classId, forDate)
@@ -84,6 +93,7 @@ export async function draftDeck(deps: Deps, classId: string, forDate: string, ut
       await deps.db.delete(decks).where(eq(decks.id, deck.id)).catch(() => {})
       throw e
     }
+    if (fellBack) return { result: deck.id, summary: `Starter ${ctx.mode.planUnit.toLowerCase()} for ${forDate}: ${out.drills.length} ${ctx.mode.planItem}s, ${totalMinutes(out.drills)} min`, reason: `fell back to starter deck: ${fellBack.slice(0, 200)}`, output: out }
     return { result: deck.id, summary: `Drafted ${forDate} ${ctx.mode.planUnit.toLowerCase()}: ${out.drills.length} ${ctx.mode.planItem}s, ${totalMinutes(out.drills)} min (${ctx.theme})`, reason: 'theme + forms cycle + open issues', output: out }
   })
 }
@@ -100,7 +110,8 @@ export async function suggestDiff(deps: Deps, deckId: string, requestText: strin
       `If the request states a lasting preference about this class, put a one-sentence version in rememberSuggestion, else null.`,
       ctx.text,
     ].join('\n')
-    const diff = await deps.llm.object({ name: 'planner.diff', instructions: ctx.instructions, prompt, schema: DeckDiff })
+    const raw = await deps.llm.object({ name: 'planner.diff', instructions: ctx.instructions, prompt, schema: RawDeckDiff })
+    const diff = normalizeDiff(raw, deck.drills.map(d => d.id), ctx.rosterIds)
     const [row] = await deps.db.insert(deckDiffs).values({ deckId, requestText, diff }).returning()
     return {
       result: { diffId: row!.id, diff },
@@ -156,11 +167,12 @@ export async function alternativesFor(deps: Deps, drillId: string): Promise<Dril
   const deck = await getDeck(deps.db, d.deckId)
   const ctx = await planningContext(deps, deck.classId, deck.forDate)
   const r = await withRun(deps, { agent: 'planner', trigger: 'alternatives', sessionId: null }, async () => {
-    const out = await deps.llm.object({
-      name: 'planner.alternatives', instructions: ctx.instructions, schema: Alternatives,
+    const raw = await deps.llm.object({
+      name: 'planner.alternatives', instructions: ctx.instructions, schema: RawAlternatives,
       prompt: `Give exactly 3 alternative ${ctx.mode.planItem}s that serve the same purpose as "${d.name}" (${d.minutes}m, ${d.kind}; why: ${d.rationale}). ${VARY[ctx.mode.id]} Keep the same focusStudentIds: ${JSON.stringify(d.focusStudentIds)}.\n${ctx.text}`,
     })
-    return { result: out.alternatives, summary: `3 alternatives for "${d.name}"`, reason: 'instructor asked to swap' }
+    const alternatives = normalizeAlternatives(raw.alternatives, ctx.mode.id, ctx.rosterIds, d.name)
+    return { result: alternatives, summary: `3 alternatives for "${d.name}"`, reason: 'instructor asked to swap' }
   })
   if (!r) throw new Error('planner unavailable')
   return r
