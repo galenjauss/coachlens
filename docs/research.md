@@ -1,4 +1,6 @@
-# Research notes (2026-10-17)
+# Research notes (2026-10-17, framing revised 2026-10-18)
+
+**How to read this file.** These sources are **motivation for the problem**: why in-the-moment, specific feedback and parent communication matter, and why instructors lose it. They are **not** evidence that CoachLens improves learning, retention, fairness or coaching quality. CoachLens has not been piloted, and no product outcome has been measured. Do not translate a published effect size (for example d = 0.99, or 15.8% → 9.3%) into a promised CoachLens result. CoachLens logs notes, which are an imperfect proxy for feedback actually delivered.
 
 Evidence labels: STRONG = primary data or peer-reviewed research; MODERATE = vendor-observed data from a large sample; WEAK = blog posts, unsourced figures, anecdotes.
 
@@ -23,8 +25,8 @@ Evidence labels: STRONG = primary data or peer-reviewed research; MODERATE = ven
 
 ## Competitors
 - Kicksite, Zen Planner, Spark ($199/mo), Gymdesk (from $75/mo), Mindbody (from $99/mo), Martialytics, OnMat. All offer rank tracking plus email/SMS. Where AI exists, it targets marketing or the front desk.
-- **No instructor-side voice-first or hands-free capture during class found.** The closest are student-side voice training logs (RollForge, Grappling AI).
-- No martial arts or teaching-coach app found on G2 / Even Hub.
+- **No instructor-side, voice-first, eyes-up capture during class found** (in a non-exhaustive search). The closest are student-side voice training logs (RollForge, Grappling AI).
+- No martial arts or teaching-coach app found on G2 / Even Hub in our non-exhaustive community survey (the official store was not enumerated; see originality.md).
 
 ## Platform facts (Even docs, STRONG)
 - iOS: the app's web view keeps running when the phone is locked, and mic capture continues. Android: may be suspended; mic and sockets stop; treat resume as a cold start. → Demo on iPhone; persist state in localStorage.
@@ -32,6 +34,25 @@ Evidence labels: STRONG = primary data or peer-reviewed research; MODERATE = ven
 - Network: whitelist full HTTPS origins in app.json, and the server must send CORS headers.
 - Review rules: double-tap on the root page → exit dialog; first run shows instructions on the glasses ("never a black screen"); reviewers lock the phone and expect timers to finish and the app to respond after 2 minutes idle.
 - Prohibited categories: medical diagnosis, financial advice, emergency routing. Billing = neutral flags only.
-- Glance design: about 2 s per glance, ≤3 rows. No font size control; build hierarchy with position, borders and glyphs (`>`, `━─`, `●○`).
+- Glance design (Even guidance, not a CoachLens measurement): about 2 s per glance, ≤3 rows. No font size control; build hierarchy with position, borders and glyphs (`>`, `━─`, `●○`).
 - Even's direction: Conversate / Prep Notes = preload context → live prompts on the lens → act afterwards. Pitch: **"Prep Notes for the dojo."**
 - Hackathon pattern (WEAK): winners pick a specific hands-busy, eyes-up user, give a live and visceral demo where the AI does real work, and keep a narrow, polished scope (e.g. HackMIT 2025 Mentra-track winner Marvis: step-by-step handyman instructions on G1).
+
+## What we haven't measured yet
+None of these has been measured for CoachLens, in the lab or in a class:
+- **Capture completion:** share of observations the coach intended to record that end up saved to the right student.
+- **Wrong-student rate:** notes attributed to the wrong student, and how often the coach notices and corrects them.
+- **Wrong-meaning rate:** praise recorded as a problem (or the reverse), and wrong attendance changes.
+- **Successful corrections:** how often Undo or Review fixes a mistake completely.
+- **Attention time:** seconds of the coach's attention per capture, including gestures, glance and recovery, and the end-to-end time from tap to confirmation on physical G2.
+- **Speech accuracy in real noise:** transcription and name accuracy on a loud mat with several speakers.
+- **Review workload:** minutes per class spent reviewing drafts and Review items.
+- **Follow-up usefulness:** whether parents or students find the follow-up useful, and whether it changes anything.
+- **Outcomes:** retention, learning or coaching quality. These stay hypotheses until a much larger study.
+
+## Pilot plan (proposed, not started)
+1. **Who:** 2–3 independent instructors (martial arts first), not the founder, each with their own instructor account once multi-instructor isolation is deployed. Synthetic or consented data only.
+2. **Setup:** installed Beta on G2 (after the gate in [`beta-acceptance.md`](beta-acceptance.md) passes), Quiet display mode, email on Review only (no Auto sending).
+3. **Duration:** 4 classes per instructor over two weeks.
+4. **Measure:** an observer with a tally sheet logs every observation the coach says aloud; compare against saved notes for capture completion, wrong-student and wrong-meaning rates. Video (with consent) for attention time and gesture count. Time the Review queue after class. Short instructor interview after each class.
+5. **Decision rule:** set targets before the first class (for example wrong-student rate under 5% and median attention under 5 s per capture) and report the results whether or not they are met.
