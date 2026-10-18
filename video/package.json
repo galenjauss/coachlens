@@ -5,15 +5,17 @@
   "description": "CoachLens Devpost demo video (Remotion)",
   "scripts": {
     "studio": "remotion studio",
-    "sfx": "node scripts/sfx.mjs",
     "stills": "node scripts/stills.mjs",
-    "render": "remotion render CoachLensDemo out/coachlens-demo.mp4 --codec=h264 --crf=18",
+    "check": "node scripts/check-timeline.mjs",
+    "audio-check": "node scripts/audio-check.mjs out/coachlens-launch-v2.mp4",
+    "render": "remotion render CoachLensLaunch out/coachlens-launch-v2.mp4 --codec=h264 --crf=20 --concurrency=6",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@remotion/cli": "4.0.536",
     "@remotion/google-fonts": "4.0.536",
     "@remotion/media": "4.0.536",
+    "@remotion/motion-blur": "4.0.536",
     "@remotion/paths": "4.0.536",
     "react": "19.3.1",
     "react-dom": "19.3.1",
@@ -23,5 +25,6 @@
   "devDependencies": {
     "@types/react": "19.3.0",
     "typescript": "5.9.3"
-  }
+  },
+  "type": "module"
 }

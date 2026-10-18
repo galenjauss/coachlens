@@ -1,11 +1,11 @@
 import { Composition } from 'remotion'
-import { Calibrate } from './Calibrate'
-import { CoachLensDemo } from './CoachLensDemo'
 import { DURATION, FPS, HEIGHT, WIDTH } from './config'
+import { ContactSheet } from './ContactSheet'
+import { Film } from './Film'
 
-export const RemotionRoot: React.FC = () => (
+export const RemotionRoot = () => (
   <>
-    <Composition id="CoachLensDemo" component={CoachLensDemo} durationInFrames={DURATION} fps={FPS} width={WIDTH} height={HEIGHT} />
-    <Composition id="Calibrate" component={Calibrate} durationInFrames={1} fps={FPS} width={1920} height={1500} />
+    <Composition id="CoachLensLaunch" component={Film} durationInFrames={DURATION} fps={FPS} width={WIDTH} height={HEIGHT} />
+    <Composition id="ContactSheet" component={ContactSheet} durationInFrames={1} fps={FPS} width={1920} height={720} defaultProps={{ start: 1 }} />
   </>
 )

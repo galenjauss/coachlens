@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /**
- * Renders one review still per scene (its key frame) to out/stills/NN-scene.png.
- * Usage: node scripts/stills.mjs [sceneNumber ...]   e.g. `node scripts/stills.mjs 4 5`
+ * Review stills for the v2 film: renders key frames to out/v2/stills/fNNNN.png.
+ * Usage: node scripts/stills.mjs            # the default key frames
+ *        node scripts/stills.mjs 100 2400   # just these frames
+ *        SCALE=0.5 node scripts/stills.mjs  # half-size for quick looks
  */
 import { mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -11,22 +13,22 @@ import { webpackOverride } from '../webpack-override.mjs'
 
 const ROOT = resolve(import.meta.dirname, '..')
 process.chdir(ROOT)
-/** [number, name, absolute frame] — each scene's most important frame. */
-export const STILLS = [
-  [1, 'hook', 190], [2, 'problem', 410], [3, 'meet', 600], [4, 'plan', 1060], [5, 'agents', 1400],
-  [6, 'notes', 1980], [7, 'ask', 2370], [8, 'notice', 2860], [9, 'wrapup', 3090], [10, 'phone', 3620],
-  [11, 'originality', 3860], [12, 'mosaic', 4340], [13, 'close', 4480],
+/** ~20 key frames across the film (one or two per section). */
+export const KEY_FRAMES = [
+  20, 75, 135, 200, 262, 330, 430, 545, 640, 800, 960, 1100, 1215, 1290, 1440, 1475, 1530, 1620, 1740,
+  1900, 2040, 2200, 2440, 2580, 2700, 2800, 2950, 3135, 3200, 3320, 3420, 3540, 3690, 3760, 3990, 4300, 4450,
 ]
-const only = process.argv.slice(2).map(Number)
-const extra = process.env.FRAMES ? process.env.FRAMES.split(',').map(f => [0, `f${f}`, Number(f)]) : []
-const todo = extra.length ? extra : STILLS.filter(([n]) => !only.length || only.includes(n))
+const args = process.argv.slice(2).map(Number).filter(n => Number.isFinite(n))
+const todo = args.length ? args : KEY_FRAMES
+const scale = Number(process.env.SCALE ?? 1)
+const outDir = join(ROOT, 'out/v2/stills')
 
 const serveUrl = await bundle({ entryPoint: join(ROOT, 'src/index.ts'), webpackOverride })
-const composition = await selectComposition({ serveUrl, id: 'CoachLensDemo' })
-mkdirSync(join(ROOT, 'out/stills'), { recursive: true })
-for (const [n, name, frame] of todo) {
-  const output = join(ROOT, 'out/stills', `${String(n).padStart(2, '0')}-${name}.png`)
+const composition = await selectComposition({ serveUrl, id: 'CoachLensLaunch' })
+mkdirSync(outDir, { recursive: true })
+for (const frame of todo) {
+  const output = join(outDir, `f${String(frame).padStart(4, '0')}.png`)
   const t = Date.now()
-  await renderStill({ composition, serveUrl, output, frame, imageFormat: 'png', chromiumOptions: { gl: 'angle' } })
-  console.log(`${output} (frame ${frame}) ${Date.now() - t} ms`)
+  await renderStill({ composition, serveUrl, output, frame, imageFormat: 'png', scale, chromiumOptions: { gl: 'angle' } })
+  console.log(`${output} ${Date.now() - t} ms`)
 }
