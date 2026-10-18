@@ -4,7 +4,7 @@ import { migrate } from 'drizzle-orm/pglite/migrator'
 import { fileURLToPath } from 'node:url'
 import * as schema from '../db/schema'
 import type { Db } from '../db/client'
-import type { Deps, Llm, MailMsg } from '../deps'
+import type { Deps, Llm, LlmImage, MailMsg } from '../deps'
 
 export async function makeTestDb(): Promise<Db> {
   const client = new PGlite()
@@ -13,8 +13,8 @@ export async function makeTestDb(): Promise<Db> {
   return db as unknown as Db
 }
 
-export function fakeLlm(handler: (a: { name: string; prompt: string; instructions: string }) => unknown): Llm {
-  return { async object({ name, prompt, instructions, schema }) { return schema.parse(await handler({ name, prompt, instructions })) } }
+export function fakeLlm(handler: (a: { name: string; prompt: string; instructions: string; images?: LlmImage[] }) => unknown): Llm {
+  return { async object({ name, prompt, instructions, schema, images }) { return schema.parse(await handler({ name, prompt, instructions, images })) } }
 }
 
 export type TestDeps = Deps & { deferred: Promise<unknown>[]; sent: MailMsg[]; flush(): Promise<void> }

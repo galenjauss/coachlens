@@ -3,7 +3,7 @@ import { cors } from 'hono/cors'
 import { HTTPException } from 'hono/http-exception'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { AgentTask, DeckPatch, MAX_ALIASES, RedraftRequest, StudentPatch, UtteranceForm } from '@matside/shared'
+import { AgentTask, DeckPatch, ExtractRequest, MAX_ALIASES, MAX_IMAGE_BASE64, MAX_ONBOARDING_TEXT, OnboardingCommit, RedraftRequest, StudentPatch, UtteranceForm } from '@matside/shared'
 import type { Deps } from './deps'
 import { attendance, billingFlags, enrollments, instructors, notes, sessions, students, classes, utterances } from './db/schema'
 import { hashToken } from './http/auth'
@@ -24,12 +24,16 @@ import { redraftOutbox } from './agents/redraft'
 import { agentRunDetail, agentTaskRuns, agentsSummary, utteranceRuns } from './services/agents'
 import { localDate } from './logic/dates'
 import { computeCoverage, loadSessionContext, markPresent, nextStudentFor } from './services/context'
+import { extractOnboarding } from './agents/onboarding'
+import { BudgetExceededError } from './agents/budget'
+import { commitOnboarding, onboardingStatus, OnboardingError } from './services/onboarding'
 
 type Vars = { Variables: { instructorId: string } }
 const MAX_AUDIO_BYTES = 2_000_000
 const PAIR_FAIL_LIMIT = 20
 const PAIR_FAIL_WINDOW_MS = 10 * 60_000
 const MAX_TOKENS = 5
+const MAX_EXTRACT_BYTES = MAX_IMAGE_BASE64 + MAX_ONBOARDING_TEXT * 4 + 4096
 
 function codesMatch(a: string, b: string): boolean {
   const x = Buffer.from(a), y = Buffer.from(b)
@@ -310,6 +314,37 @@ export function createApp(deps: Deps) {
     } else ids = (await listStudents(db)).map(s => s.id)
     deps.defer(runReportCards(deps, studentIds ? ids : undefined).catch(e => console.error('[report-cards]', e)))
     return c.json({ started: ids.length })
+  })
+
+  // ---- Onboarding quiz: per-step AI extraction, then one idempotent commit ----
+  app.get('/v1/onboarding/status', async c => c.json(await onboardingStatus(deps, c.get('instructorId'))))
+  app.post('/v1/onboarding/extract', async c => {
+    if (!allow(`onb:${c.get('instructorId')}`, 20)) {
+      c.header('Retry-After', '30')
+      throw new HTTPException(429, { message: 'slow down' })
+    }
+    if (Number(c.req.header('content-length') ?? 0) > MAX_EXTRACT_BYTES) throw new HTTPException(413, { message: 'image too large' })
+    const raw: unknown = await c.req.json().catch(() => null)
+    const img = raw && typeof raw === 'object' ? (raw as { imageBase64?: unknown }).imageBase64 : undefined
+    if (typeof img === 'string' && img.length > MAX_IMAGE_BASE64) throw new HTTPException(413, { message: 'image too large' })
+    const req = ExtractRequest.safeParse(raw)
+    if (!req.success) throw new HTTPException(400, { message: 'invalid body' })
+    try {
+      return c.json(await extractOnboarding(deps, req.data, localDate(deps.now(), deps.env.timeZone)))
+    } catch (e) {
+      if (e instanceof BudgetExceededError) throw new HTTPException(429, { message: 'ai_budget_reached' })
+      console.error('[onboarding:extract]', req.data.step, e instanceof Error ? e.message : e)
+      throw new HTTPException(502, { message: 'extract_failed' })
+    }
+  })
+  app.post('/v1/onboarding/commit', async c => {
+    const body = await json(c.req.raw, OnboardingCommit)
+    try {
+      return c.json(await commitOnboarding(deps, c.get('instructorId'), body))
+    } catch (e) {
+      if (e instanceof OnboardingError) throw new HTTPException(400, { message: e.message })
+      throw e
+    }
   })
 
   return app

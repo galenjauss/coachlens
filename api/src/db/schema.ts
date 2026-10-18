@@ -8,6 +8,8 @@ const createdAt = () => ts('created_at').notNull().defaultNow()
 export const instructors = pgTable('instructors', {
   id: id(), name: text('name').notNull(), email: text('email').notNull(), tokenHash: text('token_hash'),
   tokenHashes: jsonb('token_hashes').$type<string[]>().notNull().default([]),
+  // Set by onboarding (Task 24); null until the coach finishes the quiz.
+  schoolName: text('school_name'), timeZone: text('time_zone'),
 })
 export const classes = pgTable('classes', {
   id: id(), instructorId: text('instructor_id').notNull(), name: text('name').notNull(),

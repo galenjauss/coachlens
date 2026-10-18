@@ -15,10 +15,17 @@ export function modelFor(name: string, opts: ModelChoice): string {
 
 export function anthropicLlm(opts: ModelChoice & { budget: Budget }): Llm {
   return {
-    async object({ name, instructions, prompt, schema }) {
+    async object({ name, instructions, prompt, schema, images }) {
       await opts.budget.take() // throws BudgetExceededError before any provider call
-      const { output } = await generateText({ model: anthropic(modelFor(name, opts)), instructions, prompt, output: Output.object({ schema }) })
-      return schema.parse(output)
+      const model = anthropic(modelFor(name, opts))
+      const output = Output.object({ schema })
+      const { output: out } = images?.length
+        ? await generateText({
+          model, instructions, output,
+          messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, ...images.map(i => ({ type: 'file' as const, mediaType: i.mediaType, data: i.data }))] }],
+        })
+        : await generateText({ model, instructions, prompt, output })
+      return schema.parse(out)
     },
   }
 }
