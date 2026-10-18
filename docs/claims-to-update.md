@@ -88,6 +88,14 @@ The simplest, safest option is to replace the whole story with the new [`docs/de
 ## 2. Demo video (YouTube, v3.3)
 
 - Closing card: currently `Now on the Even Hub store`. The source now reads `Submitted to the Even Hub store` (`video/src/config.ts`, `STORE_LINE`). The controller re-renders the film; then replace the upload or upload the new cut and update the Devpost link.
+- On-screen text corrected in source for v3.4 (text only; no layout, timing, music or visual changes; not rendered yet):
+  - Reveal tagline: `hands-free AI agents for coaches, on Even G2` → `eyes-up AI follow-up for coaches, on Even G2`.
+  - Originality HUD label: `ORIGINALITY / 0 OF 220+` → `ORIGINALITY / 0 FOUND IN OUR SURVEY`.
+  - Under the giant 0: `OF 220+ · FOR COACHES & TEACHERS` → `FOR COACHES IN OUR ~220-APP SURVEY`.
+  - Footnote: `Community G2 app directory + Even built-ins, Oct 2026.` → `Non-exhaustive: community G2 list + Even built-ins, Oct 2026.`
+- Left unchanged on purpose, for you to decide:
+  - Quiet scene `dark until it matters.` describes the **Quiet display mode in source** (idle display hides after 8 s), not the deployed build, which keeps the drill and timer visible. Keep it only once Quiet mode is deployed, or accept that it describes the next version.
+  - Originality scene `until now.` still implies a world first; consider removing or rewording it (for example `in our survey.`) on the next render.
 - Voiceover in v3.3, if it says "hands free", "two seconds later" or "the first Even Hub app for coaches and teachers": these remain in the uploaded audio until the next render. The corrected lines are in [`demo-script.md`](demo-script.md).
 - YouTube description (add as the first lines):
   > CoachLens, an Even Realities G2 app for instructors (LA Hacks 2026). Submitted to the Even Hub store; in review. The film sequences real simulator renders at authored timings; it is not a latency measurement. Demo students are synthetic.
