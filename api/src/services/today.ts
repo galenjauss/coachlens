@@ -3,14 +3,17 @@ import { modeConfig, type ClassSummary, type FocusItem, type Today } from '@mats
 import type { Db } from '../db/client'
 import type { Deps } from '../deps'
 import { classes, enrollments, issues, sessions, students } from '../db/schema'
-import { localDate, localWeekday } from '../logic/dates'
+import { localWeekday, upcomingClassDate } from '../logic/dates'
 import { draftDeck } from '../agents/planner'
 import { getDeck } from './decks'
 import { curriculumFor } from './context'
 
 export async function listClasses(db: Db): Promise<ClassSummary[]> {
   const rows = await db.select().from(classes).orderBy(asc(classes.weekday), asc(classes.startTime), asc(classes.name))
-  return rows.map(c => ({ id: c.id, name: c.name, mode: c.mode, modeLabel: modeConfig(c.mode).label }))
+  return rows.map(c => {
+    const mode = modeConfig(c.mode) // unknown stored values fall back to martial_arts
+    return { id: c.id, name: c.name, mode: mode.id, modeLabel: mode.label }
+  })
 }
 
 /** Today's class: the explicit classId (demo class picker) or the class on today's weekday, else the next one. */
@@ -28,8 +31,8 @@ async function pickClass(db: Db, dow: number, classId: string | undefined) {
 export async function getToday(deps: Deps, classId?: string): Promise<Today> {
   const { db } = deps
   const now = deps.now()
-  const forDate = localDate(now, deps.env.timeZone)
   const cls = await pickClass(db, localWeekday(now, deps.env.timeZone), classId)
+  const forDate = upcomingClassDate(now, deps.env.timeZone, cls.weekday)
   const mode = modeConfig(cls.mode)
   const deckId = await draftDeck(deps, cls.id, forDate)
   if (!deckId) throw new Error('deck unavailable')

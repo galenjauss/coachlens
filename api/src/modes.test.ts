@@ -4,18 +4,21 @@ import { resetRateLimits } from './http/rateLimit'
 import { makeTestDb, makeDeps, fakeLlm } from './test/helpers'
 import { createApp } from './app'
 import { seed } from './db/seed'
-import { guardians, issues, outbox } from './db/schema'
+import { MODES } from '@matside/shared'
+import { classes, decks, guardians, issues, outbox, sessions } from './db/schema'
+import { plannerInstructions } from './agents/planner'
 
 const intent = (o: Record<string, unknown>) => ({ type: 'feedback', studentNames: [], content: '', skillTags: [], urgency: null, amount: null, minutes: null, attendanceStatus: null, ...o })
 const ex = (name: string) => ({ name, minutes: 6, kind: 'drill', cues: ['chest up'], focusStudentIds: [], rationale: 'program block' })
 
 type Call = { name: string; prompt: string; instructions: string }
 
-async function seededApp() {
+async function seededApp(now?: Date) {
   const db = await makeTestDb()
   const w = await seed(db, { today: '2026-10-17', guardianEmail: i => `inbox${i}@example.com` })
   const calls: Call[] = []
   const deps = makeDeps(db, {
+    ...(now ? { now: () => now } : {}),
     llm: fakeLlm(a => {
       calls.push(a)
       if (a.name === 'router') return { intents: [intent({ studentNames: ['Maria'], content: 'squat depth great, knees caving on the last set', skillTags: ['depth'] })] }
@@ -50,6 +53,32 @@ describe('teaching modes over HTTP', () => {
     expect((await app.request('/v1/classes')).status).toBe(401)
   })
 
+  it('/v1/classes maps an unknown stored mode to martial arts', async () => {
+    const { app, h, db, w } = await seededApp()
+    await db.update(classes).set({ mode: 'bogus' as never }).where(eq(classes.id, w.classIds.pt))
+    const list = (await (await app.request('/v1/classes', { headers: h })).json()) as { id: string; mode: string; modeLabel: string }[]
+    expect(list.find(c => c.id === w.classIds.pt)).toMatchObject({ mode: 'martial_arts', modeLabel: 'Martial arts' })
+  })
+
+  it("on Sunday, ?classId=<pt> shows Monday's seeded 7-item plan with no LLM call, and starting reuses it", async () => {
+    const { app, h, db, w, calls } = await seededApp(new Date('2026-10-18T19:00:00Z')) // Sun 2026-10-18 12:00 PT
+    const t = (await (await app.request(`/v1/today?classId=${w.classIds.pt}`, { headers: h })).json()) as { forDate: string; theme: string; deck: { id: string; forDate: string; drills: unknown[] } }
+    expect(t.forDate).toBe('2026-10-19')
+    expect(t.deck.forDate).toBe('2026-10-19')
+    expect(t.deck.drills).toHaveLength(7)
+    expect(t.theme).toBe('Lower-body strength')
+    const r = await app.request('/v1/sessions', { method: 'POST', headers: h, body: JSON.stringify({ classId: w.classIds.pt }) })
+    expect(r.status).toBe(200)
+    const { sessionId } = (await r.json()) as { sessionId: string }
+    const [s] = await db.select().from(sessions).where(eq(sessions.id, sessionId))
+    expect(s).toMatchObject({ deckId: t.deck.id, forDate: '2026-10-19' })
+    expect(await db.select().from(decks).where(eq(decks.classId, w.classIds.pt))).toHaveLength(1)
+    expect(calls).toHaveLength(0)
+    // default picker (no classId) keeps the weekday rule and applies the same date rule
+    const d = (await (await app.request('/v1/today', { headers: h })).json()) as { classId: string; forDate: string }
+    expect(d).toMatchObject({ classId: w.classIds.pt, forDate: '2026-10-19' })
+  })
+
   it('/v1/today?classId=<pt> returns personal-training mode and the seeded session plan', async () => {
     const { app, h, w, calls } = await seededApp()
     const r = await app.request(`/v1/today?classId=${w.classIds.pt}`, { headers: h })
@@ -66,13 +95,13 @@ describe('teaching modes over HTTP', () => {
     expect((await app.request('/v1/today?classId=nope', { headers: h })).status).toBe(404)
     const tut = (await (await app.request(`/v1/today?classId=${w.classIds.algebra}`, { headers: h })).json()) as Record<string, unknown> & { deck: { drills: unknown[] } }
     expect(tut).toMatchObject({ mode: 'tutoring', planUnit: 'Lesson plan', theme: 'Linear equations', formsDue: ['Unit quiz Fri'] })
-    // No seeded plan for Monday in the tutoring class, so the planner drafts one with tutoring context.
-    expect(tut.deck.drills).toHaveLength(7)
-    const draft = calls.find(c => c.name === 'planner.draft')!
-    expect(draft.instructions).toMatch(/lesson plan/i)
-    expect(draft.instructions).toContain('No grade guarantees')
-    expect(draft.prompt).toContain('Unit: Linear equations')
-    expect(draft.prompt).toContain('Upcoming: Unit quiz Fri')
+    // Monday: the tutoring class meets Wednesday, so Today shows its upcoming (seeded) lesson plan.
+    expect(tut).toMatchObject({ forDate: '2026-10-21' })
+    expect(tut.deck.drills).toHaveLength(6)
+    expect(calls).toHaveLength(0)
+    const ti = plannerInstructions(MODES.tutoring)
+    expect(ti).toMatch(/lesson plan/i)
+    expect(ti).toContain('No grade guarantees')
   })
 
   it("PT recurring flow: Maria's 3rd depth note → recurring + email draft addressed to the client", async () => {

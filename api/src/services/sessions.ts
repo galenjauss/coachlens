@@ -4,7 +4,7 @@ import type { StartSessionResponse, WrapUp } from '@matside/shared'
 import type { Deps } from '../deps'
 import type { Db } from '../db/client'
 import { agentRuns, billingFlags, classes, decks, drills, notes, outbox, sessions } from '../db/schema'
-import { localDate } from '../logic/dates'
+import { upcomingClassDate } from '../logic/dates'
 import { draftDeck } from '../agents/planner'
 import { computeCoverage, loadSessionContext, nextStudentFor } from './context'
 
@@ -16,9 +16,9 @@ export async function requireSession(db: Db, id: string) {
 
 export async function startSession(deps: Deps, classId: string): Promise<StartSessionResponse> {
   const { db } = deps
-  const forDate = localDate(deps.now(), deps.env.timeZone)
   const [cls] = await db.select().from(classes).where(eq(classes.id, classId))
   if (!cls) throw new HTTPException(404, { message: 'class not found' })
+  const forDate = upcomingClassDate(deps.now(), deps.env.timeZone, cls.weekday)
   const [open] = await db.select().from(sessions).where(and(eq(sessions.classId, classId), eq(sessions.forDate, forDate), isNull(sessions.endedAt)))
   let session = open
   if (!session) {

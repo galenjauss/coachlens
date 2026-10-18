@@ -19,3 +19,7 @@ export function nextDateForWeekday(fromDate: string, weekday: number): string {
   const delta = ((weekday - dow + 7) % 7) || 7
   return addDays(fromDate, delta)
 }
+/** The class's upcoming date: today if it meets today (local), else its next occurrence. */
+export function upcomingClassDate(now: Date, tz: string, weekday: number): string {
+  return nextDateForWeekday(addDays(localDate(now, tz), -1), weekday)
+}
