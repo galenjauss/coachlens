@@ -96,8 +96,8 @@ function Ask() {
           span={[0, 150]}
           xfade={0}
           reveal={[
-            { x: 62, y: 52, w: 244, h: 32, from: (nm[0] ?? a) - 2, to: (nm[2] ?? a) + 2 },
-            { x: 2, y: 84, w: 72, h: 28, from: (nm[3] ?? a) - 2, to: (nm[3] ?? a) + 3 },
+            { x: 62, y: 52, w: 244, h: 32, from: (nm[0] ?? a) - 2, to: (nm[2] ?? a) + 2, start: a },
+            { x: 2, y: 84, w: 72, h: 28, from: (nm[3] ?? a) - 2, to: (nm[3] ?? a) + 3, start: a },
           ]}
           highlight={[{ x: 62, y: 54, w: 84, h: 28, from: (nm[0] ?? a) + 20, to: (nm[0] ?? a) + 30, color: 'rgba(255,91,31,0.38)' }]}
         />

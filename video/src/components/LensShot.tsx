@@ -28,7 +28,7 @@ interface LensShotProps {
   xfade?: number
   highlight?: readonly (CapRect & { from: number; to: number; color: string })[]
   /** Hide the capture right of a sweep (reveals lines left to right). */
-  reveal?: readonly (CapRect & { from: number; to: number })[]
+  reveal?: readonly (CapRect & { from: number; to: number; start: number })[]
   taps?: readonly number[]
   /** Brightness of the lit pixels 0..1 (fade-up from dark). */
   power?: (f: number) => number
@@ -65,6 +65,7 @@ export function LensShot({
   const xf = cur && prev && xfade > 0 ? lin(f, [cur.at, cur.at + xfade], [0, 1]) : 1
   // Unrevealed parts of the capture are cut out with an even-odd clip path (no overlay boxes).
   const holes = (reveal ?? [])
+    .filter(r => f >= r.start)
     .map(r => {
       const p = lin(f, [r.from, r.to], [0, 1])
       const x = (r.x + r.w * p) * scale

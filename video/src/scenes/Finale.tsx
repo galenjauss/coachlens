@@ -40,7 +40,7 @@ function LensStrip({ text, at }: { text: string; at: number }) {
 function Flash({ i, len }: { i: number; len: number }) {
   const u = flashCard(i)
   const ink = FIELD[u.field].ink
-  const size = Math.min(250, 1640 / (u.role.length * 0.56))
+  const size = Math.min(len < 8 ? 150 : 250, 1640 / (u.role.length * 0.56))
   const fromDir = i % 2 === 0 ? 'right' : 'left'
   const fast = len < 20
   /** The 1/16 and 1/32 stream: cards cut in already landed, like single film frames. */
@@ -51,6 +51,7 @@ function Flash({ i, len }: { i: number; len: number }) {
     <AbsoluteFill>
       <div
         style={{
+          display: flicker ? 'none' : undefined,
           position: 'absolute',
           right: 90,
           top: 330,

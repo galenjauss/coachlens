@@ -7,7 +7,7 @@ import { Shot } from '../components/Shot'
 import { TypeCard } from '../components/TypeCard'
 import { ease, EASE, lin } from '../lib/anim'
 import { C, FIELD, FONT } from '../theme'
-import { SLOTS, T } from '../timeline'
+import { SECTIONS, SLOTS, T } from '../timeline'
 
 const K = T.control
 const mono = (color: string): React.CSSProperties => ({ fontFamily: FONT.mono, fontSize: 22, letterSpacing: '0.3em', color })
@@ -91,7 +91,7 @@ function Priya() {
         <div style={{ ...mono(FIELD.cobalt.soft), marginBottom: 16 }}>STUDENT PROFILE · PRIYA RAO</div>
         <Word text="Her file," at={4} size={170} color={C.paper} mode="slam" />
         <div style={{ marginTop: 18 }}>
-          <Serif text="written while you coach." at={22} size={76} color={C.paper} />
+          <Serif text="written while you coach." at={8} size={76} color={C.paper} />
         </div>
       </div>
       <div style={{ position: 'absolute', left: 1080, top: 70 }}>
@@ -118,15 +118,18 @@ const MONTAGE = [
   { src: 'phone/review/02.png', label: 'DRAFTS', from: 'left' as const },
 ]
 
-/** Four more real screens on eighth notes: a burst, not a read (no text on these). */
 function Montage({ i }: { i: number }) {
   const m = MONTAGE[i]
   if (!m) return null
-  const x = [1150, 260, 820, 1500][i] ?? 900
+  const left = i % 2 === 0
   return (
     <AbsoluteFill>
-      <div style={{ position: 'absolute', left: x - 200, top: 90 }}>
-        <PhoneShot screens={[{ src: m.src, at: 0 }]} height={860} enterAt={-10} enterFrom={m.from} ry={i % 2 ? [20, 18] : [-20, -18]} span={[0, 8]} cam={[{ f: 0, s: 1.05, x: 215, y: 420 }, { f: 8, s: 1.12, x: 215, y: 400 }]} />
+      <div style={{ position: 'absolute', left: left ? 1100 : 300, top: 90 }}>
+        <PhoneShot screens={[{ src: m.src, at: 0 }]} height={860} enterAt={-8} enterFrom={m.from} ry={left ? [-20, -16] : [20, 16]} span={[0, 22]} cam={[{ f: 0, s: 1.05, x: 215, y: 420 }, { f: 22, s: 1.18, x: 215, y: 400 }]} />
+      </div>
+      <div style={{ position: 'absolute', left: left ? 150 : 900, top: 420 }}>
+        <Word text={m.label} at={-3} size={150} color={C.paper} from={left ? 'left' : 'right'} distance={400} snappy />
+        <div style={{ ...mono(C.green), marginTop: 10 }}>{`0${i + 1} / 04 · ON YOUR PHONE`}</div>
       </div>
     </AbsoluteFill>
   )
@@ -134,14 +137,14 @@ function Montage({ i }: { i: number }) {
 
 function Teach() {
   const f = useCurrentFrame()
-  const end = K.teach + 60 - K.teach
+  const end = SECTIONS.finale.from - K.teach
   const z = 1 + ease(f, [end - 16, end], [0, 1], EASE.inExpo) * 3
   return (
     <AbsoluteFill style={{ transform: `scale(${z})`, transformOrigin: '1290px 640px' }}>
       <div style={{ position: 'absolute', left: 140, top: 340 }}>
         <div style={{ ...mono(FIELD.green.soft), marginBottom: 14 }}>SET UP · STEP 1 OF 6</div>
-        <Word text="What do" at={0} size={160} color={C.black} mode="letters" stagger={1} />
-        <Word text="you teach?" at={6} size={160} color={C.black} mode="letters" stagger={1} />
+        <Word text="What do" at={-8} size={160} color={C.black} mode="letters" stagger={0.6} />
+        <Word text="you teach?" at={-4} size={160} color={C.black} mode="letters" stagger={0.6} />
       </div>
       <div style={{ position: 'absolute', left: 1080, top: 70 }}>
         <PhoneShot
@@ -151,9 +154,9 @@ function Teach() {
           enterFrom="bottom"
           ry={[-18, -8]}
           rx={[6, 2]}
-          span={[0, 60]}
-          cam={[{ f: 0, s: 1.15, x: 215, y: 380 }, { f: 44, s: 1.5, x: 215, y: 420 }]}
-          cursor={[{ f: 8, x: 215, y: 268 }, { f: 18, x: 215, y: 345 }, { f: 28, x: 215, y: 422 }, { f: 40, x: 215, y: 500 }]}
+          span={[0, end]}
+          cam={[{ f: 0, s: 1.15, x: 215, y: 380 }, { f: end - 8, s: 1.5, x: 215, y: 420 }]}
+          cursor={[{ f: 2, x: 215, y: 268 }, { f: 8, x: 215, y: 345 }, { f: 14, x: 215, y: 422 }, { f: 20, x: 215, y: 500 }]}
         />
       </div>
     </AbsoluteFill>
@@ -180,7 +183,7 @@ function SlotCFallback() {
         <Priya />
       </Shot>
       {MONTAGE.map((_, i) => (
-        <Shot key={i} from={K.montage[i] ?? 0} to={K.montage[i + 1] ?? K.teach} enter={i === 0 ? 'whipL' : 'cut'}>
+        <Shot key={i} from={K.montage[i] ?? 0} to={K.montage[i + 1] ?? K.teach} enter={i === 0 ? 'whipL' : i % 2 ? 'whipR' : 'whipL'} exit={i < 3 ? (i % 2 ? 'whipL' : 'whipR') : 'cut'}>
           <Montage i={i} />
         </Shot>
       ))}
@@ -193,7 +196,7 @@ export function Control() {
   return (
     <>
       <SlotShot id="C" from={SLOTS.C.from} to={SLOTS.C.to} label="ON YOUR PHONE" portrait fallback={<SlotCFallback />} />
-      <Shot from={K.teach} to={K.teach + 60}>
+      <Shot from={K.teach} to={SECTIONS.finale.from}>
         <Teach />
       </Shot>
     </>

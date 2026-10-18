@@ -80,7 +80,7 @@ export const T = {
   },
   control: {
     autonomy: bar(54), tapReview: bar(55) + beat(1), card: bar(56), agents: beat(227), kidCard: beat(234),
-    priya: beat(237), priya3: beat(240), montage: [beat(242), beat(242.5), beat(243), beat(243.5)], teach: bar(61),
+    priya: beat(237), priya3: beat(239), montage: [bar(60), bar(60) + beat(1.5), bar(60) + beat(3), bar(60) + beat(4.5)], teach: beat(246),
   },
   close: { iris: sec(146), lines: sec(146) + 8 },
 } as const
@@ -143,37 +143,49 @@ const FIELD_CYCLE: readonly FieldName[] = ['orange', 'cobalt', 'paper', 'green',
 export const YOUR_CLASS_AT = beat(282)
 
 /**
- * Card durations: three readable holds (2.0, 2.0, 1.8 s), then ×0.82 per card down to a 1/16-note
- * stream, ending with eight 1/32-note flickers. Cut times are quantised to the 1/32 grid (1.875 f).
+ * Card durations: two readable holds (1.2 s each), then ×0.68 per card down to a 2–3-frame flicker
+ * (about card 9), then a long dense stream on the 1/24-note grid (2.5 frames: sextuplet sixteenths of
+ * 120 BPM) until "Your class." lands. Cut times are quantised to that 2.5-frame grid.
  */
+const FLICKER = BEAT / 6
 const buildFlash = (): number[] => {
-  const d: number[] = [60, 60, 54]
-  let x = 54
-  while (x * 0.82 >= BEAT / 4) {
-    x *= 0.82
+  const d: number[] = [36, 36]
+  let x = 36
+  while (x * 0.68 >= FLICKER) {
+    x *= 0.68
     d.push(x)
   }
   const total = YOUR_CLASS_AT - FINALE_AT
-  const head = d.reduce((a, b) => a + b, 0)
-  const tail32 = 8 * (BEAT / 8)
-  const n16 = Math.max(0, Math.floor((total - head - tail32) / (BEAT / 4)))
-  for (let i = 0; i < n16; i++) d.push(BEAT / 4)
-  const left = total - d.reduce((a, b) => a + b, 0)
-  for (let i = 0; i < 8; i++) d.push(left / 8)
-  const grid = BEAT / 8
+  let used = d.reduce((a, b) => a + b, 0)
+  while (used + FLICKER <= total + 0.01) {
+    d.push(FLICKER)
+    used += FLICKER
+  }
   const starts: number[] = []
   let t = 0
   for (const dur of d) {
-    starts.push(FINALE_AT + Math.round(Math.round(t / grid) * grid))
+    const f = FINALE_AT + Math.round(Math.round(t / FLICKER) * FLICKER)
+    if (f < YOUR_CLASS_AT && f !== starts[starts.length - 1]) starts.push(f)
     t += dur
   }
   return starts
 }
 /** Start frame of every flash-by card (the "Your class." card starts at YOUR_CLASS_AT). */
 export const FLASH_STARTS: readonly number[] = buildFlash()
+/** Frames each flash-by card is on screen. */
+export const flashLen = (i: number): number => (FLASH_STARTS[i + 1] ?? YOUR_CLASS_AT) - (FLASH_STARTS[i] ?? FINALE_AT)
+/**
+ * Photosensitivity guard: in the 2–3-frame stream only the type changes per card; the full-screen
+ * colour field changes once per beat (2 Hz), under the 3-flashes-per-second guideline.
+ */
+const flashField = (i: number): FieldName => {
+  if (flashLen(i) >= 8) return FIELD_CYCLE[i % FIELD_CYCLE.length] ?? 'black'
+  const b = Math.floor(((FLASH_STARTS[i] ?? FINALE_AT) - FINALE_AT) / BEAT)
+  return FIELD_CYCLE[b % FIELD_CYCLE.length] ?? 'black'
+}
 export const flashCard = (i: number): { role: string; line: string; field: FieldName; index: number } => {
   const u = USE_CASES[i % USE_CASES.length] ?? USE_CASES[0] ?? { role: '', line: '' }
-  return { ...u, field: FIELD_CYCLE[i % FIELD_CYCLE.length] ?? 'black', index: (i % USE_CASES.length) + 1 }
+  return { ...u, field: flashField(i), index: (i % USE_CASES.length) + 1 }
 }
 
 // ── Colour fields (the global background), flipped on downbeats ──────────────────────────────
@@ -215,7 +227,7 @@ export const FIELDS: readonly FieldCut[] = [
   { at: T.control.priya, field: 'cobalt' },
   { at: T.control.montage[0], field: 'black' },
   { at: T.control.teach, field: 'green', wipe: 'iris' },
-  ...FLASH_STARTS.map((at, i) => ({ at, field: flashCard(i).field })),
+  ...FLASH_STARTS.map((at, i) => ({ at, field: flashCard(i).field })).filter((c, i, all) => i === 0 || c.field !== all[i - 1]?.field),
   { at: YOUR_CLASS_AT, field: 'black' },
   { at: T.close.iris, field: 'black', wipe: 'iris' },
 ]
@@ -251,7 +263,7 @@ export const WHIP_LEN = 6
 export const WHIPS: readonly number[] = [
   T.hook.min45, T.hook.coach, T.reveal.marquee, T.sentence.typed, T.sentence.urgent, T.sentence.phone,
   T.notes.pr, T.notes.brief, T.notes.ask, T.notes.roll, T.notice.phone, T.notice.wrapup,
-  T.control.autonomy, T.control.agents, T.control.priya, T.control.montage[0],
+  T.control.autonomy, T.control.agents, T.control.priya, ...T.control.montage,
 ]
 export const inWhip = (f: number): boolean => WHIPS.some(w => f >= w - WHIP_LEN / 2 && f < w + WHIP_LEN / 2)
 
@@ -335,7 +347,7 @@ const RAW_CUES: Cue[] = [
   { f: T.quiet.lobby, s: 'whoosh-pop-light', v: 0.6 },
   { f: T.quiet.planning, s: 'select-tech', v: 0.7 },
   { f: T.quiet.diff, s: 'bleep-notify' },
-  { f: SECTIONS.sentence.from, s: 'riser-synth', len: 4 },
+  { f: SECTIONS.sentence.from, s: 'sweep-scifi-fast', len: 2, v: 0.6 },
   // One sentence in (drop)
   { f: T.sentence.rec, s: 'impact-tech-break' },
   { f: T.sentence.talk, s: 'swoosh-fast' },
@@ -404,15 +416,15 @@ const RAW_CUES: Cue[] = [
   { f: T.control.priya, s: 'swoosh-fast' },
   { f: T.control.priya3, s: 'zoom-move' },
   { f: T.control.montage[0], s: 'whoosh-air' },
-  { f: T.control.montage[1], s: 'select-tech' },
-  { f: T.control.montage[2], s: 'click-check' },
-  { f: T.control.montage[3], s: 'confirm-scifi' },
+  { f: T.control.montage[1], s: 'swoosh-fast' },
+  { f: T.control.montage[2], s: 'sweep-fast-small' },
+  { f: T.control.montage[3], s: 'click-check' },
   { f: T.control.teach, s: 'whoosh-stutter', v: 0.9 },
   { f: SECTIONS.finale.from, s: 'sweep-scifi-fast', len: 2 },
   // Finale: an impact on the jump, a sound per readable card, a long riser under the acceleration
   { f: SECTIONS.finale.from, s: 'impact-whoosh-deep' },
   ...flashCues(),
-  { f: YOUR_CLASS_AT, s: 'riser-synth', len: 9, v: 0.9 },
+  { f: YOUR_CLASS_AT, s: 'whoosh-stutter', v: 0.7 },
   { f: YOUR_CLASS_AT, s: 'impact-tech-break' },
   { f: YOUR_CLASS_AT + 40, s: 'click-device' },
   { f: YOUR_CLASS_AT + 82, s: 'select-tech' },
