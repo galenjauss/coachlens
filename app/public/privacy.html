@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CoachLens Privacy Policy</title>
+<style>
+:root{--bg:#fafafa;--fg:#1c1c1c;--muted:#5f5f5f;--line:#dedede;--accent:#1f7a45}
+@media (prefers-color-scheme:dark){:root{--bg:#1c1c1c;--fg:#e5e5e5;--muted:#a3a3a3;--line:#3a3a3a;--accent:#3dff7a}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,system-ui,sans-serif}
+main{max-width:760px;margin:0 auto;padding:40px 16px 80px}
+h1{font-size:32px;line-height:1.15;margin:0 0 4px}h2{margin-top:36px;font-size:20px}
+em{color:var(--muted)}a{color:var(--accent)}code{font-size:.9em}
+table{border-collapse:collapse;width:100%;font-size:14px;display:block;overflow-x:auto}
+th,td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+</style></head><body><main>
+<h1>CoachLens Privacy Policy</h1>
+<p><em>Last updated: October 18, 2026</em></p>
+<p>CoachLens is an Even Hub app for instructors (martial arts, personal training, tutoring). The instructor uses it to record notes about their students and to let AI agents handle follow-up work. This policy explains what CoachLens collects, why, where it goes, and how to remove it.</p>
+<p>CoachLens is used by <strong>instructors</strong>. Students, clients and parents never sign in, and CoachLens never collects data directly from children. Instructors are responsible for having the right to record information about the students they teach.</p>
+<h2>What we collect</h2>
+<table>
+<thead>
+<tr>
+<th>Data</th>
+<th>Comes from</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Voice recordings</td>
+<td>The microphone, only while you are recording a note (tap or hold on the glasses) or a planning conversation (double-tap in a class lobby)</td>
+<td>Turned into text. <strong>Audio is not stored</strong>: it is sent to the speech-to-text service, the text is kept, and the audio is discarded.</td>
+</tr>
+<tr>
+<td>Transcripts and notes</td>
+<td>Your voice notes, typed edits</td>
+<td>Progress tracking, report cards, lesson plans, answers to your questions</td>
+</tr>
+<tr>
+<td>Class and roster information</td>
+<td>Onboarding (typed, pasted, CSV, or a photo you choose), the phone app</td>
+<td>Names, ranks or levels, schedules, curriculum, attendance</td>
+</tr>
+<tr>
+<td>Parent, guardian or client email addresses</td>
+<td>You, during onboarding or in the phone app</td>
+<td>Sending emails <strong>you approve</strong> (or that you set an agent to send automatically)</td>
+</tr>
+<tr>
+<td>Progress metrics</td>
+<td>Your notes or phone entries (e.g. time in rank, lift records, test scores)</td>
+<td>Student profiles, progress insights</td>
+</tr>
+<tr>
+<td>Billing notes</td>
+<td>Your voice notes</td>
+<td>A reminder list for you. <strong>CoachLens never processes payments</strong> and never stores card or bank details.</td>
+</tr>
+<tr>
+<td>Photos</td>
+<td>Your camera or photo library, only during setup and only when you tap <strong>Read with AI</strong></td>
+<td>Reading a schedule, sign-in sheet or curriculum into your class setup. The photo is sent for that one extraction and is not stored.</td>
+</tr>
+<tr>
+<td>Head-motion data</td>
+<td>The glasses&#39; motion sensor</td>
+<td>Detecting a nod to turn the lens display on or off. It is processed on your phone and never sent to our servers.</td>
+</tr>
+</tbody></table>
+<p>We do not collect your location, contacts, advertising identifiers, or browsing data. There are no ads and no third-party analytics.</p>
+<h2>App permissions</h2>
+<table>
+<thead>
+<tr>
+<th>Permission</th>
+<th>Why CoachLens asks for it</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>g2-microphone</code></td>
+<td>Record voice notes and planning conversations from the glasses microphone.</td>
+</tr>
+<tr>
+<td><code>phone-microphone</code></td>
+<td>Record from the phone&#39;s microphone when the glasses audio isn&#39;t coming through.</td>
+</tr>
+<tr>
+<td><code>network</code></td>
+<td>Connect to the CoachLens service at <code>coachlens-api.vercel.app</code>.</td>
+</tr>
+<tr>
+<td><code>camera</code></td>
+<td>Take a photo of a schedule, sign-in sheet or curriculum during setup.</td>
+</tr>
+<tr>
+<td><code>album</code></td>
+<td>Choose that photo from your photo library instead.</td>
+</tr>
+</tbody></table>
+<h2>Where data goes (service providers)</h2>
+<p>CoachLens runs its own backend at <strong><code>coachlens-api.vercel.app</code></strong>, built and operated by the CoachLens developer. That backend uses these processors:</p>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>What it receives</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Vercel (hosting)</td>
+<td>API requests</td>
+<td>Runs the CoachLens service</td>
+</tr>
+<tr>
+<td>Neon (database)</td>
+<td>Your class data, notes, transcripts and settings</td>
+<td>Storage</td>
+</tr>
+<tr>
+<td>OpenAI (speech-to-text)</td>
+<td>Note audio</td>
+<td>Transcription only</td>
+</tr>
+<tr>
+<td>Anthropic (Claude)</td>
+<td>Transcripts, class context, setup text and photos you choose to read</td>
+<td>Sorting notes, drafting emails, report cards and plans, answering your questions</td>
+</tr>
+<tr>
+<td>Resend (email)</td>
+<td>The emails you approve, or that you set an agent to send automatically</td>
+<td>Email delivery</td>
+</tr>
+</tbody></table>
+<p>API providers receive data only to perform these tasks for CoachLens. We do not sell or share your data for advertising.</p>
+<h2>Automated actions and your control</h2>
+<p>Each agent has an <strong>Auto / Review / Off</strong> setting. Emails to parents and clients default to <strong>Review</strong>: nothing is sent until you approve it. You can turn any agent off. CoachLens does not give medical, legal or financial advice. Injury notes are passed on to families as observations only.</p>
+<h2>Retention and deletion</h2>
+<p>Your data is kept while you use CoachLens. To delete a student, a note or your whole account&#39;s data, or to get a copy of it, open an issue at <a href="https://github.com/galenjauss/coachlens/issues">https://github.com/galenjauss/coachlens/issues</a> or contact the developer through the Even Hub listing. We delete it within 30 days. Uninstalling the app removes the pairing token from your phone.</p>
+<h2>Security</h2>
+<p>Requests are sent over HTTPS. The phone pairs with a one-time code and then uses a hashed access token. AI provider keys stay on the server and are never included in the app package.</p>
+<h2>Changes</h2>
+<p>If this policy changes, the date above and the Even Hub listing will be updated.</p>
+</main></body></html>
