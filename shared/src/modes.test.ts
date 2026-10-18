@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { ALL_TAGS, MODE_IDS, MODES } from './modes'
 import { routerOutputFor, RouterOutput } from './contracts'
 
-const intent = (skillTags: string[]) => ({ type: 'feedback', studentNames: ['Maria'], content: 'x', skillTags, urgency: null, amount: null, minutes: null, attendanceStatus: null })
+const intent = (skillTags: string[]) => ({ type: 'feedback', studentNames: ['Maria'], content: 'x', skillTags, urgency: null, amount: null, minutes: null, attendanceStatus: null, urgent: false })
 
 describe('modes', () => {
   it('ships exactly the three modes, each with 10 unique tags and a label for every tag', () => {

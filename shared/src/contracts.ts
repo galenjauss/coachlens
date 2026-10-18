@@ -24,6 +24,8 @@ const intentShape = <T extends z.ZodType<string>>(tag: T) => z.object({
   amount: z.number().nullable(),
   minutes: z.number().int().nullable(),
   attendanceStatus: z.enum(['present', 'absent']).nullable(),
+  // Injury, safety or serious behavior: drafts a parent/client note right away (bypasses the email cooldown).
+  urgent: z.boolean(),
 })
 export const Intent = intentShape(SkillTag)
 export type Intent = z.infer<typeof Intent>
@@ -81,7 +83,9 @@ export type DeckDiff = z.infer<typeof DeckDiff>
 export const StudentRef = z.object({ id: z.string(), name: z.string() })
 export type StudentRef = z.infer<typeof StudentRef>
 
-export const RosterStudent = StudentRef.extend({ nickname: z.string().nullable(), belt: z.string() })
+export const Alias = z.string().trim().min(1).max(40)
+export const MAX_ALIASES = 10
+export const RosterStudent = StudentRef.extend({ nickname: z.string().nullable(), belt: z.string(), aliases: z.array(z.string()).optional() })
 export type RosterStudent = z.infer<typeof RosterStudent>
 
 export const Coverage = z.object({ covered: z.number().int(), present: z.number().int() })
@@ -197,3 +201,62 @@ export type DeckPatch = z.infer<typeof DeckPatch>
 
 export const Alternatives = z.object({ alternatives: z.array(DrillDraft).length(3) })
 export type Alternatives = z.infer<typeof Alternatives>
+
+export const StudentPatch = z.object({ aliases: z.array(Alias).max(MAX_ALIASES) })
+export type StudentPatch = z.infer<typeof StudentPatch>
+
+// ---- Agents UI: topic tiles -> color-coded runs -> run detail ----
+export const AgentTask = z.enum(['progress', 'parent_email', 'report_card', 'billing', 'planner', 'attendance'])
+export type AgentTask = z.infer<typeof AgentTask>
+export const AGENT_TASK_LABELS: Record<AgentTask, string> = {
+  progress: 'Progress notes', parent_email: 'Parent emails', report_card: 'Report cards',
+  billing: 'Billing flags', planner: 'Planner', attendance: 'Attendance',
+}
+/** red = urgent and unhandled (or failed); amber = waiting for review; green = done. */
+export const AgentColor = z.enum(['red', 'amber', 'green'])
+export type AgentColor = z.infer<typeof AgentColor>
+
+export const AgentRunLinks = z.object({
+  outboxId: z.string().optional(),
+  billingFlagId: z.string().optional(),
+  diffId: z.string().optional(),
+  noteId: z.string().optional(),
+  studentId: z.string().optional(),
+})
+export type AgentRunLinks = z.infer<typeof AgentRunLinks>
+
+export const AgentTaskRun = AgentRunView.extend({ color: AgentColor, links: AgentRunLinks })
+export type AgentTaskRun = z.infer<typeof AgentTaskRun>
+
+export const AgentTile = z.object({
+  task: AgentTask,
+  label: z.string(),
+  counts: z.object({ today: z.number().int(), pending: z.number().int(), urgent: z.number().int() }),
+  color: AgentColor,
+  latest: AgentRunView.nullable(),
+})
+export type AgentTile = z.infer<typeof AgentTile>
+export const AgentsSummary = z.array(AgentTile)
+export type AgentsSummary = z.infer<typeof AgentsSummary>
+
+export const AgentRunDetail = AgentTaskRun.extend({
+  task: AgentTask.nullable(),
+  trigger: z.string(),
+  utteranceId: z.string().nullable(),
+  transcript: z.string().nullable(),
+  studentName: z.string().nullable(),
+  outbox: z.object({ id: z.string(), kind: z.enum(['parent_email', 'report_card']), to: z.string(), subject: z.string(), body: z.string(), status: z.string(), urgent: z.boolean() }).nullable(),
+  billing: z.object({ id: z.string(), note: z.string(), urgency: Urgency, amount: z.number().nullable(), status: z.enum(['open', 'handled']) }).nullable(),
+  diff: z.object({ id: z.string(), deckId: z.string(), requestText: z.string(), diff: DeckDiff, status: z.enum(['pending', 'accepted', 'undone']) }).nullable(),
+  note: z.object({ id: z.string(), text: z.string(), heard: z.string().nullable(), studentId: z.string().nullable() }).nullable(),
+})
+export type AgentRunDetail = z.infer<typeof AgentRunDetail>
+
+/** Live agent progress for one utterance (polled by the lens). */
+export const UtteranceRun = z.object({ agent: z.string(), summary: z.string(), status: z.enum(['ok', 'error']), createdAt: z.string() })
+export type UtteranceRun = z.infer<typeof UtteranceRun>
+
+export const RedraftRequest = z.object({ instruction: z.string().trim().min(2).max(500) })
+export type RedraftRequest = z.infer<typeof RedraftRequest>
+export const RedraftResponse = z.object({ id: z.string(), kind: z.enum(['parent_email', 'report_card']), subject: z.string(), body: z.string(), status: z.literal('pending_review') })
+export type RedraftResponse = z.infer<typeof RedraftResponse>

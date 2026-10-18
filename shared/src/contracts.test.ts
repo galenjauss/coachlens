@@ -5,17 +5,19 @@ describe('contracts', () => {
   it('parses a router output with feedback + billing', () => {
     const out = RouterOutput.parse({
       intents: [
-        { type: 'feedback', studentNames: ['Priya'], content: 'guard drops on the jab', skillTags: ['guard'], urgency: null, amount: null, minutes: null, attendanceStatus: null },
-        { type: 'billing', studentNames: ['Leo'], content: 'owes for sparring gear', skillTags: [], urgency: 'high', amount: null, minutes: null, attendanceStatus: null },
+        { type: 'feedback', studentNames: ['Priya'], content: 'guard drops on the jab', skillTags: ['guard'], urgency: null, amount: null, minutes: null, attendanceStatus: null, urgent: false },
+        { type: 'billing', studentNames: ['Leo'], content: 'owes for sparring gear', skillTags: [], urgency: 'high', amount: null, minutes: null, attendanceStatus: null, urgent: false },
       ],
     })
     expect(out.intents).toHaveLength(2)
   })
 
   it('rejects unknown skill tags', () => {
-    const i = { type: 'feedback', studentNames: [], content: 'x', skillTags: ['karate'], urgency: null, amount: null, minutes: null, attendanceStatus: null }
+    const i = { type: 'feedback', studentNames: [], content: 'x', skillTags: ['karate'], urgency: null, amount: null, minutes: null, attendanceStatus: null, urgent: false }
     expect(() => routerOutputFor('martial_arts').parse({ intents: [i] })).toThrow()
     expect(() => Intent.parse({ ...i, skillTags: [''] })).toThrow()
+    const { urgent: _u, ...noUrgent } = { ...i, skillTags: ['guard'] }
+    expect(() => Intent.parse(noUrgent)).toThrow()
     expect(() => Intent.parse({ ...i, skillTags: ['x'.repeat(25)] })).toThrow()
   })
 
