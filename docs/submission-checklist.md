@@ -1,6 +1,8 @@
 # Submission checklist
 
-**Do not submit yet.** Everything below is prepared; each step marked 👤 needs you.
+Each step marked 👤 needs you.
+
+**Status after the Oct 18 audit:** Even Hub v0.1.0 is submitted and in review (no approval confirmed). The **installed-Beta gate is OPEN**: run [`beta-acceptance.md`](beta-acceptance.md) on physical G2 and attach evidence before any copy says the installed Beta is verified. Production has not been redeployed with the remediation. Public copy that needs replacing is listed in [`claims-to-update.md`](claims-to-update.md).
 
 ## 1. Devpost (LA Hacks, deadline Sun 12:00 PM PT)
 
@@ -10,7 +12,7 @@
 | Field | Ready | Source |
 |---|---|---|
 | Project name | CoachLens | |
-| Tagline | Hands-free notes and AI agents for coaches and teachers | docs/store/listing.md |
+| Tagline | Eyes-up notes and AI follow-up for coaches and teachers | docs/store/listing.md |
 | Story (Inspiration → What's next) | ✅ | docs/devpost.md, paste as-is |
 | Judging criteria answers (Made for G2, Quiet by Design, Originality, Experience & Polish, Execution + the three questions) | ✅ | docs/devpost.md "Judging criteria" |
 | Built with | Even Hub SDK, TypeScript, React, Vite, Hono, Vercel, Neon Postgres, Drizzle, Claude (Haiku + Sonnet), AI SDK, OpenAI speech-to-text, Resend | |
@@ -39,7 +41,7 @@
 3. Upload `app/coachlens.ehpk` → it lands in **Draft**.
 4. Move it to **Test**, then add it to a Beta group with your Even account email.
 5. On the iPhone: Even Realities app → Me → Beta tester → CoachLens → Install.
-6. Run Even's pre-submission loop on the **beta** install:
+6. Run Even's pre-submission loop on the **beta** install. The full owner procedure, with pass/fail and evidence fields, is [`beta-acceptance.md`](beta-acceptance.md); the gate stays open until it is signed. Summary:
    - lock the phone for 5 min, then check the app is alive and responsive;
    - root double-tap shows the system exit dialog and the WebView closes;
    - relaunch Conversate without restarting the glasses;
@@ -68,7 +70,7 @@ Reviewer rubric checks:
 
 ## 5. Even Hub: submit for review
 
-**SUBMITTED Oct 17, 2026 11:57 PM PT:** v0.1.0 is In review (submitted by Claude with Galen's explicit OK). Even emails noreply@evenrealities.com when there's a decision; read the outcome in the dev portal inbox.
+**SUBMITTED Oct 17, 2026 11:57 PM PT:** v0.1.0 is In review (submitted by Claude with Galen's explicit OK). **No approval has been confirmed.** Note that it was submitted before the §3 Beta checks were run on the installed build; those checks are still open. Even emails noreply@evenrealities.com when there's a decision; read the outcome in the dev portal inbox.
 
 
 👤 **Explicit OK needed.** Moving Test → **Submitted** puts the build in Even's review queue. It can't be edited or withdrawn without support, and once approved, the version is permanent and public. Only do this after the beta checks in §3 pass on real hardware.
