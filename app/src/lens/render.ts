@@ -273,7 +273,7 @@ function lobby(s: LensState): PageSpec {
   const header = td ? clipWithSuffix(td.className, ` · ${td.startTime} · ${mins}m`, FULL) : 'CLASS'
   const items = drills.slice(0, LOBBY_ITEMS).map((d, i) => clipWithSuffix(`${i + 1} ${d.name}`, ` · ${d.minutes}m`, BOXC))
   const more = drills.length > LOBBY_ITEMS ? [`+${drills.length - LOBBY_ITEMS} more`] : []
-  const action = s.starting ? 'Starting class…' : s.loadError ? `${s.loadError} · tap to retry` : null
+  const action = s.starting ? 'Starting class…' : s.loadError ? clip(`${s.loadError} · tap to retry`, BOXC) : null
   const body = [...(items.length ? [...items, ...more] : ['No plan yet · 2× to plan by voice']), ...(action ? [action] : [])]
   return { key: 'lobby', list: null, texts: [
     t(1, 'hdr', 0, 0, W, 40, header),
@@ -304,11 +304,14 @@ function planning(s: LensState): PageSpec {
   ] }
 }
 
+/** Last result line when some chunks could not be transcribed. */
+export const PLAN_MISSED_LINE = 'Part of the talk was missed'
+
 const PLAN_STAGE_LINE = { listening: 'Transcribing…', transcribing: 'Transcribing…', applying: 'Thinking · updating the plan…' } as const
 
 function planResult(s: LensState): PageSpec {
   const r = s.planResult
-  const lines = r?.lines.length ? r.lines : ['No plan changes']
+  const lines = [...(r?.lines.length ? r.lines : ['No plan changes']), ...(r?.missed ? [PLAN_MISSED_LINE] : [])]
   return panel(r?.diffId ? 'PLAN UPDATED' : 'PLAN', lines.join('\n'), r?.diffId ? 'tap: ok · 2×: undo' : 'tap: ok')
 }
 
@@ -342,7 +345,10 @@ export function render(s: LensState, now: number): PageSpec {
     case 'home': return home(s)
     case 'lobby': return lobby(s)
     case 'planning': return planning(s)
-    case 'planApplying': return panel('PLANNING', PLAN_STAGE_LINE[s.planning?.stage ?? 'transcribing'], '')
+    case 'planApplying': {
+      const stage = s.planning?.stage ?? 'transcribing'
+      return panel('PLANNING', PLAN_STAGE_LINE[stage], stage === 'transcribing' ? '2×: cancel' : '')
+    }
     case 'planResult': return planResult(s)
     case 'wrapup': return wrapup(s)
     case 'firstRun':

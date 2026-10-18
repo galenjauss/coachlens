@@ -862,6 +862,46 @@ describe('lens controller', () => {
       expect(voicePlan).toHaveBeenCalledWith('c1', 'one three')
     })
 
+    it('a chunk that failed twice is counted: the result says part of the talk was missed', async () => {
+      let n = 0
+      const transcribe = vi.fn(async () => { n += 1; if (n <= 2) throw new NetworkError('x'); return 'add kata' })
+      const b = await toPlanning({ transcribe })
+      speak(b, 20); await vi.advanceTimersByTimeAsync(PLAN_CHUNK_MS)
+      speak(b, 20); b.emit(tap); await flush()
+      expect(b.sent.slice(-3).join('\n')).toContain('Part of the talk was missed')
+    })
+
+    it('every chunk failing says "Couldn\'t transcribe · check connection"; a 422 alone does not count as missed', async () => {
+      const voicePlan = vi.fn(async () => planRes())
+      const b = await toPlanning({ transcribe: vi.fn(async () => { throw new NetworkError('x') }), voicePlan })
+      speak(b, 20); await vi.advanceTimersByTimeAsync(PLAN_CHUNK_MS)
+      b.emit(tap); await flush()
+      expect(voicePlan).not.toHaveBeenCalled()
+      expect(b.sent.at(-1)).toContain("Couldn't transcribe · check connection")
+    })
+
+    it('the header ticks every 5 s in whole 5 s steps (still between ticks)', async () => {
+      const b = await toPlanning({ transcribe: vi.fn(async () => 'x') })
+      const n = b.sent.length
+      await vi.advanceTimersByTimeAsync(4900)
+      expect(b.sent.length).toBe(n)
+      await vi.advanceTimersByTimeAsync(200)
+      expect(b.sent.slice(n)).toEqual(['upgrade:hdr=● Planning · 0:05'])
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(b.sent.at(-1)).toBe('upgrade:hdr=● Planning · 0:10')
+    })
+
+    it('leaving the app mid-listen cancels it: the mic closes, nothing applies, the lobby says why', async () => {
+      const voicePlan = vi.fn(async () => planRes())
+      const b = await toPlanning({ transcribe: vi.fn(async () => 'x'), voicePlan })
+      speak(b, 20)
+      b.emit({ sysEvent: { eventType: OsEventTypeList.FOREGROUND_EXIT_EVENT } }); await flush()
+      expect(b.raw.audioControl).toHaveBeenLastCalledWith(false)
+      expect(b.sent.at(-1)).toContain('Planning stopped · app left')
+      await vi.advanceTimersByTimeAsync(PLAN_MAX_MS)
+      expect(voicePlan).not.toHaveBeenCalled()
+    })
+
     it('stops and applies on its own at the 3-minute cap, releasing the mic and reloading today', async () => {
       const transcribe = vi.fn(async () => 'warmup longer')
       const voicePlan = vi.fn(async () => planRes())

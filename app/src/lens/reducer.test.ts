@@ -575,14 +575,24 @@ describe('late outcomes never take over an open capture', () => {
       expect(types(r.effects)).toEqual(['cancelPlan', 'expireStatus'])
     })
 
-    it('while applying, gestures are ignored (the result with its undo must be seen)', () => {
-      const s = applying()
+    it('while the last chunks transcribe, double-tap still cancels', () => {
+      const r = run(applying(), { type: 'doubleTap' })
+      expect(r.state).toMatchObject({ screen: 'lobby', planning: null, status: 'Planning cancelled' })
+      expect(types(r.effects)).toEqual(['cancelPlan', 'expireStatus'])
+    })
+
+    it('a result with missed chunks keeps the count for the result screen', () => {
+      expect(run(applying(), { ...res('d9'), missed: 2 }).state.planResult?.missed).toBe(2)
+    })
+
+    it('once the plan edit is applying, gestures are ignored (the result with its undo must be seen)', () => {
+      const s = run(applying(), { type: 'planApplying' }).state
       for (const e of [{ type: 'tap' }, { type: 'doubleTap' }, { type: 'swipeDown' }, { type: 'nod' }] as const) expect(reduce(s, e).state).toBe(s)
     })
 
     it('the plan result shows its lines and reloads today; tap = OK back to the lobby', () => {
       let r = run(applying(), res('d9'))
-      expect(r.state).toMatchObject({ screen: 'planResult', planning: null, planResult: { diffId: 'd9', lines: ['+ Sprawl drill · 5m'] } })
+      expect(r.state).toMatchObject({ screen: 'planResult', planning: null, planResult: { diffId: 'd9', lines: ['+ Sprawl drill · 5m'], missed: 0 } })
       expect(r.effects).toEqual([{ type: 'loadToday' }])
       r = run(r.state, { type: 'tap' })
       expect(r.state).toMatchObject({ screen: 'lobby', planResult: null })

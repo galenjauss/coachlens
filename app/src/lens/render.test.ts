@@ -433,9 +433,18 @@ describe('lobby and planning screens', () => {
 
   it('applying shows a thinking line; the result lists the lines with undo only when something changed', () => {
     expect(txt(render({ ...pre, screen: 'planApplying', planning: { stage: 'applying', sec: 0, heard: '' } }, 0), 'body')).toContain('Thinking')
-    const r = render({ ...pre, screen: 'planResult', planResult: { diffId: 'd', lines: ['+ Sprawls · 5m', '- Tag'] } }, 0)
+    const r = render({ ...pre, screen: 'planResult', planResult: { diffId: 'd', lines: ['+ Sprawls · 5m', '- Tag'], missed: 0 } }, 0)
     expect(txt(r, 'body')).toBe('+ Sprawls · 5m\n- Tag')
     expect(txt(r, 'foot')).toBe('tap: ok · 2×: undo')
-    expect(txt(render({ ...pre, screen: 'planResult', planResult: { diffId: null, lines: [] } }, 0), 'foot')).toBe('tap: ok')
+    expect(txt(render({ ...pre, screen: 'planResult', planResult: { diffId: null, lines: [], missed: 0 } }, 0), 'foot')).toBe('tap: ok')
+    const missed = render({ ...pre, screen: 'planResult', planResult: { diffId: 'd', lines: ['+ Sprawls · 5m'], missed: 1 } }, 0)
+    expect(txt(missed, 'body')!.split('\n').at(-1)).toBe('Part of the talk was missed')
+  })
+
+  it('transcribing offers 2× cancel; applying offers nothing; a long lobby error is clipped to one line', () => {
+    expect(txt(render({ ...pre, screen: 'planApplying', planning: { stage: 'transcribing', sec: 0, heard: '' } }, 0), 'foot')).toBe('2×: cancel')
+    expect(txt(render({ ...pre, screen: 'planApplying', planning: { stage: 'applying', sec: 0, heard: '' } }, 0), 'foot')).toBe('')
+    const body = txt(render({ ...pre, screen: 'lobby', loadError: 'Server error 503 while starting the class session' }, 0), 'body')!
+    expect(body.split('\n').at(-1)!.length).toBeLessThanOrEqual(colsFor(576, true))
   })
 })

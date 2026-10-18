@@ -441,6 +441,10 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     if (e.sysEvent && HOST_EXITS.has(e.sysEvent.eventType)) { // backgrounded / closed by the host
       void setImu(false)
       suspended = true
+      if (plan.active) { // the mic goes with the app: never leave a listen (and its timers) running
+        void plan.cancel()
+        dispatch({ type: 'planFailed', message: 'Planning stopped · app left' })
+      }
       timers.keepWarm.clear()
       timers.outboxRetry.clear()
       return

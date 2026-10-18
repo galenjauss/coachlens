@@ -62,7 +62,7 @@ export interface LensState {
   /** Planning listen in progress: `sec` = seconds since the mic opened, `heard` = the transcript so far. */
   planning: { stage: PlanStage; sec: number; heard: string } | null
   /** The voice plan's summary (plan result screen); `diffId` null = nothing changed, no undo. */
-  planResult: { diffId: string | null; lines: string[] } | null
+  planResult: { diffId: string | null; lines: string[]; missed: number } | null
   /** Lobby insight banner (Task 32 fills it; nothing is rendered while null). */
   lobbyInsight: string | null
 }
@@ -98,7 +98,8 @@ export type LensEvent =
   | { type: 'planHeard'; text: string }
   /** Planning listen: every chunk is transcribed; the plan edit request is going out. */
   | { type: 'planApplying' }
-  | { type: 'planResult'; res: VoicePlanResponse }
+  /** `missed` = chunks that could not be transcribed (the plan was made from the rest). */
+  | { type: 'planResult'; res: VoicePlanResponse; missed?: number }
   /** Planning listen ended without a plan edit (mic failed, nothing heard, request failed). */
   | { type: 'planFailed'; message: string }
   | { type: 'planUndone'; ok: boolean; message?: string }

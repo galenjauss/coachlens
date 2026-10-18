@@ -126,7 +126,7 @@ function planEvent(s: LensState, e: LensEvent): R | null {
     case 'planResult': {
       // The plan changed on the server either way: reload today so the lobby shows it.
       if (s.screen !== 'planApplying') return done(s, { type: 'loadToday' })
-      return done({ ...s, screen: 'planResult', planning: null, planResult: { diffId: e.res.diffId, lines: e.res.lines } }, { type: 'loadToday' })
+      return done({ ...s, screen: 'planResult', planning: null, planResult: { diffId: e.res.diffId, lines: e.res.lines, missed: e.missed ?? 0 } }, { type: 'loadToday' })
     }
     case 'planFailed':
       return s.screen === 'planning' || s.screen === 'planApplying' ? lobby(s, e.message) : done(s)
@@ -269,7 +269,10 @@ export function reduce(s: LensState, e: LensEvent): R {
       if (e.type === 'tap') return done({ ...s, screen: 'planApplying', planning: s.planning && { ...s.planning, stage: 'transcribing' } }, { type: 'stopPlan' })
       if (e.type === 'doubleTap') { const r = lobby(s, 'Planning cancelled'); return { state: r.state, effects: [{ type: 'cancelPlan' }, ...r.effects] } }
       return done(s)
-    case 'planApplying': return done(s) // the plan edit is on its way: its result (with undo) must be seen
+    case 'planApplying':
+      // Still transcribing: double-tap can cancel. Once the plan edit is on its way, its result (with undo) must be seen.
+      if (e.type === 'doubleTap' && s.planning?.stage === 'transcribing') { const r = lobby(s, 'Planning cancelled'); return { state: r.state, effects: [{ type: 'cancelPlan' }, ...r.effects] } }
+      return done(s)
     case 'planResult': return planResultGesture(s, e)
     case 'attendance':
       if (e.type === 'tap') return send(s)
