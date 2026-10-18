@@ -7,7 +7,7 @@
   "entrypoint": "index.html",
   "permissions": [
     { "name": "g2-microphone", "desc": "Record short voice notes about students while you teach." },
-    { "name": "network", "desc": "Send notes to the CoachLens service that runs your agents.", "whitelist": ["https://REPLACE-WITH-API-ORIGIN"] }
+    { "name": "network", "desc": "Send notes to the CoachLens service that runs your agents.", "whitelist": ["https://matside-api.vercel.app"] }
   ],
   "supported_languages": ["en"]
 }
