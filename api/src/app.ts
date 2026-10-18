@@ -3,7 +3,7 @@ import { cors } from 'hono/cors'
 import { HTTPException } from 'hono/http-exception'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { AgentTask, DeckPatch, ReplaceDeckRequest, VoicePlanRequest, SettingsPatch, ExtractRequest, MAX_ALIASES, MAX_IMAGE_BASE64, MAX_ONBOARDING_TEXT, OnboardingCommit, RedraftRequest, StudentPatch, TranscribeForm, UtteranceForm } from '@matside/shared'
+import { AgentTask, DeckPatch, ReplaceDeckRequest, VoicePlanRequest, SettingsPatch, ExtractRequest, MAX_ALIASES, MetricCreate, MAX_IMAGE_BASE64, MAX_ONBOARDING_TEXT, OnboardingCommit, RedraftRequest, StudentPatch, TranscribeForm, UtteranceForm } from '@matside/shared'
 import type { Deps } from './deps'
 import { attendance, billingFlags, enrollments, instructors, notes, sessions, students, classes, utterances } from './db/schema'
 import { hashToken } from './http/auth'
@@ -16,6 +16,10 @@ import { hintsFor } from './services/hints'
 import { listReview, approveOutbox, skipOutbox, approveAllOutbox, handleBilling, noteBilling, dismissNote, type ActionResult } from './services/review'
 import { getDeck, patchDeck } from './services/decks'
 import { runReportCards } from './agents/reportCard'
+import { buildBrief } from './services/brief'
+import { applyRank, deleteMetric, recordMetric, toMetricView } from './services/metrics'
+import { isGradeMetric } from './logic/metrics'
+import { modeForStudent } from './services/context'
 import { agentFeed, getStudentDetail, listStudents } from './services/students'
 import { replaceDeck, voicePlan, VoicePlanError } from './agents/planEdit'
 import { acceptDiff, alternativesFor, nextDeckFor, suggestDiff, undoDiff } from './agents/planner'
@@ -56,7 +60,7 @@ export function createApp(deps: Deps) {
   app.use('*', cors({
     origin: o => (deps.env.allowedOrigins.includes('*') ? o || '*' : deps.env.allowedOrigins.includes(o) ? o : null),
     allowHeaders: ['Authorization', 'Content-Type'],
-    allowMethods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+    allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     maxAge: 600,
   }))
 
@@ -327,12 +331,36 @@ export function createApp(deps: Deps) {
   })
   app.get('/v1/students', async c => c.json(await listStudents(db)))
   app.get('/v1/students/:id', async c => c.json(await guard(getStudentDetail(deps, c.req.param('id')))))
+  app.get('/v1/students/:id/brief', async c => {
+    const id = c.req.param('id')
+    return c.json(await guard(modeForStudent(db, id).then(m => buildBrief(db, id, m, deps.now(), deps.env.timeZone))))
+  })
   app.patch('/v1/students/:id', async c => {
-    const { aliases } = await json(c.req.raw, StudentPatch)
-    const uniq = aliases.filter((a, i) => aliases.findIndex(b => aliasKey(b) === aliasKey(a)) === i).slice(0, MAX_ALIASES)
-    const [row] = await db.update(students).set({ aliases: uniq }).where(eq(students.id, c.req.param('id'))).returning({ id: students.id, aliases: students.aliases })
+    const patch = await json(c.req.raw, StudentPatch)
+    const set: Partial<typeof students.$inferInsert> = {}
+    if (patch.aliases) set.aliases = patch.aliases.filter((a, i) => patch.aliases!.findIndex(b => aliasKey(b) === aliasKey(a)) === i).slice(0, MAX_ALIASES)
+    if (patch.belt !== undefined) set.belt = patch.belt
+    if (patch.rankSince !== undefined) set.rankSince = patch.rankSince
+    const [row] = await db.update(students).set(set).where(eq(students.id, c.req.param('id'))).returning({ id: students.id, aliases: students.aliases, belt: students.belt, rankSince: students.rankSince })
     if (!row) throw new HTTPException(404, { message: 'student not found' })
-    return c.json(row)
+    // Alias saves keep their original reply shape; belt / rankSince edits echo the new values.
+    return c.json({ id: row.id, aliases: row.aliases, ...(patch.belt !== undefined ? { belt: row.belt } : {}), ...(patch.rankSince !== undefined ? { rankSince: row.rankSince } : {}) })
+  })
+  app.post('/v1/students/:id/metrics', async c => {
+    const id = c.req.param('id')
+    const body = await json(c.req.raw, MetricCreate)
+    const [st] = await db.select({ id: students.id }).from(students).where(eq(students.id, id))
+    if (!st) throw new HTTPException(404, { message: 'student not found' })
+    const mode = await modeForStudent(db, id)
+    const unit = body.unit || null
+    const { row } = await recordMetric(db, { studentId: id, key: body.key, value: body.value, num: body.num, unit, source: 'phone' }, isGradeMetric(mode.id, unit))
+    // A rank reading takes the same path as the voice one: it moves the belt and, if changed, starts rank-since today.
+    if (row.key === 'rank') await applyRank(db, id, row.value, null, localDate(deps.now(), deps.env.timeZone))
+    return c.json(toMetricView(row), 201)
+  })
+  app.delete('/v1/metrics/:id', async c => {
+    if (!await deleteMetric(db, c.req.param('id'))) throw new HTTPException(404, { message: 'metric not found' })
+    return c.json({ ok: true })
   })
   app.get('/v1/agents/summary', async c => c.json(await agentsSummary(deps)))
   app.get('/v1/agents/runs/:id', async c => c.json(await guard(agentRunDetail(db, c.req.param('id')))))

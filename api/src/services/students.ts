@@ -2,6 +2,9 @@ import { and, asc, count, desc, eq, gt } from 'drizzle-orm'
 import type { AgentRunView, RosterStudent, StudentDetail } from '@matside/shared'
 import type { Db } from '../db/client'
 import type { Deps } from '../deps'
+import { modeForStudent } from './context'
+import { buildBrief } from './brief'
+import { listMetrics, toMetricView } from './metrics'
 import { agentRuns, attendance, drills, issues, notes, outbox, reportCards, students } from '../db/schema'
 
 /** Unknown ages are stored as birthYear >= this year (onboarding without an age): report null. */
@@ -27,6 +30,9 @@ export async function getStudentDetail(deps: Deps, id: string): Promise<StudentD
     classCount: cc?.n ?? 0,
     issues: iss.map(i => ({ tag: i.tag, status: i.status })),
     notes: ns.map(n => ({ date: n.at.toISOString().slice(0, 10), drillName: n.drill, text: n.text })),
+    rankSince: s.rankSince,
+    metrics: (await listMetrics(db, id)).map(toMetricView),
+    brief: await buildBrief(db, id, await modeForStudent(db, id), deps.now(), deps.env.timeZone),
     reportCard: rc ? { id: rc.r.id, month: rc.r.month, content: rc.r.content, outboxId: rc.r.outboxId, status: rc.status } : null,
   }
 }

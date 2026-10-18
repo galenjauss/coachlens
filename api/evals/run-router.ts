@@ -9,11 +9,11 @@ type Case = { t: string; types: string[]; names: string[]; urgency?: string; tag
 interface Suite { file: string; mode: ModeId; roster: string; drill: string; theme: string; min: number }
 
 const SUITES: Suite[] = [
-  { file: 'router-cases.json', mode: 'martial_arts', min: 13, drill: 'Guard-up jab drill', theme: 'Stances',
+  { file: 'router-cases.json', mode: 'martial_arts', min: 15, drill: 'Guard-up jab drill', theme: 'Stances',
     roster: 'Priya Rao; Sam Lee; Ava Kim; Leo Diaz ("Leo"); Maya Chen; Jake Ross; Mia Lopez; Ben Ortiz; Cal Wu; Dee Park' },
-  { file: 'router-cases-pt.json', mode: 'personal_training', min: 4, drill: 'Back squat 5×5', theme: 'Lower-body strength',
+  { file: 'router-cases-pt.json', mode: 'personal_training', min: 6, drill: 'Back squat 5×5', theme: 'Lower-body strength',
     roster: 'Maria Gomez; Tom Becker; Priyanka Shah; Derek Owens; Lena Fischer' },
-  { file: 'router-cases-tutoring.json', mode: 'tutoring', min: 4, drill: 'Guided: distribute first', theme: 'Linear equations',
+  { file: 'router-cases-tutoring.json', mode: 'tutoring', min: 6, drill: 'Guided: distribute first', theme: 'Linear equations',
     roster: 'Sam Patel; Ava Brooks; Noah Kim; Zoe Alvarez' },
 ]
 
@@ -26,7 +26,7 @@ for (const s of SUITES) {
   console.log(`\n== ${mode.label} (${s.file})`)
   for (const c of cases) {
     const out = await llm.object({ name: 'router', instructions: routerInstructions(mode), schema: routerOutputFor(s.mode),
-      prompt: `Roster: ${s.roster}\nCurrent ${mode.planItem}: ${s.drill}\n${mode.weeklyLabel}: ${s.theme}\nUtterance: """${c.t}"""` })
+      prompt: `Roster: ${s.roster}\nCurrent ${mode.planItem}: ${s.drill}\n${mode.weeklyLabel}: ${s.theme}\nToday: 2026-10-19\nUtterance: """${c.t}"""` })
     const types = [...new Set(out.intents.map(i => i.type))].sort()
     const names = [...new Set(out.intents.flatMap(i => i.studentNames))]
     const tags = out.intents.flatMap(i => i.skillTags)
