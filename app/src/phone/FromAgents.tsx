@@ -2,17 +2,20 @@ import { useCallback, useState } from 'react'
 import type { Insight } from '@matside/shared'
 import type { Api } from '../core/api'
 import { InsightRow } from './InsightRow'
-import { insightsMissing, openInsights, todayRows, type RowOutcome } from './insightsLogic'
+import { classInsightsQuery, insightsMissing, openInsights, todayRows, type RowOutcome } from './insightsLogic'
 import { usePoll } from './usePoll'
 
-/** Insights for one scope; null while the insights API is not deployed (404): the caller shows nothing. */
-export function useInsights(api: Api, ms: number) {
+/**
+ * Insights for one scope; null while the insights API is not deployed (404): the caller shows nothing.
+ * `classId` scopes them to that class (F15); undefined = every class (the Agents inbox).
+ */
+export function useInsights(api: Api, ms: number, classId?: string | null) {
   return usePoll(async () => {
-    try { return (await api.insights({ scope: 'all' })).insights } catch (e) {
+    try { return (await api.insights(classId === undefined ? { scope: 'all' } : classInsightsQuery(classId))).insights } catch (e) {
       if (insightsMissing(e)) return null
       throw e
     }
-  }, ms)
+  }, ms, [classId])
 }
 
 /** Settled-on-this-screen outcomes, so an accepted row keeps showing what was done. */
@@ -27,25 +30,28 @@ export function useSettled() {
   return { settled, kept, settle }
 }
 
-/** Today: "From your agents", up to 3 open insights above the plan. Quiet (renders nothing) when there are none. */
-export function FromAgents({ api, onOpenAll }: { api: Api; onOpenAll(): void }) {
-  const { data } = useInsights(api, 30_000)
+/**
+ * Today: "From your agents" for the SELECTED class (F15), up to 3 open insights below the plan and actions.
+ * Quiet (renders nothing) when there are none; "All classes" opens the instructor-wide inbox.
+ */
+export function FromAgents({ api, classId, className, onOpenAll }: { api: Api; classId: string; className: string; onOpenAll(): void }) {
+  const { data } = useInsights(api, 30_000, classId)
   const { settled, kept, settle } = useSettled()
   if (!data) return null // loading, failed, or the insights API is not there yet
   const rows = todayRows(data, settled, kept)
-  if (!rows.length) return null
+  if (!rows.length) return <button type="button" className="ideas-all standalone" onClick={onOpenAll}>All classes’ insights ›</button>
   const fresh = openInsights(data).filter(i => !settled[i.id]).length // being accepted doesn't count as new
   return (
     <section className="card ideas-card" aria-labelledby="from-agents">
       <header className="ideas-head">
         <span className="ideas-bulb" aria-hidden="true">💡</span>
-        <h2 id="from-agents">From your agents</h2>
+        <h2 id="from-agents">From your agents <span className="muted scope">· {className}</span></h2>
         {fresh > 0 && <span className="ideas-count">{fresh} new</span>}
       </header>
       <ul className="ideas">
         {rows.map(i => <InsightRow key={i.id} api={api} insight={i} outcome={settled[i.id] ?? null} onSettled={settle(i)} />)}
       </ul>
-      <button type="button" className="ideas-all" onClick={onOpenAll}>All insights ›</button>
+      <button type="button" className="ideas-all" onClick={onOpenAll}>All classes’ insights ›</button>
     </section>
   )
 }

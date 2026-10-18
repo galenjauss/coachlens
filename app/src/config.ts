@@ -44,3 +44,7 @@ export const INSIGHT_AFTER_ATTENDANCE_MS: number = 1_500
 export const INSIGHT_AFTER_ATTENDANCE_LATE_MS: number = 5_000
 /** A new high-urgency insight shows atop peek this long, then collapses to the status-row suffix. */
 export const INSIGHT_BANNER_MS: number = 8_000
+/** C6 quiet mode: during class the idle display goes dark this long after its last change (nod or tap wakes it). */
+export const IDLE_DARK_MS: number = 8_000
+/** C6 quiet mode: a result card (note result, undo result) dismisses itself after this long. */
+export const RESULT_CARD_MS: number = 6_000

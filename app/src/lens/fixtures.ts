@@ -49,7 +49,7 @@ const insight = (id: string, title: string, detail: string, studentName: string 
   id, kind: 'demo', studentId: null, studentName, classId: 'c-tue', title, detail, urgency: 'high', status: 'new', createdAt: '2026-10-20T17:00:00Z', actionLabel,
 })
 
-const GUS_READY = insight('i-gus', 'Gus ready to test', '120 days at green belt · 11/12 classes', 'Gus Hill', 'Plan test')
+const GUS_READY = insight('i-gus', 'Gus: review for next rank', '120 days at green belt · 11/12 classes', 'Gus Hill', 'Review rank')
 const JAKE_BACK = insight('i-jake', 'Jake\'s back after 3 missed', 'Welcome him back · missed 3 in a row', 'Jake Miller', 'Email family')
 
 const PRIYA_BRIEF: Brief = { name: 'Priya Rao', lines: ['Yellow belt · 8 months at rank', 'Guard drops on the jab (3 this month)', 'Kata 2 due · strong stances', 'Attended 11 of the last 12', 'Focus: guard in the jab drill'] }

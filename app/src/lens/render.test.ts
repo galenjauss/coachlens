@@ -84,14 +84,14 @@ describe('render', () => {
     const p = render(s, 79_000)
     expect(p.key).toBe('peek2')
     expect(p.texts.find(t => t.name === 'hdr')?.content).toBe('STANCES · Kids · Tue')
-    expect(p.texts.find(t => t.name === 'cov')?.content).toBe('Feedback 3/12')
+    expect(p.texts.find(t => t.name === 'cov')?.content).toBe('Noted 3/12')
     expect(p.texts.find(t => t.name === 'drill')?.content).toBe('Horse stance holds')
     expect(p.texts.find(t => t.name === 'timer')).toMatchObject({ content: '2:41 left', capture: false })
     const box = p.texts.find(t => t.name === 'box')!
     expect(box).toMatchObject({ border: true, capture: true })
     expect(box.content).toContain('━')
     expect(box.content).toContain('cue: knees out · back tall')
-    expect(p.texts.find(t => t.name === 'next')?.content).toBe('> Next feedback: Priya (guard)')
+    expect(p.texts.find(t => t.name === 'next')?.content).toBe('> Next to note: Priya (guard)')
     expect(p.texts.find(t => t.name === 'hint')).toBeUndefined()
   })
   it('peek shows a status line instead of next feedback when set', () => {
@@ -123,10 +123,10 @@ describe('render', () => {
     const agents = p.texts.find(t => t.name === 'agents')!
     expect(agents).toMatchObject({ x: 0, w: 576 })
     expect(agents.y).toBeGreaterThanOrEqual(said.y + said.h)
-    expect(agents.content).toBe('… working\ntap: close · 2×: undo')
+    expect(agents.content).toBe('… working\ntap: note · 2×: undo')
     const runs = [{ agent: 'router', summary: '', status: 'ok', createdAt: '' }, { agent: 'progress', summary: '', status: 'ok', createdAt: '' }]
     p = render({ ...s, screen: 'card', card: { ...mkCard('x'), lines: ['√ x', '→ parent note drafting'], runs } }, 0)
-    expect(p.texts.find(t => t.name === 'agents')?.content).toBe('ok sorted · ok logged · .. email\ntap: close · 2×: undo')
+    expect(p.texts.find(t => t.name === 'agents')?.content).toBe('ok sorted · ok logged · .. email\ntap: note · 2×: undo')
     const many = ['router', 'progress', 'billing', 'attendance', 'parent_email', 'planner'].map(agent => ({ agent, summary: '', status: 'ok', createdAt: '' }))
     const lines = p.texts.length && render({ ...s, screen: 'card', card: { ...mkCard('x'), runs: many } }, 0).texts.find(t => t.name === 'agents')!.content.split('\n')
     expect(lines).toHaveLength(2) // progress wraps to 2 lines max (hints yield)
@@ -153,7 +153,7 @@ describe('render', () => {
     const long = { ...s, nextStudent: { id: 'p', name: 'Priyanka Venkataraman', reason: 'guard drops on the rear hand' },
       today: { ...today, deck: { ...today.deck, drills: [{ ...drill, cues: ['keep the rear heel light', 'hands high'] }] } } } as LensState
     const p = render(long, 0)
-    expect(p.texts.find(t => t.name === 'next')?.content.replace(/\n/g, ' ')).toBe('> Next feedback: Priyanka Venkataraman (guard drops on the rear hand)')
+    expect(p.texts.find(t => t.name === 'next')?.content.replace(/\n/g, ' ')).toBe('> Next to note: Priyanka Venkataraman (guard drops on the rear hand)')
     expect(p.texts.find(t => t.name === 'box')?.content.replace(/\n/g, ' ')).toContain('cue: keep the rear heel light · hands high')
     expect(p.texts.find(t => t.name === 'box')?.content).not.toContain('━') // the bar yields to the cue
     const wrap2 = { sessionId: 's', minutes: 45, drillsRun: 5, coverage: { covered: 4, present: 12 }, agentActions: 4, pendingReview: 2,
@@ -186,7 +186,7 @@ describe('render', () => {
     const rec = { ...s, screen: 'recording' as const, pending: { mode: 'note' as const, returnTo: 'peek' as const, viaLongPress: false, at: 79_000 }, mic: { tick: 0, audio: false, source: 'glasses' as const } }
     const p = render(rec, 79_000)
     expect(p.texts.find(t => t.name === 'hdr')?.content).toBe('HORSE STANCE HOLDS · 3m left')
-    expect(p.texts.find(t => t.name === 'body')?.content).toBe('speak, then tap\n\n> Next feedback: Priya (guard)')
+    expect(p.texts.find(t => t.name === 'body')?.content).toBe('speak, then tap\n\n> Next to note: Priya (guard)')
     expect(p.texts.find(t => t.name === 'mic')?.content).toBe('○ waiting for mic…')
     // static time: minutes later the header still shows the time from when recording started
     expect(render(rec, 79_000 + 120_000).texts.find(t => t.name === 'hdr')?.content).toBe('HORSE STANCE HOLDS · 3m left')
@@ -373,9 +373,9 @@ describe('queued suffix + provisional card', () => {
   it('peek and home add a compact queued suffix to the status row only when notes wait', async () => {
     const { QUEUED_GLYPH } = await import('../config')
     const next = (st: LensState) => render(st, 0).texts.find(t => t.name === 'next')!.content
-    expect(next(s)).toBe('> Next feedback: Priya (guard)')
-    expect(next({ ...s, queued: 2 })).toBe(`> Next feedback: Priya (guard)\n${QUEUED_GLYPH} 2 queued`) // spare row
-    expect(next({ ...s, nextStudent: { id: 'p', name: 'Al', reason: 'x' }, queued: 2 })).toBe(`> Next feedback: Al (x) ${QUEUED_GLYPH} 2 queued`)
+    expect(next(s)).toBe('> Next to note: Priya (guard)')
+    expect(next({ ...s, queued: 2 })).toBe(`> Next to note: Priya (guard)\n${QUEUED_GLYPH} 2 queued`) // spare row
+    expect(next({ ...s, nextStudent: { id: 'p', name: 'Al', reason: 'x' }, queued: 2 })).toBe(`> Next to note: Al (x) ${QUEUED_GLYPH} 2 queued`)
     expect(next({ ...s, status: '● Saved · will sync', queued: 1 })).toBe(`● Saved · will sync ${QUEUED_GLYPH} 1 queued`)
     const foot = (st: LensState) => render({ ...st, screen: 'home', session: null }, 0).texts.find(t => t.name === 'foot')!.content
     expect(foot(s)).toBe('2×: exit')

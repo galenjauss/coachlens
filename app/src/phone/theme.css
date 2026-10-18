@@ -241,3 +241,32 @@ button.insight-do:hover:not(:disabled) { filter: brightness(1.06); }
 button.ideas-all { position: relative; display: block; width: 100%; flex: none; min-height: 44px; padding: 10px 0; margin-top: 2px; border-top: 1px solid var(--line); border-radius: 0; background: none; color: var(--idea); font-weight: 650; text-align: right; }
 button.ideas-all:hover:not(:disabled) { filter: none; color: #fff; }
 @media (prefers-reduced-motion: reduce) { .insight-outcome { animation: none; } }
+
+/* ── Remediation batch 3: settings, unsent notes, roster maintenance ─────────────────────── */
+.top-row { align-items: flex-start; gap: 6px; }
+.settings-btn { flex: none; min-width: 44px; min-height: 36px; padding: 6px 10px; border-radius: 99px; font-size: 16px; }
+.unsent { display: block; }
+.unsent.has-failed { border-color: var(--danger); color: var(--danger); }
+.unsent .row button { flex: none; min-height: 36px; padding: 6px 12px; font-size: 13px; font-weight: 600; background: transparent; color: inherit; border: 1px solid currentColor; }
+.unsent-list { margin-top: 8px; color: var(--text); }
+.unsent-row { border-top: 1px solid var(--line); padding: 8px 0; }
+.unsent-row .btns button { min-height: 36px; font-size: 13px; }
+button.danger { background: var(--danger-bg); color: var(--danger); font-weight: 600; }
+select { font: inherit; width: 100%; background: var(--line); color: var(--text); border: 2px solid transparent; border-radius: 8px; padding: 10px; margin-top: 4px; }
+select:focus-visible { outline: none; border-color: var(--accent); }
+.field-gap input, .field-gap select { margin-top: 4px; }
+fieldset { border: 0; padding: 0; margin: 10px 0 0; min-width: 0; }
+.check { width: 20px; height: 20px; flex: none; accent-color: var(--accent); margin: 0; }
+.check-row { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.guardian { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; align-items: center; margin-top: 6px; }
+.guardian input { margin-top: 0; }
+.guardian button { flex: none; min-height: 40px; font-size: 13px; }
+@media (max-width: 360px) { .guardian { grid-template-columns: 1fr; } }
+.pick-list { margin-top: 6px; }
+.pick { min-height: 44px; padding: 8px 10px; background: transparent; border-bottom: 1px solid var(--line); border-radius: 0; }
+.pick.on { color: var(--accent); font-weight: 600; }
+.pill.urgent { font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.warn-line { color: var(--warn); margin-top: 4px; }
+.danger-zone { border-color: var(--danger-bg); }
+.ideas-all.standalone { width: 100%; margin: 0 0 10px; background: transparent; border: 1px dashed var(--line); color: var(--muted); }
+.scope { font-weight: 400; font-size: 13px; }

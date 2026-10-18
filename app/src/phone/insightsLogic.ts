@@ -39,3 +39,8 @@ export function todayRows(list: readonly Insight[], settled: Readonly<Record<str
   const gone = kept.filter(i => !open.some(o => o.id === i.id) && (settled[i.id]?.kind === 'accepted' || settled[i.id]?.kind === 'pending'))
   return [...gone, ...open].slice(0, max)
 }
+
+/** F15: Today's "From your agents" is the selected class's (scope=class); all classes only before a class is known. */
+export function classInsightsQuery(classId: string | null): { scope: 'class'; classId: string } | { scope: 'all' } {
+  return classId ? { scope: 'class', classId } : { scope: 'all' }
+}

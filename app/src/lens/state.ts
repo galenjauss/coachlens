@@ -1,8 +1,16 @@
 import type { Brief, Coverage, Disambiguation, Insight, NextStudent, StartSessionResponse, Today, UtteranceResponse, VoicePlanResponse, WrapUp } from '@matside/shared'
 import type { UtteranceRun } from '../core/api'
 import type { EmptyReason, MicSource } from '../core/audio'
+import type { RetryReason } from '../core/outbox'
 
-export type Screen = 'firstRun' | 'home' | 'lobby' | 'planning' | 'planApplying' | 'planResult' | 'attendance' | 'attendanceDone' | 'dark' | 'peek' | 'deck' | 'recording' | 'sending' | 'card' | 'disambiguation' | 'confirmEnd' | 'wrapup' | 'drillDetail' | 'insight'
+/** C6 display policy: quiet (default) auto-hides the idle display and auto-dismisses result cards; standard stays up. */
+export type DisplayMode = 'quiet' | 'standard'
+/** C2 undo lines from the server. */
+export type UndoLines = { reversed: string[]; cancelled: string[]; notReversible: string[] }
+/** An undo in flight or its outcome: pending → done (server lines) | failed (tap retries) | already (409) | missing (404). */
+export type UndoState = UndoLines & { utteranceId: string; stage: 'pending' | 'done' | 'failed' | 'already' | 'missing'; message: string | null }
+
+export type Screen = 'firstRun' | 'home' | 'lobby' | 'planning' | 'planApplying' | 'planResult' | 'attendance' | 'attendanceDone' | 'dark' | 'peek' | 'deck' | 'recording' | 'sending' | 'card' | 'disambiguation' | 'confirmEnd' | 'wrapup' | 'drillDetail' | 'insight' | 'undo'
 export type Mode = 'note' | 'attendance'
 /** heard = recording stopped · sending = request in flight · thinking = still pending after THINK_AFTER_TICKS. */
 export type ThinkStage = 'heard' | 'sending' | 'thinking'
@@ -77,6 +85,14 @@ export interface LensState {
   insightDetail: Insight | null
   /** The top insight at class end (a wrap-up row). */
   wrapupInsight: Insight | null
+  /** Notes the server rejected (failed store): the status row shows `! N failed` until retried or discarded on the phone. */
+  failed: number
+  /** The undo in flight or its result card (F02: nothing says "Undone" before the server does). */
+  undo: UndoState | null
+  /** C6: quiet (default) or standard. */
+  displayMode: DisplayMode
+  /** Unsent-notes storage use (fraction of the budget): ≥ 0.7 warns on the status row, ≥ 1 refuses a new recording. */
+  storage: number
 }
 
 export type LensEvent =
@@ -90,7 +106,18 @@ export type LensEvent =
   | { type: 'loadFailed'; message: string }
   | { type: 'sessionStarted'; res: StartSessionResponse; resumed: boolean; now: number }
   | { type: 'utteranceResult'; res: UtteranceResponse }
-  | { type: 'utteranceQueued' } | { type: 'utteranceDelivered' } | { type: 'utteranceEmpty'; reason: EmptyReason } | { type: 'micFailed' }
+  | { type: 'utteranceQueued'; reason?: RetryReason } | { type: 'utteranceDelivered' }
+  /** The server rejected the note as invalid: it is in the failed store (phone: Unsent notes). */
+  | { type: 'utteranceFailed'; reason: string }
+  /** A background flush finished: `sent` delivered, `failed` moved to the failed store. */
+  | { type: 'outboxSynced'; sent: number; failed: number }
+  | { type: 'failedChanged'; count: number }
+  | { type: 'storageChanged'; fraction: number }
+  | { type: 'undoResult'; utteranceId: string; res: UndoLines }
+  | { type: 'undoFailed'; utteranceId: string; kind: 'error' | 'already' | 'missing'; message: string }
+  | { type: 'displayModeLoaded'; mode: DisplayMode }
+  /** C6 timers: the idle display's 8 s and a result card's 6 s ran out. */
+  | { type: 'idleTimeout' } | { type: 'resultTimeout' } | { type: 'utteranceEmpty'; reason: EmptyReason } | { type: 'micFailed' }
   | { type: 'micLevel'; tick: number; audio: boolean; source: MicSource }
   | { type: 'sendStarted' } | { type: 'thinkingTick' }
   /** Transcript-first: /v1/transcribe answered; the text note is about to be sent. */

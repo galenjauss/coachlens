@@ -10,13 +10,13 @@ import { CLASS_ID_KEY, MODE_EMOJI } from './classPref'
 import { RosterCheckIn } from './RosterCheckIn'
 import { SetupEntry } from './onboarding/SetupEntry'
 import { usePoll } from './usePoll'
-import { queuedBanner, useOutboxCount } from './outboxLogic'
+import type { Outbox } from '../core/outbox'
+import { UnsentNotes } from './UnsentNotes'
 
-export function Today({ api, kv, onOpenDeck, onSetup, onOpenInsights }: { api: Api; kv: KV; onOpenDeck(deckId: string): void; onSetup(): void; onOpenInsights(): void }) {
+export function Today({ api, kv, outbox, onOpenDeck, onSetup, onOpenInsights, onOpenSettings }: { api: Api; kv: KV; outbox: Outbox; onOpenDeck(deckId: string): void; onSetup(): void; onOpenInsights(): void; onOpenSettings(): void }) {
   const [classId, setClassId] = useState<string | null | undefined>(undefined) // undefined = KV not read yet
   const [checkIn, setCheckIn] = useState(false)
   const [actionErr, setActionErr] = useState<string | null>(null)
-  const queuedText = queuedBanner(useOutboxCount())
   const classRef = useRef<string | null | undefined>(undefined)
   classRef.current = classId
   useEffect(() => {
@@ -50,9 +50,10 @@ export function Today({ api, kv, onOpenDeck, onSetup, onOpenInsights }: { api: A
     setClassId(id); setCheckIn(false)
     bus.emit('classChanged', id)
   }
-  const picker = <ClassPicker api={api} value={classId ?? t?.classId ?? null} loading={loading} onChange={pick} />
+  const picker = <div className="row top-row"><div className="grow"><ClassPicker api={api} value={classId ?? t?.classId ?? null} loading={loading} onChange={pick} /></div>
+    <button type="button" className="settings-btn" aria-label="Settings" onClick={onOpenSettings}>⚙︎</button></div>
   const banner = <>
-    {queuedText && <div className="queued" role="status"><span className="grow">{queuedText} ·</span><button type="button" onClick={() => bus.emit('outboxRetry', undefined)}>Retry now</button></div>}
+    <UnsentNotes outbox={outbox} />
     {error && <p className="error" role="alert">Couldn’t load today: {error}</p>}
   </>
 
@@ -88,7 +89,6 @@ export function Today({ api, kv, onOpenDeck, onSetup, onOpenInsights }: { api: A
       <section className="card"><div className="label">Focus (from your notes)</div>
         {t.focus.length ? t.focus.map(f => <div key={f.label} className="dot">{f.label}</div>) : <div className="muted">No open focus areas.</div>}
       </section>
-      <FromAgents api={api} onOpenAll={onOpenInsights} />
       <section className="card tappable" role="button" tabIndex={0} aria-label={`${t.planUnit}, edit`} onClick={() => onOpenDeck(t.deck.id)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenDeck(t.deck.id) } }}>
         <div className="row"><b className="grow">{t.planUnit}</b><span className="muted">{t.deck.drills.length} items · {mins} min · edit ›</span></div>
         {t.deck.drills.slice(0, 4).map(d => <div className="drill" key={d.id}><span>{d.name}</span><span className="muted">{d.minutes}m</span></div>)}
@@ -100,6 +100,8 @@ export function Today({ api, kv, onOpenDeck, onSetup, onOpenInsights }: { api: A
             <p className="muted hint">Tap your temple to talk anytime</p>
           </>}
       {actionErr && <p className="error" role="alert">{actionErr}</p>}
+      {/* F15: optional analysis comes after the plan and the start / check-in actions, scoped to this class. */}
+      <FromAgents api={api} classId={t.classId} className={t.className} onOpenAll={onOpenInsights} />
       <SetupEntry onOpen={onSetup} />
       <MotionToggle kv={kv} api={api} />
     </main>

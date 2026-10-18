@@ -8,6 +8,7 @@ import { Onboarding } from './onboarding/Onboarding'
 import type { PhoneDeps } from './mount'
 import { Pairing } from './Pairing'
 import { Review } from './Review'
+import { Settings } from './Settings'
 import { Students } from './Students'
 import { Today } from './Today'
 import { usePoll } from './usePoll'
@@ -15,18 +16,19 @@ import { usePoll } from './usePoll'
 type Tab = 'today' | 'review' | 'agents' | 'students'
 const TABS: Tab[] = ['today', 'review', 'agents', 'students']
 
-export function App({ api, kv }: PhoneDeps) {
+export function App({ api, kv, outbox }: PhoneDeps) {
   const [paired, setPaired] = useState<boolean | null>(null)
   const [tab, setTab] = useState<Tab>('today')
   const [deckId, setDeckId] = useState<string | null>(null)
   const [setup, setSetup] = useState(false)
+  const [settings, setSettings] = useState(false)
   /** Agents opened from Today's "All insights": which task to open, and a nonce that remounts Agents there. */
   const [agentsOpen, setAgentsOpen] = useState<{ task: AgentTask | null; n: number }>({ task: null, n: 0 })
   useEffect(() => { void kv.get(KEYS.token).then(t => setPaired(Boolean(t)), () => setPaired(false)) }, [kv])
   // A 401 anywhere (or "Re-pair this phone") means the token is no longer valid: clear it and pair again.
   useEffect(() => bus.on('unauthorized', () => {
     void kv.set(KEYS.token, '').catch(e => console.warn('[pair] could not clear the token', e))
-    setDeckId(null); setSetup(false); setPaired(false)
+    setDeckId(null); setSetup(false); setSettings(false); setPaired(false)
   }), [kv])
   // Warm the serverless instance on open and on every return to the app; cold starts are slow. Failure is irrelevant.
   useEffect(() => {
@@ -49,9 +51,10 @@ export function App({ api, kv }: PhoneDeps) {
   if (!paired) return <Pairing api={api} kv={kv} onPaired={() => setPaired(true)} />
   if (setup) return <Onboarding api={api} kv={kv} onExit={() => setSetup(false)} onDone={() => { setSetup(false); setTab('today') }} />
   if (deckId) return <DeckEditor api={api} deckId={deckId} onClose={() => setDeckId(null)} />
+  if (settings) return <Settings api={api} kv={kv} onClose={() => setSettings(false)} />
   return (
     <>
-      {tab === 'today' && <Today api={api} kv={kv} onOpenDeck={setDeckId} onSetup={() => setSetup(true)}
+      {tab === 'today' && <Today api={api} kv={kv} outbox={outbox} onOpenDeck={setDeckId} onSetup={() => setSetup(true)} onOpenSettings={() => setSettings(true)}
         onOpenInsights={() => { setAgentsOpen(a => ({ task: 'insights', n: a.n + 1 })); setTab('agents') }} />}
       {tab === 'agents' && <Agents key={agentsOpen.n} api={api} initialTask={agentsOpen.task} />}
       {tab === 'review' && <Review api={api} />}
