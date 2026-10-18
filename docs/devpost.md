@@ -8,7 +8,11 @@
 
 I teach kids martial arts. In a 45-minute class with 20 kids I want to give each one specific feedback, and I can't write anything down because my hands are holding pads. By the time I get home I remember two kids, not twenty. Parents want updates, billing needs chasing, and the next class plan lives in my head. Studio software is an after-class dashboard; nothing works while I'm standing on the mat.
 
-The evidence says the moment matters. High-information feedback has an effect size of d=0.99 versus d=0.24 for praise. Weekly personalized teacher-to-parent messages cut course failure from 15.8% to 9.3% in a randomized trial.
+The evidence says the moment matters. In a meta-analysis of 435 studies, high-information feedback showed an average effect size of d = 0.99, compared with d = 0.24 for simple reinforcement or punishment [1]. And in a randomized field experiment, weekly one-sentence individualized teacher-to-parent messages cut the share of students who failed to earn course credit from 15.8% to 9.3%, a 41% reduction [2].
+
+[1] Wisniewski, B., Zierer, K., & Hattie, J. (2020). The power of feedback revisited: A meta-analysis of educational feedback research. *Frontiers in Psychology, 10*, 3087. https://doi.org/10.3389/fpsyg.2019.03087
+
+[2] Kraft, M. A., & Rogers, T. (2015). The underutilized potential of teacher-to-parent communication: Evidence from a field experiment. *Economics of Education Review, 47*, 49–63. https://www.hks.harvard.edu/publications/underutilized-potential-teacher-parent-communication-evidence-field-experiment
 
 Even's judging doc puts it plainly: "Technology should feel natural. Intelligence should be quiet. Attention should be respected." A coach's attention belongs on the students. CoachLens takes one tap and one sentence, then keeps the lens dark and the agents working in the background.
 
