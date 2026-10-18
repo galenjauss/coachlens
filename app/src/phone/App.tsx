@@ -28,7 +28,7 @@ export function App({ api, kv }: PhoneDeps) {
   if (deckId) return <DeckEditor api={api} deckId={deckId} onClose={() => setDeckId(null)} />
   return (
     <>
-      <ImuDebug />
+      <ImuDebug kv={kv} />
       {tab === 'today' && <Today api={api} kv={kv} onOpenDeck={setDeckId} />}
       {tab === 'agents' && <Agents api={api} />}
       {tab === 'review' && <Review api={api} />}

@@ -183,9 +183,17 @@ describe('Glasses', () => {
       expect(changedSpan('━─', '━━')).toBeNull()
     })
 
-    it('sends only the clock characters with contentOffset/contentLength; other containers untouched', async () => {
+    it('default: a full upgrade of the small container (partial is opt-in)', async () => {
       const b = fakeBridge()
       const g = new Glasses(b)
+      await g.show(timerPage('3:12 left'))
+      await g.show(timerPage('3:11 left'))
+      expect(b.calls).toEqual(['create:drill,timer', 'upgrade:timer=3:11 left'])
+    })
+
+    it('opt-in: sends only the clock characters with contentOffset/contentLength; other containers untouched', async () => {
+      const b = fakeBridge()
+      const g = new Glasses(b, { partial: true })
       await g.show(timerPage('3:12 left'))
       await g.show(timerPage('3:11 left'))
       await g.show(timerPage('3:00 left'))
@@ -196,7 +204,7 @@ describe('Glasses', () => {
 
     it('falls back to a full upgrade when the length changes, or when not marked partial / disabled', async () => {
       const b = fakeBridge()
-      const g = new Glasses(b)
+      const g = new Glasses(b, { partial: true })
       await g.show(timerPage('10:00 left'))
       await g.show(timerPage('9:59 left'))
       await g.show(timerPage('9:58 left', false))
@@ -210,7 +218,7 @@ describe('Glasses', () => {
 
     it('a failed partial upgrade forces a full rebuild next time', async () => {
       const b = fakeBridge()
-      const g = new Glasses(b)
+      const g = new Glasses(b, { partial: true })
       await g.show(timerPage('3:12 left'))
       ;(b.textContainerUpgrade as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false)
       await g.show(timerPage('3:11 left'))

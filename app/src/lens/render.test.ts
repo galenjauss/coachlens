@@ -105,7 +105,7 @@ describe('render', () => {
     expect(p.texts.find(t => t.name === 'agents')?.content).toBe('… agents working')
     const runs = [{ agent: 'router', summary: '', status: 'ok', createdAt: '' }, { agent: 'progress', summary: '', status: 'ok', createdAt: '' }]
     p = render({ ...s, screen: 'card', card: { ...card, runs } }, 0)
-    expect(p.texts.find(t => t.name === 'agents')?.content).toBe('✓ sorted\n✓ logged')
+    expect(p.texts.find(t => t.name === 'agents')?.content).toBe('ok sorted\nok logged')
     expect(p.texts.find(t => t.name === 'foot')?.content).toContain('2×: undo')
   })
   it('attendance shows the enrolled count and both phrasings', () => {

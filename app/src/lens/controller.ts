@@ -4,7 +4,7 @@ import { MAX_RECORD_MS, Recorder } from '../core/audio'
 import { bus } from '../core/bus'
 import type { FlushResult, Outbox, OutboxItem } from '../core/outbox'
 import { KEYS, type KV } from '../core/storage'
-import { isImuDebugOn } from '../core/imuDebug'
+import { readImuDebug } from '../core/imuDebug'
 import { CLASS_ID_KEY } from '../phone/classPref'
 import { fromB64, toB64 } from '../core/wav'
 import { RUNS_MAX_MS, RUNS_POLL_MS, runsDone } from './agentRuns'
@@ -20,6 +20,7 @@ import type { Effect, LensEvent, LensState } from './state'
  * per second that is the few clock characters (partial upgrade); the bar every 5 s. Never while dark.
  */
 export const TICK_MS = 1000
+const TICK_SLACK_MS = 20
 const TICKING = new Set<LensState['screen']>(['peek', 'recording'])
 
 export type LensBridge = GlassesBridge & Pick<EvenAppBridge, 'audioControl' | 'imuControl' | 'shutDownPageContainer' | 'onEvenHubEvent'>
@@ -43,13 +44,13 @@ async function readFirstRunSeen(kv: KV): Promise<boolean> {
 }
 
 export async function startLens(d: LensDeps): Promise<LensHandle> {
-  const glasses = new Glasses(d.bridge, { partial: d.partialUpgrades ?? true })
+  const glasses = new Glasses(d.bridge, { partial: d.partialUpgrades ?? false })
   const recorder = new Recorder(d.bridge)
   const detector = new NodDetector(d.nod)
   const timers = { status: slot(), timerEnded: slot(), recordMax: slot() }
   let state: LensState = initialState(await readFirstRunSeen(d.kv))
   let imuOn = false
-  let imuDebug = isImuDebugOn()
+  let imuDebug = false // phone readout open (read from KV below)
   let todaySeq = 0 // only the latest today request may land (swiping classes fires several)
   let runsPoll: { utteranceId: string; stop(): void } | null = null
 
@@ -247,7 +248,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     const imu = imuSample(e)
     if (imu) {
       if (d.logImu) console.info('[imu]', imu.x, imu.y, imu.z)
-      const nod = detector.push(imu)
+      const nod = d.nod.enabled && detector.push(imu)
       bus.emit('imuSample', { x: imu.x ?? 0, y: imu.y ?? 0, z: imu.z ?? 0, nod })
       if (nod) dispatch({ type: 'nod' })
       return
@@ -272,17 +273,27 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
   const offClass = bus.on('classChanged', () => { void run({ type: 'loadToday' }) })
   const offDeck = bus.on('deckChanged', () => { void run({ type: 'loadToday' }) }) // phone edited/accepted a plan: the lens reloads it
   const offImuDebug = bus.on('imuDebug', on => { imuDebug = on; void syncImu() })
-  const tick = setInterval(() => { if (TICKING.has(state.screen)) void paint(true) }, TICK_MS)
+  // Ticks land just after whole seconds of the running drill, so the clock text changes on every tick.
+  let tick: ReturnType<typeof setTimeout> | null = null
+  const scheduleTick = () => {
+    const a = state.active
+    const into = a ? (((Date.now() - a.startedAt) % TICK_MS) + TICK_MS) % TICK_MS : 0
+    tick = setTimeout(() => {
+      if (TICKING.has(state.screen)) void paint(true)
+      scheduleTick()
+    }, TICK_MS - into + TICK_SLACK_MS)
+  }
+  scheduleTick()
 
   await paint() // never a black screen: the first page goes up immediately
   if (state.screen !== 'firstRun') { void run({ type: 'loadToday' }); void run({ type: 'loadClasses' }) }
-  if (imuDebug) void syncImu()
+  void readImuDebug(d.kv).then(on => { imuDebug = imuDebug || on; void syncImu() })
   void run({ type: 'flushOutbox' })
 
   return {
     dispatch,
     stop() {
-      unsubscribe(); offPaired(); offStart(); offClass(); offDeck(); offImuDebug(); clearInterval(tick)
+      unsubscribe(); offPaired(); offStart(); offClass(); offDeck(); offImuDebug(); if (tick) clearTimeout(tick)
       runsPoll?.stop()
       glasses.dispose()
       for (const t of Object.values(timers)) t.clear()

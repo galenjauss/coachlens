@@ -273,10 +273,18 @@ describe('lens reducer', () => {
       expect(run(initialState(true), { type: 'todayLoaded', today }, { type: 'swipeDown' }).effects).toEqual([])
     })
 
-    it('swipe is ignored while a class is starting; a load failure clears the pending pick', () => {
+    it('swipe is ignored while a class is starting', () => {
       const starting = run(home(), { type: 'tap' }).state
       expect(run(starting, { type: 'swipeDown' }).effects).toEqual([])
-      expect(run(home(), { type: 'swipeDown' }, { type: 'loadFailed', message: 'Offline' }).state.selectedClassId).toBeNull()
+    })
+
+    it('a load failure keeps the pending pick; tap retries that class and never starts the previous one', () => {
+      let r = run(home(), { type: 'swipeDown' }, { type: 'loadFailed', message: 'Offline' })
+      expect(r.state.selectedClassId).toBe('c2')
+      r = run(r.state, { type: 'tap' })
+      expect(r.effects).toEqual([{ type: 'loadToday' }])
+      expect(r.state.loadError).toBeNull()
+      expect(r.effects.some(x => (x as { type: string }).type === 'startSession')).toBe(false)
     })
 
     it('resume reloads classes too', () => {

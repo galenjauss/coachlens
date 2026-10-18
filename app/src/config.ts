@@ -9,7 +9,7 @@ export const API_URL: string = (import.meta.env.VITE_API_URL as string | undefin
  * with the largest swing, and set `threshold` to about half that swing, signed in the direction
  * the value moves when the head goes down (negative = it decreases).
  */
-export const NOD: NodConfig = { axis: 'y', threshold: 0.3, windowMs: 600, cooldownMs: 1200 }
+export const NOD: NodConfig = { enabled: true, axis: 'y', threshold: 0.3, windowMs: 600, cooldownMs: 1200 }
 /**
  * IMU report pace while class runs (or the readout is open). SDK range P100…P1000; the SDK default is
  * P100. The readout shows the real sample rate: a nod needs at least one sample inside 600 ms.
@@ -17,9 +17,9 @@ export const NOD: NodConfig = { axis: 'y', threshold: 0.3, windowMs: 600, cooldo
 export const IMU_PACE: ImuReportPace = ImuReportPace.P100
 export const IMU_LOG: boolean = import.meta.env.VITE_IMU_LOG === '1'
 /**
- * Send per-second clock changes as partial upgrades (contentOffset/contentLength; `content` is the
- * replacement substring, per the SDK reference). If the glasses garble the timer, open the app with
- * `?partial=0`: same-length changes then go as full (still tiny) upgrades. The simulator ignores the
- * offset, so there the clock shows only the changed digits; check on hardware.
+ * Opt-in (`?partial=1`): send per-second clock changes as partial upgrades (contentOffset/contentLength,
+ * `content` = the replacement substring per the SDK reference). Off by default because the simulator
+ * ignores the offset (it showed only the changed digits) and hardware behaviour is unverified. The
+ * default full upgrade of the ~10-char timer container is already tiny.
  */
-export const PARTIAL_UPGRADES: boolean = typeof location === 'undefined' || new URLSearchParams(location.search).get('partial') !== '0'
+export const PARTIAL_UPGRADES: boolean = typeof location !== 'undefined' && new URLSearchParams(location.search).get('partial') === '1'

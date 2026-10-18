@@ -179,12 +179,20 @@ describe('recorder', () => {
   })
 })
 
-describe('imu debug flag', () => {
-  it('?imu=1 turns it on, ?imu=0 off, otherwise the remembered value (never throws)', async () => {
-    const { isImuDebugOn } = await import('./imuDebug')
-    expect(isImuDebugOn('?imu=1')).toBe(true)
-    expect(isImuDebugOn('?imu=0')).toBe(false)
-    expect(isImuDebugOn('?imu=0&x=1')).toBe(false)
-    expect(() => isImuDebugOn('')).not.toThrow()
+describe('imu readout flag (KV)', () => {
+  it('?imu=1/0 wins and is saved; otherwise the saved value; write saves and tells the bus', async () => {
+    const { readImuDebug, writeImuDebug, IMU_DEBUG_KEY } = await import('./imuDebug')
+    const { memoryKV } = await import('./storage')
+    const { bus } = await import('./bus')
+    const kv = memoryKV()
+    expect(await readImuDebug(kv, '')).toBe(false)
+    expect(await readImuDebug(kv, '?imu=1')).toBe(true)
+    expect(await readImuDebug(kv, '')).toBe(true)
+    expect(await readImuDebug(kv, '?imu=0')).toBe(false)
+    const seen: boolean[] = []
+    const off = bus.on('imuDebug', on => seen.push(on))
+    try { await writeImuDebug(kv, true) } finally { off() }
+    expect(await kv.get(IMU_DEBUG_KEY)).toBe('1')
+    expect(seen).toEqual([true])
   })
 })

@@ -3,6 +3,7 @@ import { ApiError, type Api } from '../core/api'
 import { bus } from '../core/bus'
 import type { KV } from '../core/storage'
 import { ClassPicker } from './ClassPicker'
+import { MotionToggle } from './ImuDebug'
 import { CLASS_ID_KEY, MODE_EMOJI } from './classPref'
 import { RosterCheckIn } from './RosterCheckIn'
 import { usePoll } from './usePoll'
@@ -31,6 +32,7 @@ export function Today({ api, kv, onOpenDeck }: { api: Api; kv: KV; onOpenDeck(de
     classId !== undefined,
   )
   useEffect(() => bus.on('sessionChanged', () => reload()), [reload])
+  useEffect(() => bus.on('classChanged', id => setClassId(id)), []) // follow a class picked on the lens (swipe on home)
 
   async function pick(id: string) {
     setActionErr(null)
@@ -81,6 +83,7 @@ export function Today({ api, kv, onOpenDeck }: { api: Api; kv: KV; onOpenDeck(de
             <p className="muted hint">Tap your temple to talk anytime</p>
           </>}
       {actionErr && <p className="error" role="alert">{actionErr}</p>}
+      <MotionToggle kv={kv} />
     </main>
   )
 }

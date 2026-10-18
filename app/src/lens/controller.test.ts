@@ -57,7 +57,7 @@ const tap = { sysEvent: {} }
 const dbl = { sysEvent: { eventType: OsEventTypeList.DOUBLE_CLICK_EVENT } }
 const imu = (y: number) => ({ sysEvent: { eventType: OsEventTypeList.IMU_DATA_REPORT, imuData: { x: 0.5, y, z: 1 } } })
 const swipe = { textEvent: { eventType: OsEventTypeList.SCROLL_BOTTOM_EVENT } }
-const NOD = { axis: 'y' as const, threshold: 0.3, windowMs: 600, cooldownMs: 1200 }
+const NOD = { enabled: true, axis: 'y' as const, threshold: 0.3, windowMs: 600, cooldownMs: 1200 }
 const flush = () => vi.advanceTimersByTimeAsync(0)
 
 describe('lens controller', () => {
@@ -65,11 +65,11 @@ describe('lens controller', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-20T17:00:00Z')) })
   afterEach(() => { lens?.stop(); lens = null; vi.useRealTimers() })
 
-  async function boot(api = fakeApi(), firstRunSeen = true) {
+  async function boot(api = fakeApi(), firstRunSeen = true, opts: { nod?: typeof NOD; partialUpgrades?: boolean } = {}) {
     const kv = memoryKV()
     if (firstRunSeen) await kv.set(KEYS.firstRunSeen, '1')
     const b = fakeBridge()
-    lens = await startLens({ bridge: b.bridge, api, kv, outbox: new Outbox(kv), nod: NOD })
+    lens = await startLens({ bridge: b.bridge, api, kv, outbox: new Outbox(kv), nod: opts.nod ?? NOD, partialUpgrades: opts.partialUpgrades })
     await flush()
     return { ...b, kv, api }
   }
@@ -99,16 +99,17 @@ describe('lens controller', () => {
   })
 
   /** Start class and skip roll call: the persistent peek. */
-  async function toPeek(api = fakeApi()) {
-    const b = await boot(api)
+  async function toPeek(api = fakeApi(), opts: Parameters<typeof boot>[2] = {}) {
+    const b = await boot(api, true, opts)
     b.emit(tap); await flush() // start class → attendance (mic)
     b.emit(dbl); await flush() // skip roll call → peek
     return b
   }
-  /** A nod: dip and come back within the window. */
+  /** A deliberate nod: rest, two dipped samples 150 ms apart, back — all within the window. */
   async function nod(b: Awaited<ReturnType<typeof boot>>) {
     b.emit(imu(0.1)); await vi.advanceTimersByTimeAsync(100)
-    b.emit(imu(0.6)); await vi.advanceTimersByTimeAsync(200)
+    b.emit(imu(0.6)); await vi.advanceTimersByTimeAsync(150)
+    b.emit(imu(0.6)); await vi.advanceTimersByTimeAsync(100)
     b.emit(imu(0.1)); await flush()
   }
   async function toDark() {
@@ -117,8 +118,8 @@ describe('lens controller', () => {
     return b
   }
   /** In peek with a drill running (deck → first drill, 2 min). */
-  async function toDrill(api = fakeApi()) {
-    const b = await toPeek(api)
+  async function toDrill(api = fakeApi(), opts: Parameters<typeof boot>[2] = {}) {
+    const b = await toPeek(api, opts)
     b.emit(swipe); await flush()
     b.emit({ listEvent: {} }); await flush()
     return b
@@ -142,6 +143,28 @@ describe('lens controller', () => {
     expect(b.sent.at(-1)).toMatch(/^rebuild:STANCES/)
   })
 
+  it('kill switch: with nod disabled, a nod does nothing (samples still reach the readout)', async () => {
+    const seen: boolean[] = []
+    const off = bus.on('imuSample', p => seen.push(p.nod))
+    try {
+      const b = await toPeek(fakeApi(), { nod: { ...NOD, enabled: false } })
+      const n = b.sent.length
+      await nod(b)
+      expect(b.sent.slice(n).some(x => x === 'rebuild:')).toBe(false)
+      expect(seen).toHaveLength(4)
+      expect(seen.every(x => !x)).toBe(true)
+    } finally { off() }
+  })
+
+  it('a single IMU spike does not toggle', async () => {
+    const b = await toPeek()
+    const n = b.sent.length
+    b.emit(imu(0.1)); await vi.advanceTimersByTimeAsync(100)
+    b.emit(imu(0.9)); await vi.advanceTimersByTimeAsync(100)
+    b.emit(imu(0.1)); await flush()
+    expect(b.sent.slice(n).some(x => x === 'rebuild:')).toBe(false)
+  })
+
   it('a slow tilt (looking down) does not toggle', async () => {
     const b = await toPeek()
     const n = b.sent.length
@@ -155,7 +178,7 @@ describe('lens controller', () => {
     try {
       const b = await toPeek()
       await nod(b)
-      expect(seen).toEqual([{ y: 0.1, nod: false }, { y: 0.6, nod: false }, { y: 0.1, nod: true }])
+      expect(seen).toEqual([{ y: 0.1, nod: false }, { y: 0.6, nod: false }, { y: 0.6, nod: false }, { y: 0.1, nod: true }])
     } finally { off() }
   })
 
@@ -183,17 +206,37 @@ describe('lens controller', () => {
     expect(b.sent.length).toBe(n)
   })
 
-  it('per-second clock: one partial upgrade of the time characters per second while visible, none while dark', async () => {
+  it('per-second clock (default): one full upgrade of the small timer container per second, none while dark', async () => {
     const b = await toDrill()
     const n = b.sent.length
-    await vi.advanceTimersByTimeAsync(3000)
+    await vi.advanceTimersByTimeAsync(3100)
     const ticks = b.sent.slice(n)
-    expect(ticks).toHaveLength(3)
-    for (const x of ticks) expect(x).toMatch(/^partial:timer@\d\+\d=[\d:]+$/)
+    expect(ticks).toEqual(['upgrade:timer=1:59 left', 'upgrade:timer=1:58 left', 'upgrade:timer=1:57 left'])
     await nod(b)
     const m = b.sent.length
     await vi.advanceTimersByTimeAsync(10_000)
     expect(b.sent.length).toBe(m)
+  })
+
+  it('per-second clock with ?partial=1: partial upgrades of only the time characters', async () => {
+    const b = await toDrill(fakeApi(), { partialUpgrades: true })
+    const n = b.sent.length
+    await vi.advanceTimersByTimeAsync(3100)
+    expect(b.sent.slice(n)).toEqual(['partial:timer@0+4=1:59', 'partial:timer@3+1=8', 'partial:timer@3+1=7'])
+  })
+
+  it('ticks land on whole seconds of the drill even when it started mid-second', async () => {
+    const b = await toPeek()
+    await vi.advanceTimersByTimeAsync(400) // the drill starts 400 ms into a tick period
+    b.emit(swipe); await flush()
+    b.emit({ listEvent: {} }); await flush()
+    const n = b.sent.length
+    await vi.advanceTimersByTimeAsync(990)
+    expect(b.sent.slice(n)).toEqual([]) // no tick lands mid-second
+    await vi.advanceTimersByTimeAsync(40) // just past the drill's first whole second
+    expect(b.sent.slice(n)).toEqual(['upgrade:timer=1:59 left'])
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(b.sent.slice(n)).toEqual(['upgrade:timer=1:59 left', 'upgrade:timer=1:58 left'])
   })
 
   it('the bar is re-sent at most every 5 s', async () => {
@@ -281,9 +324,9 @@ describe('lens controller', () => {
       const utteranceRuns = vi.fn().mockResolvedValueOnce([r('router')]).mockResolvedValue([r('router'), r('progress')])
       const b = await toCard(utteranceRuns)
       expect(b.sent.join('\n')).toContain('You said:')
-      expect(b.sent.join('\n')).toContain('✓ sorted\n… email')
+      expect(b.sent.join('\n')).toContain('ok sorted\n.. email')
       await vi.advanceTimersByTimeAsync(RUNS_POLL_MS)
-      expect(b.sent.at(-1)).toBe('upgrade:agents=✓ sorted\n✓ logged\n… email')
+      expect(b.sent.at(-1)).toBe('upgrade:agents=ok sorted\nok logged\n.. email')
       expect(utteranceRuns).toHaveBeenCalledTimes(2)
       await vi.advanceTimersByTimeAsync(60_000)
       expect(b.sent.some(x => x.startsWith('rebuild:STANCES'))).toBe(true) // (from before the card)
@@ -302,7 +345,7 @@ describe('lens controller', () => {
       const b = await toCard(utteranceRuns)
       await vi.advanceTimersByTimeAsync(RUNS_POLL_MS * 5)
       expect(utteranceRuns).toHaveBeenCalledTimes(2)
-      expect(b.sent.at(-1)).toBe('upgrade:agents=✓ sorted\n✓ logged\n✓ email')
+      expect(b.sent.at(-1)).toBe('upgrade:agents=ok sorted\nok logged\nok email')
     })
 
     it('stops polling when the endpoint is missing (404 → null) and shows the server card lines', async () => {

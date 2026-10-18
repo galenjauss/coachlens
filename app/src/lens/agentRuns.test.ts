@@ -16,11 +16,15 @@ describe('agent progress', () => {
     expect(runsDone([run('router'), run('progress'), run('parent_email')], lines)).toBe(true)
   })
 
-  it('progress lines: ✓ done, ✗ failed, … still expected; latest run per agent wins', () => {
+  it('progress lines (ASCII): ok done, x failed, .. still expected; latest run per agent wins', () => {
     const card = { lines: ['✓ Priya', '→ parent note for Priya drafting'], runs: [run('router'), run('progress', 'error'), run('progress')], runsFinal: false }
-    expect(progressLines(card)).toEqual(['✓ sorted', '✓ logged', '… email'])
-    expect(progressLines({ ...card, runs: [run('router'), run('parent_email', 'error')] })).toEqual(['✓ sorted', '✗ email'])
-    expect(progressLines({ ...card, runsFinal: true, runs: [run('router')] })).toEqual(['✓ sorted'])
+    expect(progressLines(card)).toEqual(['ok sorted', 'ok logged', '.. email'])
+    expect(progressLines({ ...card, runs: [run('router'), run('parent_email', 'error')] })).toEqual(['ok sorted', 'x email'])
+  })
+
+  it('after the 30 s timeout, expected agents that never reported show ? instead of vanishing', () => {
+    const card = { lines: ['✓ Priya', '→ added to next deck'], runs: [run('router')], runsFinal: true }
+    expect(progressLines(card)).toEqual(['ok sorted', '? plan'])
   })
 
   it('before the first poll: working; endpoint missing: the server card lines', () => {

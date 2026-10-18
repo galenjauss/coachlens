@@ -13,7 +13,9 @@ const MAX_LINES = 5
 
 /**
  * The agents this utterance should end up with. The router always runs; the deferred ones are
- * announced by the card lines ("parent note drafting", "next deck", "Planner").
+ * announced by the card lines. This matches the wording built in api/src/logic/cardLines.ts
+ * (`linesFor`): "parent note … drafting" (urgent / explicit request → parent_email) and
+ * "→ added to next deck" / "✓ Planner: next deck suggestion queued" (→ planner). Keep both in sync.
  */
 export function expectedAgents(cardLines: string[]): string[] {
   const text = cardLines.join('\n').toLowerCase()
@@ -30,15 +32,16 @@ export function runsDone(runs: UtteranceRun[], cardLines: string[]): boolean {
 }
 
 /**
- * Right column of the card: one line per agent (latest run wins), `✓` done, `✗` failed,
- * `…` still expected while polling. Before the first poll: a working line. Without the
- * endpoint: the server's card lines.
+ * Right column of the card, ASCII markers (the firmware font may lack ✓/✗): one line per agent
+ * (latest run wins), `ok` done, `x` failed, `..` still expected while polling, `?` expected but never
+ * reported before polling stopped. Before the first poll: a working line. Without the endpoint: the
+ * server's card lines.
  */
 export function progressLines(card: { lines: string[]; runs: UtteranceRun[] | null; runsFinal: boolean }): string[] {
   if (card.runs === null) return card.runsFinal ? card.lines.slice(0, MAX_LINES) : ['… agents working']
   const latest = new Map<string, UtteranceRun>()
   for (const r of card.runs) latest.set(r.agent, r)
-  const lines = [...latest.values()].map(r => `${r.status === 'error' ? '✗' : '✓'} ${label(r.agent)}`)
-  if (!card.runsFinal) for (const a of expectedAgents(card.lines)) if (!latest.has(a)) lines.push(`… ${label(a)}`)
+  const lines = [...latest.values()].map(r => `${r.status === 'error' ? 'x' : 'ok'} ${label(r.agent)}`)
+  for (const a of expectedAgents(card.lines)) if (!latest.has(a)) lines.push(`${card.runsFinal ? '?' : '..'} ${label(a)}`)
   return lines.length ? lines.slice(0, MAX_LINES) : ['(no agent runs)']
 }

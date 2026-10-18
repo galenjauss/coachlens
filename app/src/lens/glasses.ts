@@ -44,8 +44,8 @@ export class Glasses {
   private pending: PageSpec | null = null
   private running: Promise<void> | null = null
 
-  /** `partial`: containers marked `partial` send same-length changes as partial upgrades. */
-  constructor(private bridge: GlassesBridge, private opts: { partial: boolean } = { partial: true }) {}
+  /** `partial` (opt-in): containers marked `partial` send same-length changes as partial upgrades. */
+  constructor(private bridge: GlassesBridge, private opts: { partial: boolean } = { partial: false }) {}
 
   /** Forget what the glasses show, so the next show() sends a full rebuild (e.g. after the app was backgrounded). */
   invalidate(): void {

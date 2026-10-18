@@ -68,7 +68,10 @@ function cycleClass(s: LensState, step: 1 | -1): R {
 }
 
 function homeTap(s: LensState): R {
-  if (s.selectedClassId && s.today?.classId !== s.selectedClassId) return done(s) // the shown class is still loading
+  if (s.selectedClassId && s.today?.classId !== s.selectedClassId) {
+    // The shown class is not loaded: retry its day after a failure (KV already holds it); never start the old class.
+    return s.loadError ? done({ ...s, loadError: null }, { type: 'loadToday' }) : done(s)
+  }
   return s.today ? startClass(s, s.today.classId) : done(s, { type: 'loadToday' }, { type: 'loadClasses' })
 }
 
@@ -87,7 +90,7 @@ function dataEvent(s: LensState, e: LensEvent): R | null {
   switch (e.type) {
     case 'todayLoaded': return done({ ...s, today: e.today, loadError: null, selectedClassId: null })
     case 'classesLoaded': return done({ ...s, classes: e.classes })
-    case 'loadFailed': return done({ ...s, loadError: e.message, selectedClassId: null })
+    case 'loadFailed': return done({ ...s, loadError: e.message }) // a pending lens pick stays: tap retries it
     case 'coverageUpdated': return done({ ...s, coverage: e.coverage, nextStudent: e.nextStudent })
     case 'resumed': return done(s, { type: 'loadToday' }, { type: 'loadClasses' }, { type: 'flushOutbox' })
     case 'startRequested': return s.screen === 'home' ? homeTap(s) : done(s)

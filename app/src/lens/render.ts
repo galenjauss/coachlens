@@ -103,7 +103,7 @@ function home(s: LensState): PageSpec {
   const pos = n > 1 && shown ? ` (${s.classes.indexOf(shown) + 1}/${n})` : ''
   const footer = s.status ?? (n > 1 ? 'swipe: change class · 2×: exit' : '2×: exit')
   if (s.selectedClassId && shown && td?.classId !== s.selectedClassId) {
-    return panel(`COACHLENS${pos}`, `${shown.name}\n${shown.modeLabel}\n\nLoading class…`, footer)
+    return panel(`COACHLENS${pos}`, `${shown.name}\n${shown.modeLabel}\n\n${s.loadError ? `${s.loadError} · tap to retry` : 'Loading class…'}`, footer)
   }
   let body: string
   if (td) {
