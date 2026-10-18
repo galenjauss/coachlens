@@ -3,7 +3,7 @@ import { drizzle } from 'drizzle-orm/neon-http'
 import { waitUntil } from '@vercel/functions'
 import * as schema from './db/schema'
 import type { Db } from './db/client'
-import type { Deps } from './deps'
+import { SttUnavailableError, type Deps } from './deps'
 import { anthropicLlm, MODEL_FAST, MODEL_SMART } from './agents/llm'
 import { dbBudget } from './agents/budget'
 
@@ -16,7 +16,9 @@ const need = (k: string) => {
 export function prodDeps(): Deps {
   const db = drizzle({ client: neon(need('DATABASE_URL')), schema }) as unknown as Db
   need('ANTHROPIC_API_KEY') // read by @ai-sdk/anthropic; fail fast if absent
-  const openaiKey = need('OPENAI_API_KEY')
+  // Optional: without it the API still runs (typed notes work) and /v1/status reports speech-to-text as unconfigured.
+  const openaiKey = process.env.OPENAI_API_KEY || null
+  if (!openaiKey) console.warn('[prod] OPENAI_API_KEY not set: speech-to-text disabled (503)')
   const resendKey = need('RESEND_API_KEY')
   const from = need('MAIL_FROM')
   const pairingCode = need('PAIRING_CODE')
@@ -36,6 +38,7 @@ export function prodDeps(): Deps {
     }),
     stt: {
       async transcribe(wav, hints) {
+        if (!openaiKey) throw new SttUnavailableError()
         const { default: OpenAI, toFile } = await import('openai')
         const openai = new OpenAI({ apiKey: openaiKey })
         const r = await openai.audio.transcriptions.create({
@@ -64,6 +67,8 @@ export function prodDeps(): Deps {
       demoEmailOverride: process.env.DEMO_EMAIL_OVERRIDE || null,
       instructorName: process.env.INSTRUCTOR_NAME ?? 'Coach',
       timeZone,
+      aiDailyCap: cap,
+      sttConfigured: Boolean(openaiKey),
     },
   }
 }

@@ -16,6 +16,18 @@ export interface Env {
   demoEmailOverride: string | null
   instructorName: string
   timeZone: string // 'America/Los_Angeles'
+  /** Daily Anthropic-call cap (AI_DAILY_CAP), reported by /v1/status; null/absent = no cap. */
+  aiDailyCap?: number | null
+  /** False when no speech-to-text key is configured (transcription then fails with 503); absent = configured. */
+  sttConfigured?: boolean
+}
+
+/** Speech-to-text has no provider key: the route answers 503 instead of a generic error. */
+export class SttUnavailableError extends Error {
+  constructor() {
+    super('speech-to-text is not configured')
+    this.name = 'SttUnavailableError'
+  }
 }
 export interface Deps {
   db: Db

@@ -8,5 +8,6 @@
   {"t": "Zoe scored 72 on the fractions quiz", "types": ["metric"], "names": ["Zoe"]},
   {"t": "What did I say about Noah last week?", "types": ["student_query"], "names": ["Noah"]},
   {"t": "Who's struggling with procedure?", "types": ["question"], "names": []},
-  {"t": "Who hasn't gotten feedback today?", "types": ["question"], "names": []}
+  {"t": "Who hasn't gotten feedback today?", "types": ["question"], "names": []},
+  {"t": "Sam distributed the negative correctly every time today", "types": ["feedback"], "names": ["Sam"], "tags": ["procedure"], "valence": "positive"}
 ]

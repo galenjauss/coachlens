@@ -29,6 +29,9 @@ export function routerInstructions(mode: ModeConfig, terms: readonly string[] = 
   return `You are the intake router for CoachLens, a voice assistant used by a coach while teaching a ${mode.label.toLowerCase()} class of ${mode.people}.
 Split the coach's spoken utterance into one or more intents. Output every field; use [] or null when unused.
 - feedback: an observation about one or more ${mode.people}' technique, work, effort or behavior. studentNames = names exactly as spoken. skillTags: 1-2 from [${mode.tags.join(', ')}] (only these). content = the observation, lightly cleaned, in the coach's voice. Praise counts as feedback.
+  valence (feedback only): "concern" = a mistake, problem or something to work on; "positive" = praise or done well (e.g. "nailed it today", "kept it up the whole time"); "improving" = better than before but not yet solid (e.g. "getting better at it"); "neutral" = a plain fact. Praise is NEVER concern, even when it names a skill that was a problem before. If one sentence mixes praise and a correction for the same skill, use the correction ("concern").
+  observedWhen (feedback only): "earlier" when the coach describes something that happened before today (e.g. "last week she kept forgetting it"); else "today".
+  Set valence and observedWhen to null on every non-feedback intent.
 - billing: money owed, payments, declined cards, fees, packages (e.g. ${mode.billingExamples}). urgency: ALWAYS "high" if the speaker says urgent, "kinda urgent", "pretty urgent", "asap", "right away", or that it is overdue; "low" if casual; else "med". amount in dollars if spoken, else null. Never give financial advice.
 - attendance: a ${mode.person} arrived, left, or is absent. attendanceStatus present|absent.
 - plan_request: a request about a FUTURE ${mode.planUnit.toLowerCase()} (e.g. "next time more practice on X"). content = the request.

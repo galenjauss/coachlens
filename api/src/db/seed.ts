@@ -41,32 +41,32 @@ export async function seed(db: Db, opts: { today: string; guardianEmail: (i: num
   const by = (first: string) => kids.find(k => k.name.startsWith(first))!
   const at = (daysAgo: number) => new Date(`${addDays(opts.today, -daysAgo)}T01:00:00Z`)
   await db.insert(t.notes).values([
-    { studentId: by('Priya').id, text: 'Guard drops after the jab', tags: ['guard'], createdAt: at(12) },
-    { studentId: by('Priya').id, text: 'Hands low when tired in sparring', tags: ['guard'], createdAt: at(5) },
-    { studentId: by('Priya').id, text: 'Remembered every move of Kata 1', tags: ['forms'], createdAt: at(8) },
-    { studentId: by('Sam').id, text: 'Guard drops on the cross', tags: ['guard'], createdAt: at(10) },
-    { studentId: by('Sam').id, text: 'Guard low again', tags: ['guard'], createdAt: at(6) },
-    { studentId: by('Sam').id, text: 'Guard drops when kicking', tags: ['guard'], createdAt: at(3) },
-    { studentId: by('Ava').id, text: 'Guard low in pad work', tags: ['guard'], createdAt: at(9) },
-    { studentId: by('Ava').id, text: 'Kicks getting higher', tags: ['kicks'], createdAt: at(4) },
-    { studentId: by('Ben').id, text: 'Guard drops on the jab', tags: ['guard'], createdAt: at(4) },
-    { studentId: by('Maya').id, text: 'Front stance too short', tags: ['stance'], createdAt: at(6) },
-    { studentId: by('Leonardo').id, text: 'Great respect bowing in', tags: ['respect'], createdAt: at(24) },
-    { studentId: by('Cal').id, text: 'Talking in line-up', tags: ['focus'], createdAt: at(7) },
+    { studentId: by('Priya').id, text: 'Guard drops after the jab', valence: 'concern', tags: ['guard'], createdAt: at(12) },
+    { studentId: by('Priya').id, text: 'Hands low when tired in sparring', valence: 'concern', tags: ['guard'], createdAt: at(5) },
+    { studentId: by('Priya').id, text: 'Remembered every move of Kata 1', valence: 'positive', tags: ['forms'], createdAt: at(8) },
+    { studentId: by('Sam').id, text: 'Guard drops on the cross', valence: 'concern', tags: ['guard'], createdAt: at(10) },
+    { studentId: by('Sam').id, text: 'Guard low again', valence: 'concern', tags: ['guard'], createdAt: at(6) },
+    { studentId: by('Sam').id, text: 'Guard drops when kicking', valence: 'concern', tags: ['guard'], createdAt: at(3) },
+    { studentId: by('Ava').id, text: 'Guard low in pad work', valence: 'concern', tags: ['guard'], createdAt: at(9) },
+    { studentId: by('Ava').id, text: 'Kicks getting higher', valence: 'improving', tags: ['kicks'], createdAt: at(4) },
+    { studentId: by('Ben').id, text: 'Guard drops on the jab', valence: 'concern', tags: ['guard'], createdAt: at(4) },
+    { studentId: by('Maya').id, text: 'Front stance too short', valence: 'concern', tags: ['stance'], createdAt: at(6) },
+    { studentId: by('Leonardo').id, text: 'Great respect bowing in', valence: 'positive', tags: ['respect'], createdAt: at(24) },
+    { studentId: by('Cal').id, text: 'Talking in line-up', valence: 'concern', tags: ['focus'], createdAt: at(7) },
   ])
   await db.insert(t.issues).values([
     { studentId: by('Sam').id, tag: 'guard', openedAt: at(3) },
     { studentId: by('Ava').id, tag: 'guard', openedAt: at(9) },
   ])
 
-  // Ranks: everyone has a rank date. Priya ~8 months (her open focus issue keeps her off ready-to-test); Gus 120 days
-  // with no open issues -> ready_to_test. Everyone else is under 90 days.
+  // Ranks: everyone has a rank date. Priya ~8 months (her open focus issue keeps her off the rank review); Gus 120 days
+  // with no open issues -> rank_review. Everyone else is under 90 days.
   const RANK_DAYS: Record<string, number> = { Priya: 243, Gus: 120, Leonardo: 75, Jake: 60, Mia: 45, Maya: 70, Sam: 50, Ava: 80, Ben: 30, Cal: 65, Dee: 40, Eli: 21, Fay: 55, Ivy: 85 }
   for (const k of kids) {
     const days = RANK_DAYS[k.name.split(' ')[0]!] ?? 30
     await db.update(t.students).set({ rankSince: addDays(opts.today, -days) }).where(eq(t.students.id, k.id))
   }
-  // issue_resolved: Priya's focus issue, opened 25 days ago with no focus notes since. (Not guard: the live demo's
+  // issue_reassess: Priya's focus issue, opened 25 days ago with no focus notes since (a re-check prompt, not "resolved"). (Not guard: the live demo's
   // third guard note must still mark guard recurring and adjust the plan, which an open guard issue would block.)
   await db.insert(t.issues).values({ studentId: by('Priya').id, tag: 'focus', openedAt: at(25) })
   // billing_repeat: two open notes for Leo's family (notes only, never a payment).

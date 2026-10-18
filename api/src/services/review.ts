@@ -14,12 +14,17 @@ export async function listReview(db: Db): Promise<ReviewItem[]> {
   const loose = await db.select().from(notes).where(isNull(notes.studentId)).orderBy(desc(notes.createdAt)).limit(20)
   const diffs = await db.select().from(deckDiffs).where(eq(deckDiffs.status, 'pending'))
   const items: ReviewItem[] = [
-    ...mail.map(({ o, name }) => ({ kind: o.kind, id: o.id, studentName: first(name), to: o.toEmail, subject: o.subject, body: o.body, createdAt: iso(o.createdAt) }) as ReviewItem),
+    ...mail.map(({ o, name }): ReviewItem => {
+      const common = { id: o.id, studentName: first(name), to: o.toEmail, subject: o.subject, body: o.body, createdAt: iso(o.createdAt) }
+      return o.kind === 'parent_email' ? { kind: 'parent_email', ...common, urgent: o.trigger === 'urgent' } : { kind: 'report_card', ...common }
+    }),
     ...bills.map(({ b, name }) => ({ kind: 'billing' as const, id: b.id, studentName: first(name), urgency: b.urgency, note: b.note, amount: b.amount, createdAt: iso(b.createdAt) })),
     ...loose.map(n => ({ kind: 'unassigned_note' as const, id: n.id, heard: n.heard, text: n.text, createdAt: iso(n.createdAt) })),
     ...diffs.map(d => ({ kind: 'deck_diff' as const, id: d.id, deckId: d.deckId, requestText: d.requestText, diff: d.diff, createdAt: iso(d.createdAt) })),
   ]
-  return items.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  // Urgent notes home first (F17), then newest first.
+  const urgent = (i: ReviewItem) => (i.kind === 'parent_email' && i.urgent ? 0 : 1)
+  return items.sort((a, b) => urgent(a) - urgent(b) || b.createdAt.localeCompare(a.createdAt))
 }
 
 export type ReviewFail = 'not_found' | 'not_pending'

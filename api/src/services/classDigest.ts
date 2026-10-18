@@ -1,11 +1,12 @@
 // The class digest for live questions ("who keeps dropping their guard?"): deterministic, no LLM.
 // loadClassFacts reads the rows once; digestText turns them into the compact prompt for the answer agent.
 import { and, desc, eq, gte, inArray, isNull, or } from 'drizzle-orm'
-import type { ModeConfig } from '@matside/shared'
+import type { ModeConfig, Valence } from '@matside/shared'
 import type { Db } from '../db/client'
 import { attendance, drills, insights, issues, notes, sessions, studentMetrics, students } from '../db/schema'
 import { changeFor, changeText, isGradeMetric, measure, timeInRank } from '../logic/metrics'
 import { clip } from '../logic/text'
+import { countsAsConcern, effectiveValence, isPositive } from '../logic/valence'
 import { localDate } from '../logic/dates'
 import { loadSessionContext, type SessionContext } from './context'
 
@@ -24,18 +25,31 @@ export interface StudentFacts {
   first: string
   belt: string
   rankSince: string | null
-  /** Open issue tags with their note count in the window. */
+  /** Open issue tags with their current-concern count in the window. */
   openIssues: { tag: string; count: number }[]
-  /** Notes per tag in the window. */
+  /** Current (not historical) concern notes per tag in the window. */
   tagCounts: Record<string, number>
+  /** Per tag in the window: concern and praise/improvement evidence (texts newest first), for polarity-aware answers. */
+  tagStats: Record<string, TagStat>
   /** Newest first, at most NOTES_PER_STUDENT. */
-  recentNotes: { tags: string[]; text: string }[]
+  recentNotes: { tags: string[]; text: string; valence?: Valence }[]
   /** Oldest first over the class's last sessions, today's last: 'P' present, 'A' absent, '-' not marked. */
   attendance: string
   presentToday: boolean
   notedToday: boolean
   /** Latest reading per key (≤3), e.g. "deadlift 225 lb (PR +10)". */
   metrics: string[]
+}
+
+export interface TagStat {
+  /** Concern notes, historical ones included (a past concern is still evidence about the past). */
+  concern: number
+  /** Praise and improvement notes. */
+  positive: number
+  concernNotes: string[]
+  positiveNotes: string[]
+  /** The newest current note on this tag is praise or improvement. */
+  latestPositive: boolean
 }
 
 export interface ClassFacts {
@@ -61,7 +75,7 @@ export async function loadClassFacts(db: Db, sessionId: string, drillId: string 
   const none = Promise.resolve([] as never[])
   const [recentSessions, noteRows, issueRows, metricRows, studentRows, deck, insightRows, notedRows] = await Promise.all([
     db.select({ id: sessions.id }).from(sessions).where(eq(sessions.classId, ctx.classId)).orderBy(desc(sessions.startedAt)).limit(ATT_SESSIONS + 1),
-    ids.length ? db.select({ studentId: notes.studentId, tags: notes.tags, text: notes.text }).from(notes)
+    ids.length ? db.select({ studentId: notes.studentId, tags: notes.tags, text: notes.text, valence: notes.valence, historical: notes.historical }).from(notes)
       .where(and(inArray(notes.studentId, ids), gte(notes.createdAt, since))).orderBy(desc(notes.createdAt)) : none,
     ids.length ? db.select({ studentId: issues.studentId, tag: issues.tag }).from(issues).where(and(inArray(issues.studentId, ids), eq(issues.status, 'open'))) : none,
     ids.length ? db.select().from(studentMetrics).where(inArray(studentMetrics.studentId, ids)).orderBy(desc(studentMetrics.recordedAt)) : none,
@@ -83,13 +97,15 @@ export async function loadClassFacts(db: Db, sessionId: string, drillId: string 
     students: ctx.roster.map(r => {
       const mine = noteRows.filter(n => n.studentId === r.id)
       const tagCounts: Record<string, number> = {}
-      for (const n of mine) for (const t of n.tags) tagCounts[t] = (tagCounts[t] ?? 0) + 1
+      for (const n of mine) if (countsAsConcern(n)) for (const t of n.tags) tagCounts[t] = (tagCounts[t] ?? 0) + 1
+      const tagStats = statsByTag(mine)
       const status = new Map(attRows.filter(a => a.studentId === r.id).map(a => [a.sessionId, a.status]))
       return {
         id: r.id, name: r.name, first: first(r.name), belt: r.belt, rankSince: rankSince.get(r.id) ?? null,
         openIssues: [...new Set(issueRows.filter(i => i.studentId === r.id).map(i => i.tag))].map(tag => ({ tag, count: tagCounts[tag] ?? 0 })),
         tagCounts,
-        recentNotes: mine.slice(0, NOTES_PER_STUDENT).map(n => ({ tags: n.tags, text: n.text })),
+        tagStats,
+        recentNotes: mine.slice(0, NOTES_PER_STUDENT).map(n => ({ tags: n.tags, text: n.text, valence: effectiveValence(n) })),
         attendance: sessionIds.map(id => (status.get(id) === 'present' ? 'P' : status.get(id) === 'absent' ? 'A' : '-')).join(''),
         presentToday: ctx.attendanceTaken ? ctx.presentIds.has(r.id) : true,
         notedToday: noted.has(r.id),
@@ -99,6 +115,22 @@ export async function loadClassFacts(db: Db, sessionId: string, drillId: string 
     ...deckFacts(ctx, deck),
     insights: insightRows.map(i => i.title),
   }
+}
+
+/** Per-tag evidence from one student's notes (newest first). */
+function statsByTag(rows: { tags: string[]; text: string; valence: Valence | null; historical: boolean }[]): Record<string, TagStat> {
+  const out: Record<string, TagStat> = {}
+  const seenCurrent = new Set<string>()
+  for (const n of rows) {
+    const v = effectiveValence(n)
+    for (const t of n.tags) {
+      const st = out[t] ??= { concern: 0, positive: 0, concernNotes: [], positiveNotes: [], latestPositive: false }
+      if (!n.historical && v !== 'neutral' && !seenCurrent.has(t)) { seenCurrent.add(t); st.latestPositive = isPositive(v) }
+      if (v === 'concern') { st.concern++; st.concernNotes.push(n.text) }
+      else if (isPositive(v)) { st.positive++; st.positiveNotes.push(n.text) }
+    }
+  }
+  return out
 }
 
 type MetricRow = typeof studentMetrics.$inferSelect
@@ -126,6 +158,8 @@ export function isThin(f: ClassFacts): boolean {
   return f.students.every(s => !s.recentNotes.length && !s.openIssues.length && !s.metrics.length && s.attendance.replace(/-/g, '').length <= 1)
 }
 
+const VALENCE_WORD: Record<Valence, string> = { concern: 'concern', positive: 'praise', improving: 'improving', neutral: 'neutral' }
+
 function studentLine(f: ClassFacts, s: StudentFacts, noteChars: number, notesPer: number): string {
   const rank = f.mode.id === 'martial_arts' ? [s.belt, timeInRank(s.rankSince, f.today)].filter(Boolean).join(' ') : ''
   const parts = [
@@ -133,9 +167,9 @@ function studentLine(f: ClassFacts, s: StudentFacts, noteChars: number, notesPer
     rank,
     s.attendance ? `att ${s.attendance}` : '',
     s.presentToday ? 'here' : 'away',
-    s.notedToday ? 'fb today' : 'no fb today',
+    s.notedToday ? 'noted today' : 'not noted today',
     s.openIssues.length ? `open: ${s.openIssues.map(i => `${i.tag} ${i.count}`).join(', ')}` : '',
-    s.recentNotes.length && notesPer ? `notes: ${s.recentNotes.slice(0, notesPer).map(n => `[${n.tags.join('/') || '-'}] ${clip(n.text, noteChars)}`).join('; ')}` : '',
+    s.recentNotes.length && notesPer ? `notes: ${s.recentNotes.slice(0, notesPer).map(n => `[${n.tags.join('/') || '-'}${n.valence ? ` ${VALENCE_WORD[n.valence]}` : ''}] ${clip(n.text, noteChars)}`).join('; ')}` : '',
     s.metrics.length ? s.metrics.join(', ') : '',
   ]
   return `- ${parts.filter(Boolean).join(' | ')}`
@@ -145,9 +179,9 @@ function render(f: ClassFacts, noteChars: number, notesPer: number): string {
   const present = presentStudents(f)
   return [
     `${f.mode.label} · ${f.mode.people} · ${f.today} · ${f.mode.weeklyLabel}: ${f.theme}`,
-    `Here: ${present.length}/${f.students.length}${f.attendanceTaken ? '' : ' (no roll call yet)'} · feedback today: ${present.filter(s => s.notedToday).map(s => s.first).join(', ') || 'nobody'}`,
+    `Here: ${present.length}/${f.students.length}${f.attendanceTaken ? '' : ' (no roll call yet)'} · noted today: ${present.filter(s => s.notedToday).map(s => s.first).join(', ') || 'nobody'}`,
     `${f.mode.planItem}: ${f.drill ?? 'none'} · next: ${f.remaining.join(', ') || 'none'}`,
-    `att = last ${ATT_SESSIONS + 1} ${f.mode.planUnit.toLowerCase()} sessions oldest→today (P/A/-); counts = notes in ${DIGEST_WINDOW_DAYS} days`,
+    `att = last ${ATT_SESSIONS + 1} ${f.mode.planUnit.toLowerCase()} sessions oldest→today (P/A/-); open counts = concern notes in ${DIGEST_WINDOW_DAYS} days; notes are marked concern / praise / improving / neutral`,
     ...f.students.map(s => studentLine(f, s, noteChars, notesPer)),
     ...(f.insights.length ? [`Insights: ${f.insights.join('; ')}`] : []),
   ].join('\n')

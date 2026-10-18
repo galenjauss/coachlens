@@ -5,7 +5,7 @@ import { anthropicLlm, MODEL_FAST, MODEL_SMART } from '../src/agents/llm'
 import { noBudget } from '../src/agents/budget'
 import { routerInstructions } from '../src/agents/router'
 
-type Case = { t: string; types: string[]; names: string[]; urgency?: string; tags?: string[] }
+type Case = { t: string; types: string[]; names: string[]; urgency?: string; tags?: string[]; valence?: string; observedWhen?: string }
 interface Suite { file: string; mode: ModeId; roster: string; drill: string; theme: string; min: number }
 
 const SUITES: Suite[] = [
@@ -34,6 +34,8 @@ for (const s of SUITES) {
       && c.names.every(n => names.some(x => x.toLowerCase().includes(n.toLowerCase())))
       && (!c.urgency || out.intents.some(i => i.urgency === c.urgency))
       && (!c.tags || tags.some(t => c.tags!.includes(t)))
+      && (!c.valence || out.intents.some(i => i.type === 'feedback' && i.valence === c.valence))
+      && (!c.observedWhen || out.intents.some(i => i.type === 'feedback' && i.observedWhen === c.observedWhen))
     if (ok) pass++
     console.log(ok ? 'PASS' : 'FAIL', c.t, ok ? '' : JSON.stringify(out.intents))
   }

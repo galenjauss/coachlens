@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { prodDeps } from './prod'
+import { SttUnavailableError } from './deps'
 
 const REQUIRED: Record<string, string> = {
   DATABASE_URL: 'postgres://u:p@localhost/db',
   ANTHROPIC_API_KEY: 'test-anthropic',
-  OPENAI_API_KEY: 'test-openai',
   RESEND_API_KEY: 'test-resend',
   MAIL_FROM: 'CoachLens <onboarding@resend.dev>',
   PAIRING_CODE: 'abc123',
@@ -12,7 +12,7 @@ const REQUIRED: Record<string, string> = {
   ALLOWED_ORIGINS: 'https://a.example, https://b.example',
 }
 let saved: NodeJS.ProcessEnv
-beforeEach(() => { saved = { ...process.env }; Object.assign(process.env, REQUIRED) })
+beforeEach(() => { saved = { ...process.env }; Object.assign(process.env, REQUIRED, { OPENAI_API_KEY: 'test-openai' }) })
 afterEach(() => { process.env = saved })
 
 describe('prodDeps env validation', () => {
@@ -27,6 +27,13 @@ describe('prodDeps env validation', () => {
       expect(() => prodDeps()).toThrow(new RegExp(k))
     })
   }
+  it('F20: OPENAI_API_KEY is optional: speech-to-text reports unconfigured and fails with a typed error', async () => {
+    expect(prodDeps().env).toMatchObject({ sttConfigured: true, aiDailyCap: 400 })
+    delete process.env.OPENAI_API_KEY
+    const d = prodDeps()
+    expect(d.env.sttConfigured).toBe(false)
+    await expect(d.stt.transcribe(new Uint8Array(4), [])).rejects.toBeInstanceOf(SttUnavailableError)
+  })
   it('rejects a pairing code shorter than 6 chars', () => {
     process.env.PAIRING_CODE = '12345'
     expect(() => prodDeps()).toThrow(/PAIRING_CODE/)

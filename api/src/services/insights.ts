@@ -8,7 +8,7 @@ import { safeDefer, withRun } from '../agents/runs'
 import { draftParentEmail, EMAIL_COOLDOWN_DAYS, inEmailCooldown } from '../agents/parentEmail'
 import { acceptDiff, autoAdjustNextDeck, markAutonomy, nextDeckFor, suggestDiff } from '../agents/planner'
 import { addDays, localDate } from '../logic/dates'
-import { getAutonomy } from './settings'
+import { getAutonomy, getRankReview } from './settings'
 import { loadSessionContext } from './context'
 import { loadFacts, rosterIds } from './insightFacts'
 
@@ -38,14 +38,17 @@ async function kvSet(deps: Deps, key: string, value: string) {
   await deps.db.insert(kv).values({ key, value, updatedAt: deps.now() }).onConflictDoUpdate({ target: kv.key, set: { value, updatedAt: deps.now() } })
 }
 
+/** Actions auto mode may run alone. Resolving an issue always needs the instructor (F09); 'none' has nothing to run. */
+const autoRunnable = (a: InsightAction) => a.type !== 'none' && a.type !== 'resolve_issue'
+
 /**
- * Inserts drafts, skipping any whose dedupe key exists. Auto mode marks actionable rows auto_done (they run next);
- * a row whose action is 'none' stays 'new' even in auto mode, since there is nothing to run and it is just an FYI.
+ * Inserts drafts, skipping any whose dedupe key exists. Auto mode marks auto-runnable rows auto_done (they run next);
+ * the rest stay 'new' even in auto mode: an FYI, or a resolution waiting for the instructor's accept.
  */
 async function insertDrafts(deps: Deps, drafts: InsightDraft[], sessionId: string | null, autonomy: Autonomy): Promise<Row[]> {
   const out: Row[] = []
   for (const d of drafts) {
-    const status = autonomy === 'auto' && d.action.type !== 'none' ? 'auto_done' as const : 'new' as const
+    const status = autonomy === 'auto' && autoRunnable(d.action) ? 'auto_done' as const : 'new' as const
     const [row] = await deps.db.insert(insights).values({ ...d, sessionId, status, createdAt: deps.now() })
       .onConflictDoNothing({ target: insights.dedupeKey }).returning()
     if (row) out.push(row)
@@ -95,7 +98,7 @@ export async function runInsights(deps: Deps, o: RunOptions): Promise<Row[]> {
   const rows = await logRun(deps, o.trigger, sessionId, autonomy, async () => {
     const today = o.today ?? localDate(deps.now(), deps.env.timeZone)
     const facts = await loadFacts(deps.db, o.classId ? await rosterIds(deps.db, o.classId) : undefined, { today, now: deps.now() })
-    return detectAll(facts, { today, now: deps.now(), sessionId }, o.only)
+    return detectAll(facts, { today, now: deps.now(), sessionId, rankReview: await getRankReview(deps.db) }, o.only)
   })
   if (o.deferActions) safeDefer(deps, 'insights_auto', runAutoActions(deps, rows))
   else await runAutoActions(deps, rows)
@@ -195,7 +198,6 @@ export async function listInsights(deps: Deps, q: { scope: 'all' | 'class'; clas
 const PURPOSE: Record<string, string> = {
   check_in: 'A friendly check-in about missed classes',
   welcome_back: 'Glad to see them back after missing a few',
-  ready_to_test: 'They look ready for their next rank test',
   praise: 'Celebrate a new personal best',
   positive: 'A positive update: the focus area has improved',
 }
@@ -249,6 +251,8 @@ export async function executeAction(deps: Deps, row: Row, explicit: boolean): Pr
     case 'draft_email': return emailOutcome(deps, row, a.studentId, a.purpose, explicit)
     case 'plan_focus': return planOutcome(deps, row, a, explicit)
     case 'resolve_issue': {
+      // Defensive: insertDrafts never auto-runs this, and resolution is the instructor's call.
+      if (!explicit) return { ok: false, outcome: 'Needs instructor confirmation' }
       const done = await deps.db.update(issues).set({ status: 'resolved' }).where(and(eq(issues.id, a.issueId), eq(issues.status, 'open'))).returning({ id: issues.id })
       const head = done.length ? 'Resolved' : 'Already resolved'
       if (!a.notify) return { ok: true, outcome: head }

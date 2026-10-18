@@ -92,12 +92,12 @@ describe('insights agent', () => {
     const body = await r.json() as { insights: number }
     const rows = await t.db.select().from(insights)
     expect(body.insights).toBe(rows.length)
-    expect(rows.map(x => x.kind).sort()).toEqual(['attendance_decline', 'billing_repeat', 'issue_resolved', 'no_feedback', 'ready_to_test'])
+    expect(rows.map(x => x.kind).sort()).toEqual(['attendance_decline', 'billing_repeat', 'issue_reassess', 'no_feedback', 'rank_review'])
     expect(rows.every(x => x.status === 'new')).toBe(true)
     const [run] = await t.insightRuns('cron')
     expect(run!.summary).toMatch(/^5 new: /)
     expect(run!.summary).toContain('Jake attendance')
-    expect(run!.summary).toContain('Maria ready to test')
+    expect(run!.summary).toContain('Maria rank review')
     expect(await runInsights(t.deps, { trigger: 'cron' })).toEqual([]) // same week: deduped
     expect((await t.insightRuns('cron')).map(x => x.summary)).toContain('No new insights')
   })
@@ -138,12 +138,14 @@ describe('insights agent', () => {
     const t = await setup()
     await runInsights(t.deps, { trigger: 'cron' })
     const [decline] = await t.byKind('attendance_decline')
-    const [ready] = await t.byKind('ready_to_test')
     await t.setAutonomy({ parent_email: 'off' })
     expect(await (await t.post(`/v1/insights/${decline!.id}/accept`)).json()).toEqual({ ok: true, outcome: 'Parent emails are off in Settings' })
     expect(await t.db.select().from(outbox)).toEqual([])
     await t.setAutonomy({ parent_email: 'auto' })
-    expect(await (await t.post(`/v1/insights/${ready!.id}/accept`)).json()).toEqual({ ok: true, outcome: 'Email sent' })
+    t.clock.now = new Date(T0.getTime() + 7 * DAY)
+    await runInsights(t.deps, { trigger: 'cron' })
+    const next = (await t.byKind('attendance_decline')).find(r => r.status === 'new')!
+    expect(await (await t.post(`/v1/insights/${next.id}/accept`)).json()).toEqual({ ok: true, outcome: 'Email sent' })
     expect(t.deps.sent).toHaveLength(1)
   })
 
@@ -166,15 +168,52 @@ describe('insights agent', () => {
     expect(await (await t.post(`/v1/insights/${next.id}/accept`)).json()).toEqual({ ok: true, outcome: 'Added to next plan' })
   })
 
-  it('accept resolve_issue closes the issue and drafts a positive note; accept none just records it', async () => {
+  it('F09: a quiet issue is a re-check prompt (plan focus), never a resolution or a praise email', async () => {
     const t = await setup()
     await runInsights(t.deps, { trigger: 'cron' })
-    const [quiet] = await t.byKind('issue_resolved')
-    expect(await (await t.post(`/v1/insights/${quiet!.id}/accept`)).json()).toEqual({ ok: true, outcome: 'Resolved · email drafted for review' })
-    expect((await t.db.select().from(issues).where(eq(issues.id, t.issue.id)))[0]!.status).toBe('resolved')
-    expect(await t.db.select().from(outbox).where(eq(outbox.studentId, t.leo.id))).toHaveLength(1)
+    const [quiet] = await t.byKind('issue_reassess')
+    expect(quiet).toMatchObject({ title: "Leo's guard: no recent notes", studentId: t.leo.id })
+    expect(quiet!.action).toMatchObject({ type: 'plan_focus', label: 'Check next class' })
+    expect(await (await t.post(`/v1/insights/${quiet!.id}/accept`)).json()).toEqual({ ok: true, outcome: 'Plan change ready for review' })
+    expect((await t.db.select().from(issues).where(eq(issues.id, t.issue.id)))[0]!.status).toBe('open')
+    expect(await t.db.select().from(outbox)).toEqual([])
     const [bill] = await t.byKind('billing_repeat')
     expect(await (await t.post(`/v1/insights/${bill!.id}/accept`)).json()).toEqual({ ok: true, outcome: 'Noted' })
+  })
+
+  it('F09: a positive observation on the open issue suggests resolving; only an explicit accept resolves it, with no email', async () => {
+    const t = await setup()
+    await t.setAutonomy({ insights: 'auto', parent_email: 'auto' })
+    await t.db.insert(notes).values({ studentId: t.leo.id, text: 'kept his guard up all class', tags: ['guard'], valence: 'positive', createdAt: new Date(T0.getTime() - DAY) })
+    await runInsights(t.deps, { trigger: 'cron' })
+    expect(await t.byKind('issue_reassess')).toEqual([])
+    const [better] = await t.byKind('issue_improving')
+    // auto mode never resolves on its own: the row waits for the instructor
+    expect(better).toMatchObject({ status: 'new', title: "Leo's guard: improving", outcome: null })
+    expect((await t.db.select().from(issues).where(eq(issues.id, t.issue.id)))[0]!.status).toBe('open')
+    expect((await t.get()).body!.find(i => i.kind === 'issue_improving')!.actionLabel).toBe('Mark resolved')
+    expect(await (await t.post(`/v1/insights/${better!.id}/accept`)).json()).toEqual({ ok: true, outcome: 'Resolved' })
+    expect((await t.db.select().from(issues).where(eq(issues.id, t.issue.id)))[0]!.status).toBe('resolved')
+    expect(await t.db.select().from(outbox).where(eq(outbox.studentId, t.leo.id))).toEqual([]) // no praise email
+  })
+
+  it('F10: rank review shows its evidence, drafts nothing, and follows the school\'s thresholds from Settings', async () => {
+    const t = await setup()
+    const settings = await (await t.app.request('/v1/settings', { headers: t.h })).json() as { rankReview: unknown }
+    expect(settings.rankReview).toEqual({ minDaysAtRank: 90, minAttendance: 0, attendanceWindowDays: 56, requireNoOpenIssues: true })
+    await runInsights(t.deps, { trigger: 'cron' })
+    const [review] = await t.byKind('rank_review')
+    expect(review).toMatchObject({ title: 'Maria: review for next rank', action: { type: 'none', label: null } })
+    expect(review!.detail).toBe('Have: 5 mo at orange, 3/3 classes in 8 wk, 0 open issues, 0 positive notes. Not tracked: curriculum, your assessment.')
+    expect(await (await t.post(`/v1/insights/${review!.id}/accept`)).json()).toEqual({ ok: true, outcome: 'Noted' })
+    expect(await t.db.select().from(outbox)).toEqual([])
+    // a school that wants 4 classes in the window: Maria (3) no longer qualifies next week
+    const r = await t.app.request('/v1/settings', { method: 'PATCH', headers: t.h, body: JSON.stringify({ rankReview: { minAttendance: 4 } }) })
+    expect(((await r.json()) as { rankReview: unknown }).rankReview).toEqual({ minDaysAtRank: 90, minAttendance: 4, attendanceWindowDays: 56, requireNoOpenIssues: true })
+    expect((await t.app.request('/v1/settings', { method: 'PATCH', headers: t.h, body: JSON.stringify({ rankReview: { attendanceWindowDays: 400 } }) })).status).toBe(400)
+    t.clock.now = new Date(T0.getTime() + 7 * DAY)
+    await runInsights(t.deps, { trigger: 'cron' })
+    expect(await t.byKind('rank_review')).toHaveLength(1)
   })
 
   it('a failed action leaves the insight new so it can be retried', async () => {
@@ -197,7 +236,7 @@ describe('insights agent', () => {
     expect((await t.get()).body!.map(i => i.kind)).not.toContain('billing_repeat')
     expect((await t.post(`/v1/insights/${bill!.id}/dismiss`)).status).toBe(200)
     expect((await t.post('/v1/insights/nope/dismiss')).status).toBe(404)
-    const [quiet] = await t.byKind('issue_resolved')
+    const [quiet] = await t.byKind('issue_reassess')
     await t.post(`/v1/insights/${quiet!.id}/accept`)
     expect((await t.post(`/v1/insights/${quiet!.id}/dismiss`)).status).toBe(409)
   })
@@ -209,18 +248,20 @@ describe('insights agent', () => {
     const rows = await t.db.select().from(insights)
     expect(rows.find(r => r.kind === 'attendance_decline')).toMatchObject({ status: 'auto_done', outcome: 'Parent emails are off in Settings' })
     expect(rows.find(r => r.kind === 'no_feedback')).toMatchObject({ status: 'auto_done', outcome: 'Plan change ready for review' })
-    expect(rows.find(r => r.kind === 'issue_resolved')).toMatchObject({ status: 'auto_done', outcome: 'Resolved · emails are off' })
+    expect(rows.find(r => r.kind === 'issue_reassess')).toMatchObject({ status: 'auto_done', outcome: 'Plan change ready for review' })
+    expect((await t.db.select().from(issues).where(eq(issues.id, t.issue.id)))[0]!.status).toBe('open') // never auto-resolved
     expect(rows.find(r => r.kind === 'billing_repeat')!.status).toBe('new') // nothing to do: stays a suggestion
+    expect(rows.find(r => r.kind === 'rank_review')!.status).toBe('new') // a reminder, nothing to run
     expect(await t.db.select().from(outbox)).toEqual([])
-    expect((await t.get()).body!.map(i => i.kind)).toEqual(['billing_repeat'])
+    expect((await t.get()).body!.map(i => i.kind).sort()).toEqual(['billing_repeat', 'rank_review'])
     // with parent emails on review, auto drafts for review
     t.clock.now = new Date(T0.getTime() + 7 * DAY)
     await t.setAutonomy({ parent_email: 'review' })
     await runInsights(t.deps, { trigger: 'cron' })
-    const ready = (await t.byKind('ready_to_test')).find(r => r.createdAt.getTime() === t.clock.now.getTime())!
-    expect(ready).toMatchObject({ status: 'auto_done', outcome: 'Email drafted for review' })
-    expect((await t.db.select().from(outbox).where(eq(outbox.studentId, t.maria.id)))[0]!.trigger).toBe('insight_auto')
-    expect(await inEmailCooldown(t.deps, t.maria.id)).toBe(true) // auto insight emails count toward the cooldown
+    const decline = (await t.byKind('attendance_decline')).find(r => r.createdAt.getTime() === t.clock.now.getTime())!
+    expect(decline).toMatchObject({ status: 'auto_done', outcome: 'Email drafted for review' })
+    expect((await t.db.select().from(outbox).where(eq(outbox.studentId, t.jake.id)))[0]!.trigger).toBe('insight_auto')
+    expect(await inEmailCooldown(t.deps, t.jake.id)).toBe(true) // auto insight emails count toward the cooldown
   })
 
   it('auto: an automatic insight email obeys the 30-day cooldown; a manual accept is exempt', async () => {
@@ -230,8 +271,7 @@ describe('insights agent', () => {
     await t.setAutonomy({ insights: 'auto' })
     await runInsights(t.deps, { trigger: 'cron' })
     expect((await t.byKind('attendance_decline'))[0]).toMatchObject({ status: 'auto_done', outcome: 'Skipped: emailed in last 30 days' })
-    expect((await t.byKind('ready_to_test'))[0]!.outcome).toBe('Skipped: emailed in last 30 days')
-    expect(await t.db.select().from(outbox).where(eq(outbox.status, 'pending_review'))).toHaveLength(1) // only Leo's positive note
+    expect(await t.db.select().from(outbox).where(eq(outbox.status, 'pending_review'))).toHaveLength(0) // the quiet issue no longer emails home
     // manual accept of a review-mode insight still drafts despite the recent email
     await t.setAutonomy({ insights: 'review' })
     t.clock.now = new Date(T0.getTime() + 7 * DAY)
@@ -259,7 +299,7 @@ describe('insights agent', () => {
     await t.get(`?sessionId=${sessionId}`)
     expect(await t.insightRuns('live')).toHaveLength(0)
     await t.post(`/v1/sessions/${sessionId}/attendance`, { presentIds: [t.maria.id] })
-    expect((await t.get(`?sessionId=${sessionId}`)).body!.map(i => i.title)).toContain('Maria: no note yet today')
+    expect((await t.get(`?sessionId=${sessionId}`)).body!.map(i => i.title)).toContain('1 student has no observation yet')
     expect(await t.insightRuns('live')).toHaveLength(1)
   })
 
@@ -313,7 +353,7 @@ describe('insights agent', () => {
     expect(await t.byKind('returning_student')).toHaveLength(1)
   })
 
-  it('at 70% of class time, present students with no note yet get a high no_feedback item (once)', async () => {
+  it('F11: at 70% of class time, ONE class-level reminder names who has no observation yet (once)', async () => {
     const t = await setup()
     const { sessionId } = await (await t.post('/v1/sessions', { classId: t.kids.id })).json() as { sessionId: string }
     await t.post(`/v1/sessions/${sessionId}/attendance`, { presentIds: [t.maria.id, t.leo.id] })
@@ -322,8 +362,8 @@ describe('insights agent', () => {
     expect((await t.get(`?sessionId=${sessionId}`)).body!.filter(i => i.kind === 'no_feedback')).toEqual([])
     t.clock.now = new Date(T0.getTime() + 3 * 60_000) // 75%
     const live = (await t.get(`?sessionId=${sessionId}`)).body!
-    expect(live.map(i => i.title)).toEqual(['Maria: no note yet today'])
-    expect(live[0]!.actionLabel).toBeNull()
+    expect(live.map(i => i.title)).toEqual(['1 student has no observation yet'])
+    expect(live[0]).toMatchObject({ detail: 'Not noted yet: Maria · class 75% done.', studentId: null, classId: t.kids.id, actionLabel: null })
     await t.get(`?sessionId=${sessionId}`)
     expect(await t.insightRuns('live')).toHaveLength(1)
     const [row] = await t.db.select().from(insights).where(and(eq(insights.kind, 'no_feedback'), eq(insights.urgency, 'high')))
