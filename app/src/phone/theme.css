@@ -5,8 +5,8 @@
 }
 * { box-sizing: border-box; }
 html { color-scheme: dark; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 -apple-system, system-ui, sans-serif; overflow-x: hidden; }
-.screen { padding: 20px 16px 88px; max-width: 560px; margin: 0 auto; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 -apple-system, system-ui, sans-serif; -webkit-overflow-scrolling: touch; }
+.screen { overflow-x: clip; padding: 20px 16px calc(88px + env(safe-area-inset-bottom)); max-width: 560px; margin: 0 auto; }
 h1 { font-size: 28px; line-height: 1.1; letter-spacing: -.02em; margin: 0 0 2px; color: #fff; }
 .sub { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
 .card { background: var(--card); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px; border: 1px solid transparent; }

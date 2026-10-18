@@ -7,7 +7,7 @@
     <style>
       html, body {
         margin: 0;
-        height: 100%;
+        min-height: 100%;
         /* ER brand dark-theme surface (#232323) + Neutral-200 text (#E5E5E5). */
         background: #232323;
         color: #E5E5E5;
@@ -15,7 +15,8 @@
         /* Kill WebView zoom + iOS auto-sizing + rubber-band scroll. */
         touch-action: manipulation;
         -webkit-text-size-adjust: 100%;
-        overscroll-behavior: none;
+        /* Document scrolls normally; no height lock / overflow on html or body (breaks WKWebView scrolling). */
+        overscroll-behavior-x: none;
       }
     </style>
   </head>
