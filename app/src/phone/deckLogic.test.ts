@@ -3,7 +3,7 @@ import type { DeckDiff, Drill } from '@matside/shared'
 import { ApiError, NetworkError } from '../core/api'
 import {
   appendItem, blankItem, buildPatch, canAdd, canDelete, chipsFor, clampCues, deckErrorOutcome, diffCountsText, diffTotalText,
-  labelsFor, moveItem, removeItem, replaceItem, toEditable, totalMinutes,
+  labelsFor, moveItem, replaceConfirmText, START_OPTIONS, removeItem, replaceItem, toEditable, totalMinutes,
 } from './deckLogic'
 
 const drill = (id: string, over: Partial<Drill> = {}): Drill => ({
@@ -100,5 +100,21 @@ describe('deckErrorOutcome', () => {
     expect(deckErrorOutcome(new ApiError(409, 'x'), 'save').kind).toBe('error')
     expect(deckErrorOutcome(new NetworkError('n'), 'save').text).toMatch(/connection/)
     expect(deckErrorOutcome(new ApiError(400, 'dup'), 'save').text).toMatch(/rejected/)
+  })
+})
+
+describe('start-from helpers', () => {
+  it('lists the four starting points', () => {
+    expect(START_OPTIONS.map(o => o.label)).toEqual(['Repeat last class', 'Copy another class’s plan', 'Blank', 'Let AI draft'])
+  })
+  it('confirm text counts the items being replaced', () => {
+    expect(replaceConfirmText(1, 'Blank')).toContain('replaces the 1 item in')
+    expect(replaceConfirmText(6, 'Blank')).toContain('replaces the 6 items')
+    expect(replaceConfirmText(0, 'Blank')).toContain('empty')
+  })
+  it('replace errors name the cause', () => {
+    expect(deckErrorOutcome(new ApiError(409, 'x'), 'replace').text).toMatch(/already started/)
+    expect(deckErrorOutcome(new ApiError(404, 'x'), 'replace').text).toMatch(/Nothing to copy/)
+    expect(deckErrorOutcome(new ApiError(502, 'x'), 'replace').text).toMatch(/plan was kept/)
   })
 })

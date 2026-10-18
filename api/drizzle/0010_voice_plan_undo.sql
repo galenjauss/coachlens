@@ -1,0 +1,1 @@
+ALTER TABLE "deck_diffs" ADD COLUMN "before" jsonb;

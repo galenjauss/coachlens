@@ -105,8 +105,13 @@ export const nameMap = (deck: Deck): Record<string, string> => Object.fromEntrie
 export type EditorOutcome = { kind: 'gone'; text: string } | { kind: 'error'; text: string }
 
 /** Maps a failed planner/deck call to user text. 502 = planner (LLM) down; 404/409 = diff or deck already resolved. */
-export function deckErrorOutcome(e: unknown, what: 'save' | 'suggest' | 'accept' | 'alternatives'): EditorOutcome {
+export function deckErrorOutcome(e: unknown, what: 'save' | 'suggest' | 'accept' | 'alternatives' | 'replace'): EditorOutcome {
   if (e instanceof ApiError) {
+    if (what === 'replace') {
+      if (e.status === 409) return { kind: 'error', text: 'This class has already started, so its plan can’t be replaced.' }
+      if (e.status === 404) return { kind: 'error', text: 'Nothing to copy from. Pick another starting point.' }
+      if (e.status === 502) return { kind: 'error', text: 'Planner unavailable right now. Your plan was kept.' }
+    }
     if (what === 'accept' && (e.status === 409 || e.status === 404)) return { kind: 'gone', text: 'Already applied — reloaded.' }
     if ((what === 'suggest' || what === 'alternatives') && e.status === 502) return { kind: 'error', text: 'Planner unavailable right now.' }
     if (e.status === 401 || e.status === 403) return { kind: 'error', text: 'Session expired. Re-pair this phone from Today.' }
@@ -115,4 +120,19 @@ export function deckErrorOutcome(e: unknown, what: 'save' | 'suggest' | 'accept'
     return { kind: 'error', text: `Request failed (${e.status}). Try again.` }
   }
   return { kind: 'error', text: what === 'save' ? 'Couldn’t save. Check your connection.' : 'No connection. Check your signal and try again.' }
+}
+
+/** Starting points for a plan ("Start from…"). `copy` needs a second step: pick another class. */
+export type StartKey = 'last' | 'copy' | 'blank' | 'ai'
+export const START_OPTIONS: readonly { key: StartKey; label: string; hint: string }[] = [
+  { key: 'last', label: 'Repeat last class', hint: 'Same plan as the previous class' },
+  { key: 'copy', label: 'Copy another class’s plan', hint: 'Pick a class and reuse its plan' },
+  { key: 'blank', label: 'Blank', hint: 'Start empty and add items yourself' },
+  { key: 'ai', label: 'Let AI draft', hint: 'A fresh plan from the planner' },
+]
+
+/** The confirm line shown before a plan is replaced. `from` is the chosen option's label (or the class name for a copy). */
+export function replaceConfirmText(itemCount: number, from: string): string {
+  const now = itemCount === 0 ? 'This plan is empty.' : `This replaces the ${itemCount} ${itemCount === 1 ? 'item' : 'items'} in this plan.`
+  return `Start from “${from}”? ${now} You can edit it afterwards.`
 }

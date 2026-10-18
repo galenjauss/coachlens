@@ -1,5 +1,5 @@
 import { pgTable, text, integer, real, timestamp, jsonb, primaryKey, uniqueIndex, index, boolean } from 'drizzle-orm/pg-core'
-import type { ModeId, SkillTag, Urgency, DeckDiff, ReportCardContent, AgentRunLinks } from '@matside/shared'
+import type { ModeId, SkillTag, Urgency, DeckDiff, DrillDraft, ReportCardContent, AgentRunLinks } from '@matside/shared'
 
 const id = () => text('id').primaryKey().$defaultFn(() => crypto.randomUUID())
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' })
@@ -65,6 +65,8 @@ export const drills = pgTable('drills', {
 export const deckDiffs = pgTable('deck_diffs', {
   id: id(), deckId: text('deck_id').notNull(), requestText: text('request_text').notNull(),
   diff: jsonb('diff').$type<DeckDiff>().notNull(),
+  // Drills as they were before an applied-on-creation diff (voice plan), so undo can restore them. Null for ordinary suggestions.
+  before: jsonb('before').$type<(DrillDraft & { id: string })[] | null>(),
   status: text('status').$type<'pending' | 'accepted' | 'undone'>().notNull().default('pending'),
   createdAt: createdAt(),
 })

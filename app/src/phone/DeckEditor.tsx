@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Deck, ModeId, RosterStudent, SuggestResponse } from '@matside/shared'
+import type { Deck, ModeId, ReplaceSource, RosterStudent, SuggestResponse } from '@matside/shared'
 import { ApiError, type Api } from '../core/api'
 import { bus } from '../core/bus'
 import { DrillDetail } from './DrillDetail'
@@ -8,6 +8,7 @@ import {
   moveItem, nameMap, removeItem, replaceItem, toEditable, totalMinutes, type Editable,
 } from './deckLogic'
 import { DiffList } from './Review'
+import { StartFromSheet } from './StartFromSheet'
 
 type Editing = number | 'new' | null
 
@@ -30,6 +31,7 @@ export function DeckEditor({ api, deckId, onClose }: { api: Api; deckId: string;
   const [remember, setRemember] = useState(false)
   const [busy, setBusy] = useState(false) // a planner or save request is in flight
   const [err, setErr] = useState<string | null>(null)
+  const [starting, setStarting] = useState(false) // the "Start from…" panel is open
   const [notice, setNotice] = useState<string | null>(null)
   const [loadErr, setLoadErr] = useState<string | null>(null)
   const lock = useRef(false)
@@ -87,6 +89,13 @@ export function DeckEditor({ api, deckId, onClose }: { api: Api; deckId: string;
   /** Resolves true only when the server accepted the change. */
   const save = async (next: Editable[]): Promise<boolean> => (await exclusive(async () => {
     try { setDeck(await api.patchDeck(deck.id, buildPatch(next))); bus.emit('deckChanged', undefined); return true } catch (e) { setErr(deckErrorOutcome(e, 'save').text); return false }
+  })) === true
+  /** Replaces the plan from a starting point; resolves true when the server accepted it. */
+  const replace = async (source: ReplaceSource): Promise<boolean> => (await exclusive(async () => {
+    try {
+      setDeck(await api.replaceDeck(deck.id, source)); bus.emit('deckChanged', undefined)
+      setNotice('Plan replaced. You can edit it, or add items below.'); return true
+    } catch (e) { setErr(deckErrorOutcome(e, 'replace').text); return false }
   })) === true
   const suggest = (text: string) => exclusive(async () => {
     try { setSuggestion(await api.suggest(deck.id, text)); setAsked(text); setRemember(false) } catch (e) { setErr(deckErrorOutcome(e, 'suggest').text) }
@@ -171,7 +180,11 @@ export function DeckEditor({ api, deckId, onClose }: { api: Api; deckId: string;
           </li>
         ))}
       </ol>
-      <div className="btns"><button type="button" disabled={busy || !L || !canAdd(list.length)} onClick={() => { setErr(null); setEditing('new') }}>＋ Add{L ? ` ${L.item}` : ''}</button></div>
+      <div className="btns">
+        <button type="button" className="add-item" disabled={busy || !L || !canAdd(list.length)} onClick={() => { setErr(null); setEditing('new') }}>＋ Add{L ? ` ${L.item}` : ''}</button>
+        <button type="button" aria-expanded={starting} disabled={busy} onClick={() => { setErr(null); setStarting(s => !s) }}>Start from…</button>
+      </div>
+      {starting && <StartFromSheet api={api} classId={deck.classId} itemCount={list.length} busy={busy} error={err} onReplace={replace} onClose={() => setStarting(false)} />}
       {!canAdd(list.length) && <p className="muted">A plan holds at most 20 items.</p>}
       <section className="card planner" aria-busy={busy}>
         <div className="label">Tell the planner</div>

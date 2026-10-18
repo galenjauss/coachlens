@@ -212,6 +212,24 @@ export type SuggestResponse = z.infer<typeof SuggestResponse>
 export const DeckPatch = z.object({ drills: z.array(DrillDraft.extend({ id: z.string().nullable() })).min(1).max(20) })
 export type DeckPatch = z.infer<typeof DeckPatch>
 
+export const ReplaceSource = z.union([
+  z.enum(['last', 'blank', 'ai']),
+  z.object({ deckId: z.string().min(1).max(64) }),
+])
+export type ReplaceSource = z.infer<typeof ReplaceSource>
+export const ReplaceDeckRequest = z.object({ source: ReplaceSource })
+export type ReplaceDeckRequest = z.infer<typeof ReplaceDeckRequest>
+
+export const VOICE_LINE_MAX = 38
+export const VOICE_LINES_MAX = 4
+export const VoicePlanRequest = z.object({ classId: z.string().min(1).max(64), transcript: z.string().trim().min(1).max(20000) })
+export type VoicePlanRequest = z.infer<typeof VoicePlanRequest>
+export const VoicePlanResponse = z.object({
+  diffId: z.string().nullable(), deckId: z.string().nullable(),
+  lines: z.array(z.string().max(VOICE_LINE_MAX)).max(VOICE_LINES_MAX),
+})
+export type VoicePlanResponse = z.infer<typeof VoicePlanResponse>
+
 export const Alternatives = z.object({ alternatives: z.array(DrillDraft).length(3) })
 export type Alternatives = z.infer<typeof Alternatives>
 

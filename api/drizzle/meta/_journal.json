@@ -71,6 +71,13 @@
       "when": 1792295971153,
       "tag": "0009_agent_settings_vocab",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792296582783,
+      "tag": "0010_voice_plan_undo",
+      "breakpoints": true
     }
   ]
 }

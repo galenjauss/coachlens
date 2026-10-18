@@ -159,3 +159,16 @@ label.remember input { width: auto; margin: 0; flex: none; }
 .seg-opt.on:focus-visible { outline-color: var(--text); }
 .seg-copy { margin: 10px 2px 0; font-size: 13px; line-height: 1.4; min-height: 2.8em; }
 .vocab { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+
+/* Start from… (in-flow panel above the plan list) */
+.startfrom { border: 1px solid var(--line); border-left: 3px solid var(--accent); }
+.startfrom-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.startfrom-head h2 { margin: 0; font-size: 16px; }
+.startfrom-head h2:focus { outline: none; }
+.startfrom-head h2:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+.startfrom-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+button.startfrom-opt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; flex: none; min-height: 48px; text-align: left; background: var(--bg); border: 1px solid var(--line); transition: border-color var(--dur), background var(--dur); }
+button.startfrom-opt:hover:not(:disabled) { border-color: var(--accent); filter: none; }
+button.startfrom-opt:active:not(:disabled) { background: var(--line); }
+button.add-item { border: 1px dashed var(--accent); background: none; color: var(--accent); font-weight: 600; }
+button.add-item:hover:not(:disabled) { background: var(--accent); color: var(--ink-on-accent); filter: none; }
