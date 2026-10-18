@@ -79,10 +79,13 @@ export const deckDiffs = pgTable('deck_diffs', {
   before: jsonb('before').$type<(DrillDraft & { id: string })[] | null>(),
   status: text('status').$type<'pending' | 'accepted' | 'undone'>().notNull().default('pending'),
   createdAt: createdAt(),
-})
+  utteranceId: text('utterance_id'), // the voice note that asked for it (C2: its Undo reverts or withdraws it)
+}, t => [index('deck_diffs_utterance').on(t.utteranceId)])
 export const utterances = pgTable('utterances', {
   id: id(), sessionId: text('session_id'), transcript: text('transcript').notNull(),
   mode: text('mode').$type<'note' | 'attendance'>().notNull(), createdAt: createdAt(),
+  // Set once by POST /v1/utterances/:id/undo (C2): deferred work checks it before writing or sending.
+  undoneAt: ts('undone_at'),
 })
 export const notes = pgTable('notes', {
   id: id(), sessionId: text('session_id'), utteranceId: text('utterance_id'), studentId: text('student_id'),
@@ -103,11 +106,12 @@ export const outbox = pgTable('outbox', {
   id: id(), kind: text('kind').$type<'parent_email' | 'report_card'>().notNull(),
   studentId: text('student_id').notNull(), sessionId: text('session_id'), toEmail: text('to_email').notNull(),
   subject: text('subject').notNull(), body: text('body').notNull(),
-  status: text('status').$type<'pending_review' | 'sending' | 'sent' | 'skipped' | 'error'>().notNull().default('pending_review'),
+  status: text('status').$type<'pending_review' | 'sending' | 'sent' | 'skipped' | 'error' | 'cancelled'>().notNull().default('pending_review'),
   error: text('error'), sentAt: ts('sent_at'), createdAt: createdAt(),
   // What drafted it: request | urgent | recurring | monthly (null on rows drafted before v2).
   trigger: text('trigger'),
-})
+  utteranceId: text('utterance_id'), // the utterance whose action drafted it (C2: Undo cancels it while unsent)
+}, t => [index('outbox_utterance').on(t.utteranceId)])
 export const reportCards = pgTable('report_cards', {
   id: id(), studentId: text('student_id').notNull(), month: text('month').notNull(),
   content: jsonb('content').$type<ReportCardContent>().notNull(), outboxId: text('outbox_id').notNull(),
@@ -169,3 +173,26 @@ export const insights = pgTable('insights', {
 export const kv = pgTable('kv', {
   key: text('key').primaryKey(), value: text('value').notNull(), updatedAt: createdAt('updated_at'),
 })
+
+// C2 · action ledger: one row per state change an utterance applied that is not a plain insert tagged with
+// utterance_id (attendance, rank/rank_since, issues opened, drills added and positions shifted). before/after
+// hold the values needed to compensate. Inserts tagged with utterance_id (notes, billing flags, metrics, outbox
+// drafts, deck diffs) are found through that column.
+export const actionLedger = pgTable('action_ledger', {
+  id: id(), utteranceId: text('utterance_id').notNull(),
+  kind: text('kind').$type<'attendance' | 'rank' | 'issue' | 'drill_added' | 'drill_moved'>().notNull(),
+  entityId: text('entity_id').notNull(), before: jsonb('before'), after: jsonb('after'), createdAt: createdAt(),
+}, t => [index('action_ledger_utterance').on(t.utteranceId, t.createdAt)])
+// C1 + C2 · deferred agent work started by an utterance, one row per (utterance, kind, subject): a re-run never
+// enqueues it twice, and Undo flips pending/running rows to cancelled.
+export const deferredTasks = pgTable('deferred_tasks', {
+  id: id(), utteranceId: text('utterance_id').notNull(), kind: text('kind').notNull(), subject: text('subject').notNull().default(''),
+  status: text('status').$type<'pending' | 'running' | 'done' | 'failed' | 'cancelled'>().notNull().default('pending'),
+  createdAt: createdAt(), updatedAt: ts('updated_at'),
+}, t => [uniqueIndex('deferred_tasks_once').on(t.utteranceId, t.kind, t.subject)])
+// C1 · idempotency: one row per (instructor, Idempotency-Key). done rows replay their stored response.
+export const operations = pgTable('operations', {
+  instructorId: text('instructor_id').notNull(), key: text('key').notNull(), route: text('route').notNull(),
+  status: text('status').$type<'pending' | 'done'>().notNull().default('pending'),
+  responseJson: text('response_json'), createdAt: createdAt(), // the exact JSON text sent, replayed byte for byte
+}, t => [primaryKey({ columns: [t.instructorId, t.key] })])

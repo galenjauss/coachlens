@@ -1,8 +1,8 @@
-import { and, desc, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import type { ReviewItem } from '@matside/shared'
 import type { Db } from '../db/client'
 import type { Deps } from '../deps'
-import { billingFlags, deckDiffs, notes, outbox, students } from '../db/schema'
+import { billingFlags, deckDiffs, notes, outbox, students, utterances } from '../db/schema'
 import { withRun } from '../agents/runs'
 import { billingOwnedBy, deckIdOwnedBy, noteOwnedBy, studentIdOwnedBy } from './ownership'
 
@@ -36,7 +36,9 @@ const conflict = (what: string): ActionResult => ({ ok: false, code: 'not_pendin
 export async function approveOutbox(deps: Deps, id: string, edits: { subject?: string; body?: string } = {}): Promise<ApproveResult> {
   const { db } = deps
   // Atomic claim: only one concurrent caller can move pending_review -> sending.
-  const [row] = await db.update(outbox).set({ status: 'sending' }).where(and(eq(outbox.id, id), eq(outbox.status, 'pending_review'))).returning()
+  // C2: a draft whose utterance was undone is never claimed for sending.
+  const [row] = await db.update(outbox).set({ status: 'sending' }).where(and(eq(outbox.id, id), eq(outbox.status, 'pending_review'),
+    sql`not exists (select 1 from ${utterances} u where u.id = ${outbox.utteranceId} and u.undone_at is not null)`)).returning()
   if (!row) {
     const [exists] = await db.select({ id: outbox.id }).from(outbox).where(eq(outbox.id, id))
     return exists ? { ok: false, code: 'not_pending', error: 'not pending' } : { ok: false, code: 'not_found', error: 'not found' }

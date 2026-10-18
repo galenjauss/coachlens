@@ -2,7 +2,7 @@ import { sql, and, asc, desc, eq, inArray, isNotNull, isNull, lt, or } from 'dri
 import type { Deck, DrillDraft, ModeConfig } from '@matside/shared'
 import type { Db } from '../db/client'
 import type { Deps } from '../deps'
-import { classes, deckDiffs, decks, drills, enrollments, issues, preferences, sessions, students } from '../db/schema'
+import { classes, deckDiffs, decks, drills, enrollments, issues, preferences, sessions, students, utterances } from '../db/schema'
 import { applyDiff, totalMinutes } from '../logic/deckDiff'
 import { nextDateForWeekday } from '../logic/dates'
 import { findDeck, getDeck, patchDeck } from '../services/decks'
@@ -11,6 +11,7 @@ import { normalizeAlternatives, normalizeDeck, normalizeDiff, RawAlternatives, R
 import { BudgetExceededError } from './budget'
 import { withRun } from './runs'
 import { getAutonomy } from '../services/settings'
+import { isUtteranceUndone } from '../services/deferred'
 
 const AUDIENCE: Record<ModeConfig['id'], string> = {
   martial_arts: "kids' martial arts classes (ages 6-12)",
@@ -184,7 +185,9 @@ export async function suggestDiff(deps: Deps, deckId: string, requestText: strin
     ].join('\n')
     const raw = await deps.llm.object({ name: 'planner.diff', instructions: ctx.instructions, prompt, schema: RawDeckDiff })
     const diff = normalizeDiff(raw, deck.drills.map(d => d.id), ctx.rosterIds)
-    const [row] = await deps.db.insert(deckDiffs).values({ deckId, requestText, diff }).returning()
+    const [row] = await deps.db.insert(deckDiffs).values({ deckId, requestText, diff, utteranceId }).returning()
+    // C2: the asking utterance was undone during the LLM call: the suggestion is withdrawn at once.
+    if (await isUtteranceUndone(deps.db, utteranceId)) await deps.db.update(deckDiffs).set({ status: 'undone' }).where(and(eq(deckDiffs.id, row!.id), eq(deckDiffs.status, 'pending')))
     return {
       result: { diffId: row!.id, diff },
       summary: `Suggested changes for ${deck.forDate}: +${diff.added.length} ~${diff.changed.length} -${diff.removed.length}`,
@@ -197,11 +200,18 @@ export async function suggestDiff(deps: Deps, deckId: string, requestText: strin
 
 export async function acceptDiff(deps: Deps, diffId: string, opts: { remember: boolean }): Promise<Deck> {
   const { db } = deps
+  // C2: a diff whose utterance was undone can no longer be accepted.
   const [claimed] = await db.update(deckDiffs).set({ status: 'accepted' })
-    .where(and(eq(deckDiffs.id, diffId), eq(deckDiffs.status, 'pending'))).returning()
+    .where(and(eq(deckDiffs.id, diffId), eq(deckDiffs.status, 'pending'),
+      sql`not exists (select 1 from ${utterances} u where u.id = ${deckDiffs.utteranceId} and u.undone_at is not null)`)).returning()
   if (!claimed) throw new Error(`diff ${diffId} not pending`)
   const row = claimed
   const deck = await getDeck(db, row.deckId)
+  // Snapshot the plan before applying, so an accepted diff can be reverted (Undo, /v1/diffs/:id/undo).
+  if (!row.before) {
+    const before = deck.drills.map(d => ({ id: d.id, name: d.name, minutes: d.minutes, kind: d.kind, cues: d.cues, focusStudentIds: d.focusStudentIds, rationale: d.rationale }))
+    await db.update(deckDiffs).set({ before }).where(eq(deckDiffs.id, diffId))
+  }
   try {
     const planned = applyDiff(deck.drills, row.diff)
     const keepIds = new Set(planned.flatMap(p => (p.id ? [p.id] : [])))
@@ -235,7 +245,7 @@ export async function autoAdjustNextDeck(deps: Deps, a: { classId: string; after
   const deckId = await nextDeckFor(deps, a.classId, a.afterDate, a.utteranceId ?? null)
   if (!deckId) return
   const s = await suggestDiff(deps, deckId, a.requestText, a.sessionId, a.utteranceId ?? null)
-  if (!s) return
+  if (!s || await isUtteranceUndone(deps.db, a.utteranceId)) return // C2: undone mid-flight, nothing applied
   if (autonomy === 'auto') await acceptDiff(deps, s.diffId, { remember: false })
   await markAutonomy(deps, a.sessionId, a.utteranceId ?? null, autonomy === 'auto', s.diffId, 'auto_adjust')
 }

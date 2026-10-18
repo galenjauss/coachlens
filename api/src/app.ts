@@ -33,6 +33,10 @@ import { addAlias } from './logic/names'
 import { draftParentEmail } from './agents/parentEmail'
 import { redraftOutbox } from './agents/redraft'
 import { ClassCreate, ClassLiveError, ClassUpdate, StudentCreate, StudentUpdate, createClass, createStudent, deleteClass, deleteStudent, noteCandidates, studentView, updateClass, updateStudent } from './services/roster'
+import { claimOperation, completeOperation, MAX_KEY, releaseOperation } from './services/operations'
+import { undoUtterance, UndoError } from './services/undo'
+import { deferOnce } from './services/deferred'
+import { recordAttendanceBefore } from './services/ledger'
 import { agentRunDetail, agentTaskRuns, agentsSummary, utteranceRuns } from './services/agents'
 import { localDate } from './logic/dates'
 import { computeCoverage, loadSessionContext, markPresent, nextStudentFor } from './services/context'
@@ -65,7 +69,8 @@ export function createApp(deps: Deps) {
 
   app.use('*', cors({
     origin: o => (deps.env.allowedOrigins.includes('*') ? o || '*' : deps.env.allowedOrigins.includes(o) ? o : null),
-    allowHeaders: ['Authorization', 'Content-Type'],
+    allowHeaders: ['Authorization', 'Content-Type', 'Idempotency-Key'],
+    exposeHeaders: ['Idempotent-Replay'],
     allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     maxAge: 600,
   }))
@@ -181,6 +186,32 @@ export function createApp(deps: Deps) {
   }
   const transcribe = async (audio: File, hints: string[]) => (await deps.stt.transcribe(new Uint8Array(await audio.arrayBuffer()), hints)).trim()
 
+  /** C1: the stable operation id, from the Idempotency-Key header or the multipart field `opId`. */
+  const opKey = (c: Context<Vars>, str: (k: string) => string | null): string | null => {
+    const key = c.req.header('idempotency-key')?.trim() || str('opId')
+    if (key && (key.length > MAX_KEY || !/^[\w.:-]+$/.test(key))) throw new HTTPException(400, { message: 'bad idempotency key' })
+    return key || null
+  }
+  /** C1: runs `work` once per key; a done key replays its stored response, a pending one is 409 in_progress. */
+  const once = async (c: Context<Vars>, key: string | null, route: string, work: () => Promise<unknown>) => {
+    if (!key) return c.json(await work() as object)
+    const claim = await claimOperation(db, me(c), key, route, deps.now())
+    // The response is stored as its exact JSON text, so a replay is byte-identical to the lost original.
+    if (claim.kind === 'replay') {
+      c.header('Idempotent-Replay', 'true')
+      return c.body(String(claim.response), 200, { 'Content-Type': 'application/json' })
+    }
+    if (claim.kind === 'in_progress') throw new HTTPException(409, { message: 'in_progress' })
+    try {
+      const text = JSON.stringify(await work())
+      await completeOperation(db, me(c), key, text)
+      return c.body(text, 200, { 'Content-Type': 'application/json' })
+    } catch (e) {
+      await releaseOperation(db, me(c), key).catch(() => {})
+      throw e
+    }
+  }
+
   app.post('/v1/utterance', async c => {
     const { str, audio } = await audioUpload(c, 'utt')
     const form = UtteranceForm.safeParse({ sessionId: str('sessionId'), drillId: str('drillId'), mode: str('mode'), text: str('text') })
@@ -191,11 +222,13 @@ export function createApp(deps: Deps) {
       const [dr] = await db.select({ id: drills.id }).from(drills).where(and(eq(drills.id, form.data.drillId), eq(drills.deckId, session.deckId)))
       if (!dr) throw new HTTPException(400, { message: 'drill not in this class plan' })
     }
-    let transcript = form.data.text
-    const file = transcript ? null : audio()
-    if (file) transcript = await transcribe(file, await hintsFor(db, { sessionId: form.data.sessionId }))
-    if (!transcript) throw new HTTPException(422, { message: 'empty_transcript' })
-    return c.json(await handleUtterance(deps, { sessionId: form.data.sessionId, drillId: form.data.drillId, mode: form.data.mode, transcript }))
+    const file = form.data.text ? null : audio()
+    return once(c, opKey(c, str), 'utterance', async () => {
+      let transcript = form.data.text
+      if (file) transcript = await transcribe(file, await hintsFor(db, { sessionId: form.data.sessionId }))
+      if (!transcript) throw new HTTPException(422, { message: 'empty_transcript' })
+      return handleUtterance(deps, { sessionId: form.data.sessionId, drillId: form.data.drillId, mode: form.data.mode, transcript })
+    })
   })
 
   /** Transcript-first: STT only (nothing saved). The lens then sends the text as an utterance. */
@@ -207,19 +240,21 @@ export function createApp(deps: Deps) {
     if (!file) throw new HTTPException(400, { message: 'missing audio' })
     if (form.data.sessionId) await need(ownsSession(db, me(c), form.data.sessionId), 'session')
     if (form.data.classId) await need(ownsClass(db, me(c), form.data.classId), 'class')
-    const transcript = await transcribe(file, await hintsFor(db, form.data))
-    if (!transcript) throw new HTTPException(422, { message: 'empty_transcript' })
-    return c.json({ transcript })
+    return once(c, opKey(c, str), 'transcribe', async () => {
+      const transcript = await transcribe(file, await hintsFor(db, form.data))
+      if (!transcript) throw new HTTPException(422, { message: 'empty_transcript' })
+      return { transcript }
+    })
   })
 
   app.post('/v1/utterances/:id/undo', async c => {
     const id = c.req.param('id')
     await need(ownsUtterance(db, me(c), id), 'utterance')
-    const [n] = await db.select({ sessionId: notes.sessionId }).from(notes).where(eq(notes.utteranceId, id)).limit(1)
-    await db.delete(notes).where(eq(notes.utteranceId, id))
-    await db.delete(billingFlags).where(eq(billingFlags.utteranceId, id))
-    const coverage = n?.sessionId ? await computeCoverage(db, await loadSessionContext(db, n.sessionId, null)) : null
-    return c.json({ coverage })
+    // C2: { ok, reversed, cancelled, notReversible } (+ coverage for the lens); a second Undo is 409 already_undone.
+    try { return c.json(await undoUtterance(deps, id)) } catch (e) {
+      if (e instanceof UndoError) throw new HTTPException(e.code === 'not_found' ? 404 : 409, { message: e.code })
+      throw e
+    }
   })
 
   app.get('/v1/utterances/:id/runs', async c => {
@@ -243,10 +278,11 @@ export function createApp(deps: Deps) {
     if (n.heard) await learnAlias(studentId, n.heard)
     // An urgent note that was waiting for a student now drafts its urgent note home.
     if (n.urgent && !n.studentId) {
-      deps.defer(draftParentEmail(deps, { studentId, sessionId: n.sessionId, utteranceId: n.utteranceId, trigger: { kind: 'urgent', content: n.text } })
-        .catch(e => console.error('[defer:parent_email]', e)))
+      await deferOnce(deps, { utteranceId: n.utteranceId, kind: 'parent_email', subject: studentId },
+        () => draftParentEmail(deps, { studentId, sessionId: n.sessionId, utteranceId: n.utteranceId, trigger: { kind: 'urgent', content: n.text } }))
     }
     if (!n.sessionId) return c.json({ coverage: null, nextStudent: null })
+    await recordAttendanceBefore(db, n.utteranceId, n.sessionId, [studentId]) // C2: the note's Undo restores this too
     await markPresent(db, n.sessionId, studentId, 'backstop')
     const ctx = await loadSessionContext(db, n.sessionId, null)
     return c.json({ coverage: await computeCoverage(db, ctx), nextStudent: await nextStudentFor(db, ctx, deps.now()) })
