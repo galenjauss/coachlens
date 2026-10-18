@@ -27,7 +27,7 @@ th,td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;verti
 <tbody><tr>
 <td>Voice recordings</td>
 <td>The microphone, only while you are recording a note (tap or hold on the glasses) or a planning conversation (double-tap in a class lobby)</td>
-<td>Turned into text. <strong>Audio is not stored</strong>: it is sent to the speech-to-text service, the text is kept, and the audio is discarded.</td>
+<td>Turned into text. <strong>On your phone:</strong> if the network is down or the upload fails, the recording waits temporarily in the app&#39;s offline queue on your phone and is deleted from the queue once it has been delivered. <strong>On our server:</strong> audio is not retained. It is passed to the speech-to-text service, the text is kept, and the audio is discarded.</td>
 </tr>
 <tr>
 <td>Transcripts and notes</td>
@@ -135,9 +135,18 @@ th,td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;verti
 <h2>Automated actions and your control</h2>
 <p>Each agent has an <strong>Auto / Review / Off</strong> setting. Emails to parents and clients default to <strong>Review</strong>: nothing is sent until you approve it. You can turn any agent off. CoachLens does not give medical, legal or financial advice. Injury notes are passed on to families as observations only.</p>
 <h2>Retention and deletion</h2>
-<p>Your data is kept while you use CoachLens. To delete a student, a note or your whole account&#39;s data, or to get a copy of it, open an issue at <a href="https://github.com/galenjauss/coachlens/issues">https://github.com/galenjauss/coachlens/issues</a> or contact the developer through the Even Hub listing. We delete it within 30 days. Uninstalling the app removes the pairing token from your phone.</p>
+<p>Your data is kept while you use CoachLens. To delete a student, a note or your whole account&#39;s data, or to get a copy of it, contact the developer privately <strong>via the contact on the Even Hub listing</strong>. Please do not post student names or other identifying details in public places such as GitHub issues. We delete or export it within 30 days.</p>
+<p>Audio waiting in the offline queue stays on your phone only until it is delivered. Removing the app removes the queue and the pairing token from your phone.</p>
+<h2>Pairing and access</h2>
+<ul>
+<li><strong>How pairing works today (the live service):</strong> the phone pairs by entering a pairing code that the developer gives you in person. This code is <strong>reusable</strong>: it is the same code each time, not a one-time code. After pairing, the phone holds an access token, and the server stores only a hash of it.</li>
+<li><strong>Uninstalling does not revoke access on the server.</strong> Deleting the app removes the token from your phone, but the server-side token stays valid. To revoke it today, contact the developer via the Even Hub listing.</li>
+<li><strong>In the next version (implemented in source and verified locally, not yet deployed):</strong> each instructor has their own pairing code, which the service operator can rotate; codes are stored hashed; access tokens expire after 90 days; and an <strong>Unpair this phone</strong> control revokes the phone&#39;s token on the server. Until that version is deployed and released, the live service behaves as described in the first two points.</li>
+</ul>
+<h2>Current deployment limits</h2>
+<p>The live service is a <strong>single-coach demonstration deployment</strong>. It holds one instructor&#39;s synthetic demo data (no real students), and it does not yet separate data between independent instructors. Please do not enter real student information into it. Isolation between instructors is implemented in source and verified locally, but it is not deployed. This section will be updated when it is.</p>
 <h2>Security</h2>
-<p>Requests are sent over HTTPS. The phone pairs with a one-time code and then uses a hashed access token. AI provider keys stay on the server and are never included in the app package.</p>
+<p>Requests are sent over HTTPS. Access tokens are stored hashed on the server. AI provider keys stay on the server and are never included in the app package.</p>
 <h2>Changes</h2>
 <p>If this policy changes, the date above and the Even Hub listing will be updated.</p>
 </main></body></html>

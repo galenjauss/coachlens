@@ -1,12 +1,12 @@
 /** Single source of truth for copy that must stay honest. Timing lives in timeline.ts. */
 
 /** The store line on the close card. Change it here and only here. */
-export const STORE_LINE = 'Now on the Even Hub store'
+export const STORE_LINE = 'Submitted to the Even Hub store'
 
 /** Originality numbers. Keep exactly as checked. */
 export const APPS_CHECKED = 220
 export const APPS_FOR_COACHES = 0
-export const ORIGINALITY_FOOTNOTE = 'Community G2 app directory + Even built-ins, Oct 2026.'
+export const ORIGINALITY_FOOTNOTE = 'Non-exhaustive: community G2 list + Even built-ins, Oct 2026.'
 
 export const FPS = 30
 export const WIDTH = 1920

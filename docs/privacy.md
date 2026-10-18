@@ -10,7 +10,7 @@ CoachLens is used by **instructors**. Students, clients and parents never sign i
 
 | Data | Comes from | Used for |
 |---|---|---|
-| Voice recordings | The microphone, only while you are recording a note (tap or hold on the glasses) or a planning conversation (double-tap in a class lobby) | Turned into text. **Audio is not stored**: it is sent to the speech-to-text service, the text is kept, and the audio is discarded. |
+| Voice recordings | The microphone, only while you are recording a note (tap or hold on the glasses) or a planning conversation (double-tap in a class lobby) | Turned into text. **On your phone:** if the network is down or the upload fails, the recording waits temporarily in the app's offline queue on your phone and is deleted from the queue once it has been delivered. **On our server:** audio is not retained. It is passed to the speech-to-text service, the text is kept, and the audio is discarded. |
 | Transcripts and notes | Your voice notes, typed edits | Progress tracking, report cards, lesson plans, answers to your questions |
 | Class and roster information | Onboarding (typed, pasted, CSV, or a photo you choose), the phone app | Names, ranks or levels, schedules, curriculum, attendance |
 | Parent, guardian or client email addresses | You, during onboarding or in the phone app | Sending emails **you approve** (or that you set an agent to send automatically) |
@@ -51,11 +51,23 @@ Each agent has an **Auto / Review / Off** setting. Emails to parents and clients
 
 ## Retention and deletion
 
-Your data is kept while you use CoachLens. To delete a student, a note or your whole account's data, or to get a copy of it, open an issue at https://github.com/galenjauss/coachlens/issues or contact the developer through the Even Hub listing. We delete it within 30 days. Uninstalling the app removes the pairing token from your phone.
+Your data is kept while you use CoachLens. To delete a student, a note or your whole account's data, or to get a copy of it, contact the developer privately **via the contact on the Even Hub listing**. Please do not post student names or other identifying details in public places such as GitHub issues. We delete or export it within 30 days.
+
+Audio waiting in the offline queue stays on your phone only until it is delivered. Removing the app removes the queue and the pairing token from your phone.
+
+## Pairing and access
+
+- **How pairing works today (the live service):** the phone pairs by entering a pairing code that the developer gives you in person. This code is **reusable**: it is the same code each time, not a one-time code. After pairing, the phone holds an access token, and the server stores only a hash of it.
+- **Uninstalling does not revoke access on the server.** Deleting the app removes the token from your phone, but the server-side token stays valid. To revoke it today, contact the developer via the Even Hub listing.
+- **In the next version (implemented in source and verified locally, not yet deployed):** each instructor has their own pairing code, which the service operator can rotate; codes are stored hashed; access tokens expire after 90 days; and an **Unpair this phone** control revokes the phone's token on the server. Until that version is deployed and released, the live service behaves as described in the first two points.
+
+## Current deployment limits
+
+The live service is a **single-coach demonstration deployment**. It holds one instructor's synthetic demo data (no real students), and it does not yet separate data between independent instructors. Please do not enter real student information into it. Isolation between instructors is implemented in source and verified locally, but it is not deployed. This section will be updated when it is.
 
 ## Security
 
-Requests are sent over HTTPS. The phone pairs with a one-time code and then uses a hashed access token. AI provider keys stay on the server and are never included in the app package.
+Requests are sent over HTTPS. Access tokens are stored hashed on the server. AI provider keys stay on the server and are never included in the app package.
 
 ## Changes
 
