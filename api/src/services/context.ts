@@ -42,7 +42,7 @@ export async function loadSessionContext(db: Db, sessionId: string, drillId: str
   if (!s) throw new Error(`session ${sessionId} not found`)
   const mode = await modeForClass(db, s.classId)
   const [roster, att, cur, [d]] = await Promise.all([
-    db.select({ id: students.id, name: students.name, nickname: students.nickname, belt: students.belt })
+    db.select({ id: students.id, name: students.name, nickname: students.nickname, belt: students.belt, aliases: students.aliases })
       .from(enrollments).innerJoin(students, eq(students.id, enrollments.studentId)).where(eq(enrollments.classId, s.classId)),
     db.select().from(attendance).where(eq(attendance.sessionId, sessionId)),
     curriculumFor(db, mode, s.forDate),

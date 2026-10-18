@@ -3,7 +3,7 @@ import { cors } from 'hono/cors'
 import { HTTPException } from 'hono/http-exception'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { DeckPatch, UtteranceForm } from '@matside/shared'
+import { AgentTask, DeckPatch, MAX_ALIASES, RedraftRequest, StudentPatch, UtteranceForm } from '@matside/shared'
 import type { Deps } from './deps'
 import { attendance, billingFlags, enrollments, instructors, notes, sessions, students, classes } from './db/schema'
 import { hashToken } from './http/auth'
@@ -18,6 +18,9 @@ import { runReportCards } from './agents/reportCard'
 import { agentFeed, getStudentDetail, listStudents } from './services/students'
 import { acceptDiff, alternativesFor, nextDeckFor, suggestDiff, undoDiff } from './agents/planner'
 import { applyDiff, totalMinutes } from './logic/deckDiff'
+import { addAlias } from './logic/names'
+import { redraftOutbox } from './agents/redraft'
+import { agentRunDetail, agentTaskRuns, agentsSummary, utteranceRuns } from './services/agents'
 import { localDate } from './logic/dates'
 import { computeCoverage, loadSessionContext, markPresent, nextStudentFor } from './services/context'
 
@@ -134,7 +137,7 @@ export function createApp(deps: Deps) {
     const audio = body['audio']
     if (!transcript && audio instanceof File) {
       if (audio.size > MAX_AUDIO_BYTES) throw new HTTPException(413, { message: 'audio too large' })
-      transcript = (await deps.stt.transcribe(new Uint8Array(await audio.arrayBuffer()), ctx.roster.map(r => r.name))).trim()
+      transcript = (await deps.stt.transcribe(new Uint8Array(await audio.arrayBuffer()), ctx.roster.flatMap(r => [r.name, ...(r.aliases ?? [])]))).trim()
     }
     if (!transcript) throw new HTTPException(422, { message: 'empty_transcript' })
     return c.json(await handleUtterance(deps, { sessionId: form.data.sessionId, drillId: form.data.drillId, mode: form.data.mode, transcript }))
@@ -149,6 +152,8 @@ export function createApp(deps: Deps) {
     return c.json({ coverage })
   })
 
+  app.get('/v1/utterances/:id/runs', async c => c.json(await utteranceRuns(db, c.req.param('id'))))
+
   app.post('/v1/notes/:id/assign', async c => {
     const { studentId } = await json(c.req.raw, z.object({ studentId: z.string().min(1) }))
     const [n] = await db.select().from(notes).where(eq(notes.id, c.req.param('id')))
@@ -162,11 +167,20 @@ export function createApp(deps: Deps) {
       if (!st) throw new HTTPException(400, { message: 'unknown student' })
     }
     await db.update(notes).set({ studentId }).where(eq(notes.id, n.id))
+    if (n.heard) await learnAlias(studentId, n.heard)
     if (!n.sessionId) return c.json({ coverage: null, nextStudent: null })
     await markPresent(db, n.sessionId, studentId, 'backstop')
     const ctx = await loadSessionContext(db, n.sessionId, null)
     return c.json({ coverage: await computeCoverage(db, ctx), nextStudent: await nextStudentFor(db, ctx, deps.now()) })
   })
+
+  /** Remember how STT heard a student's name once the coach assigns the note (deduped, max 10). */
+  const learnAlias = async (studentId: string, heard: string) => {
+    const [st] = await db.select({ name: students.name, nickname: students.nickname, aliases: students.aliases }).from(students).where(eq(students.id, studentId))
+    if (!st) return
+    const next = addAlias(st, heard, MAX_ALIASES)
+    if (next !== st.aliases) await db.update(students).set({ aliases: next }).where(eq(students.id, studentId))
+  }
 
   const mapped = (c: Context, r: ActionResult) => {
     if (r.ok) return c.json({ ok: true })
@@ -182,6 +196,12 @@ export function createApp(deps: Deps) {
     const r = await approveOutbox(deps, c.req.param('id'), edits)
     if (r.ok) return c.json(r)
     return c.json(r, r.code === 'not_found' ? 404 : r.code === 'not_pending' ? 409 : 502)
+  })
+  app.post('/v1/review/outbox/:id/redraft', async c => {
+    const { instruction } = await json(c.req.raw, RedraftRequest)
+    const r = await redraftOutbox(deps, c.req.param('id'), instruction)
+    if (r.ok) return c.json(r.item)
+    throw new HTTPException(r.code === 'not_found' ? 404 : r.code === 'not_pending' ? 409 : 502, { message: r.error })
   })
   app.post('/v1/review/outbox/:id/skip', async c => mapped(c, await skipOutbox(db, c.req.param('id'))))
   app.post('/v1/review/billing/:id/handle', async c => {
@@ -249,11 +269,26 @@ export function createApp(deps: Deps) {
   })
   app.get('/v1/students', async c => c.json(await listStudents(db)))
   app.get('/v1/students/:id', async c => c.json(await guard(getStudentDetail(deps, c.req.param('id')))))
+  app.patch('/v1/students/:id', async c => {
+    const { aliases } = await json(c.req.raw, StudentPatch)
+    const uniq = aliases.filter((a, i) => aliases.findIndex(b => b.toLowerCase() === a.toLowerCase()) === i).slice(0, MAX_ALIASES)
+    const [row] = await db.update(students).set({ aliases: uniq }).where(eq(students.id, c.req.param('id'))).returning({ id: students.id, aliases: students.aliases })
+    if (!row) throw new HTTPException(404, { message: 'student not found' })
+    return c.json(row)
+  })
+  app.get('/v1/agents/summary', async c => c.json(await agentsSummary(deps)))
+  app.get('/v1/agents/runs/:id', async c => c.json(await guard(agentRunDetail(db, c.req.param('id')))))
   app.get('/v1/agents/feed', async c => {
     const since = c.req.query('since')
     const d = since ? new Date(since) : null
     if (d && Number.isNaN(d.getTime())) throw new HTTPException(400, { message: 'bad since' })
     return c.json(await agentFeed(db, d))
+  })
+  app.get('/v1/agents/:task', async c => {
+    const task = AgentTask.safeParse(c.req.param('task'))
+    if (!task.success) throw new HTTPException(404, { message: 'unknown agent task' })
+    const limit = z.coerce.number().int().min(1).max(200).catch(50).parse(c.req.query('limit') ?? 50)
+    return c.json(await agentTaskRuns(db, task.data, limit))
   })
   app.post('/v1/report-cards/run', async c => {
     const { studentIds } = await json(c.req.raw, z.object({ studentIds: z.array(z.string()).max(50).optional() }))

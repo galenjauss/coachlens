@@ -88,8 +88,8 @@ export async function draftDeck(deps: Deps, classId: string, forDate: string): P
   })
 }
 
-export async function suggestDiff(deps: Deps, deckId: string, requestText: string, sessionId: string | null = null) {
-  return withRun(deps, { agent: 'planner', trigger: 'suggest', sessionId }, async () => {
+export async function suggestDiff(deps: Deps, deckId: string, requestText: string, sessionId: string | null = null, utteranceId: string | null = null) {
+  return withRun(deps, { agent: 'planner', trigger: 'suggest', sessionId, utteranceId }, async () => {
     const deck = await getDeck(deps.db, deckId)
     const ctx = await planningContext(deps, deck.classId, deck.forDate)
     const prompt = [
@@ -107,6 +107,7 @@ export async function suggestDiff(deps: Deps, deckId: string, requestText: strin
       summary: `Suggested changes for ${deck.forDate}: +${diff.added.length} ~${diff.changed.length} -${diff.removed.length}`,
       reason: `"${requestText.slice(0, 80)}"`,
       output: diff,
+      links: { diffId: row!.id },
     }
   })
 }
@@ -142,10 +143,10 @@ export async function nextDeckFor(deps: Deps, classId: string, afterDate: string
   return draftDeck(deps, classId, nextDateForWeekday(afterDate, c.weekday))
 }
 
-export async function autoAdjustNextDeck(deps: Deps, a: { classId: string; afterDate: string; requestText: string; sessionId: string | null }) {
+export async function autoAdjustNextDeck(deps: Deps, a: { classId: string; afterDate: string; requestText: string; sessionId: string | null; utteranceId?: string | null }) {
   const deckId = await nextDeckFor(deps, a.classId, a.afterDate)
   if (!deckId) return
-  const s = await suggestDiff(deps, deckId, a.requestText, a.sessionId)
+  const s = await suggestDiff(deps, deckId, a.requestText, a.sessionId, a.utteranceId ?? null)
   if (s) await acceptDiff(deps, s.diffId, { remember: false })
 }
 

@@ -1,7 +1,7 @@
 import type { SkillTag, Urgency } from '@matside/shared'
 
 export type CardAction =
-  | { kind: 'feedback'; name: string; tag: SkillTag | null; count: number; recurring: boolean }
+  | { kind: 'feedback'; name: string; tag: SkillTag | null; count: number; recurring: boolean; urgent?: boolean }
   | { kind: 'billing'; name: string; urgency: Urgency }
   | { kind: 'attendance'; present: number; absentNames: string[] }
   | { kind: 'marked'; name: string; status: 'present' | 'absent' }
@@ -21,7 +21,9 @@ function linesFor(a: CardAction): string[] {
   switch (a.kind) {
     case 'feedback': {
       const head = `✓ ${a.name}${a.tag ? ` · ${a.tag}` : ''}${a.count >= 2 ? ` (${ordinal(a.count)} time)` : ''}`
-      return a.recurring ? [head, '→ progress logged', '→ parent note drafting', '→ added to next deck'] : [head]
+      const urgent = a.urgent ? ['⚠ urgent · parent note drafting'] : []
+      if (a.recurring) return [head, ...urgent, ...(a.urgent ? [] : ['→ progress logged']), '→ added to report card', '→ added to next deck']
+      return [head, ...urgent]
     }
     case 'billing': return [`✓ Billing flag · ${a.name} · ${a.urgency.toUpperCase()}`]
     case 'attendance': return [`${a.present} present`, ...(a.absentNames.length ? [`absent: ${a.absentNames.join(', ')}`] : [])]

@@ -1,4 +1,4 @@
-import { and, desc, eq, gte } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import type { ModeConfig, SkillTag } from '@matside/shared'
 import type { Deps } from '../deps'
@@ -31,15 +31,36 @@ export function parentEmailInstructions(mode: ModeConfig): string {
   return [...head, '- No financial advice. No guilt or pressure.', `- ${mode.guardrails}`, '- Sign off as the coach name given.'].join('\n')
 }
 
-const EmailOut = z.object({ subject: z.string().min(3).max(80), body: z.string().min(40) })
+export const EmailOut = z.object({ subject: z.string().min(3).max(80), body: z.string().min(40) })
 const DAY = 86_400_000
+export const EMAIL_COOLDOWN_DAYS = 30
+/** Triggers that are automatic and not urgent: at most one such email per student per cooldown window. */
+const AUTO_TRIGGERS = ['recurring'] as const
+
+export type EmailTrigger =
+  | { kind: 'request'; content: string } // explicit "email Priya's mom that…": always drafts
+  | { kind: 'urgent'; content: string } // injury / safety / serious behavior: always drafts
+  | { kind: 'recurring'; tag: SkillTag } // automatic, non-urgent: subject to the cooldown
+
+/** True when the student already got a non-urgent automatic email inside the cooldown window. */
+export async function inEmailCooldown(deps: Deps, studentId: string): Promise<boolean> {
+  const since = new Date(deps.now().getTime() - EMAIL_COOLDOWN_DAYS * DAY)
+  const [hit] = await deps.db.select({ id: outbox.id }).from(outbox)
+    .where(and(eq(outbox.studentId, studentId), eq(outbox.kind, 'parent_email'), inArray(outbox.trigger, [...AUTO_TRIGGERS]), gte(outbox.createdAt, since))).limit(1)
+  return Boolean(hit)
+}
 
 export async function draftParentEmail(
   deps: Deps,
-  a: { studentId: string; sessionId: string | null; trigger: { kind: 'recurring'; tag: SkillTag } | { kind: 'request'; content: string } },
+  a: { studentId: string; sessionId: string | null; utteranceId?: string | null; trigger: EmailTrigger },
 ): Promise<string | null> {
   const { db } = deps
-  return withRun(deps, { agent: 'parent_email', trigger: a.trigger.kind, sessionId: a.sessionId }, async () => {
+  const meta = { agent: 'parent_email', trigger: a.trigger.kind, sessionId: a.sessionId, utteranceId: a.utteranceId ?? null, links: { studentId: a.studentId } }
+  if (a.trigger.kind === 'recurring' && await inEmailCooldown(deps, a.studentId)) {
+    await withRun(deps, meta, async () => ({ result: null, summary: `Skipped auto note (one per ${EMAIL_COOLDOWN_DAYS} days)`, reason: 'email cooldown' }))
+    return null
+  }
+  return withRun(deps, meta, async () => {
     const [s] = await db.select().from(students).where(eq(students.id, a.studentId))
     const [g] = await db.select().from(guardians).where(eq(guardians.studentId, a.studentId))
     if (!s || !g) throw new Error(`no student/guardian for ${a.studentId}`)
@@ -54,7 +75,9 @@ export async function draftParentEmail(
     const reader = toClient ? `the ${mode.person}` : 'the parent'
     const why = a.trigger.kind === 'recurring'
       ? `Recurring focus area: ${mode.tagLabels[a.trigger.tag] ?? a.trigger.tag}`
-      : `Coach asked to tell ${reader}: ${a.trigger.content}`
+      : a.trigger.kind === 'urgent'
+        ? `URGENT — coach logged this today and ${reader} should hear it now (observation only, no diagnosis): ${a.trigger.content}`
+        : `Coach asked to tell ${reader}: ${a.trigger.content}`
     const who = toClient
       ? [`Client: ${firstName} (writing to them directly)`]
       : [`${mode.person === 'student' ? 'Student' : 'Person'}: ${firstName}${mode.id === 'martial_arts' ? ` (${s.belt} belt)` : ''}`, `Parent: ${g.name}`]
@@ -64,7 +87,7 @@ export async function draftParentEmail(
       `Recent coach notes (newest first):`, ...recent.map(r => `- ${r.at.toISOString().slice(0, 10)} [${r.drill ?? 'class'}] ${r.text}`),
     ].join('\n')
     const email = await deps.llm.object({ name: 'parent_email', instructions: parentEmailInstructions(mode), prompt, schema: EmailOut })
-    const [row] = await db.insert(outbox).values({ kind: 'parent_email', studentId: s.id, sessionId: a.sessionId, toEmail: g.email, subject: email.subject, body: email.body }).returning()
-    return { result: row!.id, summary: `Drafted note to ${g.name} (${firstName}): "${email.subject}"`, reason: why, output: email }
+    const [row] = await db.insert(outbox).values({ kind: 'parent_email', studentId: s.id, sessionId: a.sessionId, toEmail: g.email, subject: email.subject, body: email.body, trigger: a.trigger.kind }).returning()
+    return { result: row!.id, summary: `Drafted ${a.trigger.kind === 'urgent' ? 'urgent ' : ''}note to ${g.name} (${firstName}): "${email.subject}"`, reason: why, output: email, links: { outboxId: row!.id } }
   })
 }

@@ -2,9 +2,10 @@ import { describe, it, expect } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { makeTestDb, makeDeps, fakeLlm } from '../test/helpers'
 import { handleUtterance } from './utterance'
-import { classes, students, guardians, enrollments, curriculum, decks, drills, sessions, notes, issues, billingFlags, attendance, outbox } from '../db/schema'
+import { classes, students, guardians, enrollments, curriculum, decks, drills, sessions, notes, issues, billingFlags, attendance, outbox, agentRuns } from '../db/schema'
+import { draftParentEmail } from '../agents/parentEmail'
 
-const intent = (o: Partial<Record<string, unknown>>) => ({ type: 'feedback', studentNames: [], content: '', skillTags: [], urgency: null, amount: null, minutes: null, attendanceStatus: null, ...o })
+const intent = (o: Partial<Record<string, unknown>>) => ({ type: 'feedback', studentNames: [], content: '', skillTags: [], urgency: null, amount: null, minutes: null, attendanceStatus: null, urgent: false, ...o })
 
 async function classWorld() {
   const db = await makeTestDb()
@@ -33,7 +34,7 @@ describe('handleUtterance', () => {
     expect(rows.filter(x => x.status === 'absent')).toHaveLength(2)
   })
 
-  it('3rd guard note opens a recurring issue, defers email + next-deck adjust', async () => {
+  it('3rd guard note opens a recurring issue and adjusts the next deck, no email', async () => {
     const w = await classWorld()
     const deps = makeDeps(w.db, {
       llm: fakeLlm(({ name }) => {
@@ -44,11 +45,73 @@ describe('handleUtterance', () => {
       }),
     })
     const r = await handleUtterance(deps, { sessionId: w.sessionId, drillId: w.drillId, mode: 'note', transcript: 'Priya, guard drops on the jab again' })
-    expect(r.cardLines).toEqual(['✓ Priya · guard (3rd time)', '→ progress logged', '→ parent note drafting', '→ added to next deck'])
+    expect(r.cardLines).toEqual(['✓ Priya · guard (3rd time)', '→ progress logged', '→ added to report card', '→ added to next deck'])
     expect(r.coverage.covered).toBe(1)
     expect(await w.db.select().from(issues)).toHaveLength(1)
     await deps.flush()
-    expect(await w.db.select().from(outbox)).toHaveLength(1)
+    expect(await w.db.select().from(outbox)).toHaveLength(0)
+    // every run, including the deferred planner, is linked to the utterance
+    const runs = await w.db.select().from(agentRuns).where(eq(agentRuns.utteranceId, r.utteranceId))
+    expect(runs.map(x => x.agent).sort()).toEqual(['planner', 'progress', 'router'])
+    const progress = runs.find(x => x.agent === 'progress')!
+    expect(progress.links).toMatchObject({ studentId: w.ss[0]!.id })
+    expect(progress.links?.noteId).toBeTruthy()
+    expect(runs.find(x => x.agent === 'planner')!.links?.diffId).toBeTruthy()
+  })
+
+  it('an urgent note drafts a parent email right away, bypassing the cooldown', async () => {
+    const w = await classWorld()
+    const leo = w.ss[1]!
+    await w.db.insert(outbox).values({ kind: 'parent_email', studentId: leo.id, toEmail: 'x@example.com', subject: 'Earlier', body: 'b', trigger: 'recurring', createdAt: new Date('2026-10-15T00:00:00Z') })
+    const deps = makeDeps(w.db, {
+      llm: fakeLlm(({ name, prompt }) => {
+        if (name === 'router') return { intents: [intent({ studentNames: ['Leo'], content: 'hit his head on the mat, sat out', skillTags: ['focus'], urgent: true })] }
+        expect(prompt).toContain('URGENT')
+        return { subject: 'Leo bumped his head', body: 'Hi, a quick note: Leo bumped his head on the mat today and sat out to rest.' }
+      }),
+    })
+    const r = await handleUtterance(deps, { sessionId: w.sessionId, drillId: null, mode: 'note', transcript: 'Leo hit his head on the mat' })
+    expect(r.cardLines).toEqual(['✓ Leo · focus', '⚠ urgent · parent note drafting'])
+    await deps.flush()
+    const mail = await w.db.select().from(outbox).where(eq(outbox.trigger, 'urgent'))
+    expect(mail).toHaveLength(1)
+    const [run] = await w.db.select().from(agentRuns).where(eq(agentRuns.agent, 'parent_email'))
+    expect(run).toMatchObject({ utteranceId: r.utteranceId, trigger: 'urgent', links: { studentId: leo.id, outboxId: mail[0]!.id } })
+  })
+
+  it('auto (non-urgent) emails respect a 30-day cooldown; explicit requests do not', async () => {
+    const w = await classWorld()
+    const priya = w.ss[0]!
+    const deps = makeDeps(w.db, { llm: fakeLlm(() => ({ subject: 'Guard update', body: 'Hi! Priya worked hard today and we are focusing on keeping her guard up.' })) })
+    expect(await draftParentEmail(deps, { studentId: priya.id, sessionId: null, trigger: { kind: 'recurring', tag: 'guard' } })).toBeTruthy()
+    expect(await draftParentEmail(deps, { studentId: priya.id, sessionId: null, trigger: { kind: 'recurring', tag: 'stance' } })).toBeNull()
+    expect(await draftParentEmail(deps, { studentId: priya.id, sessionId: null, trigger: { kind: 'request', content: 'belt test is Friday' } })).toBeTruthy()
+    expect(await w.db.select().from(outbox)).toHaveLength(2)
+    const skipped = await w.db.select().from(agentRuns).where(eq(agentRuns.reason, 'email cooldown'))
+    expect(skipped).toHaveLength(1)
+  })
+
+  it('roll call by presence marks everyone else absent', async () => {
+    const w = await classWorld()
+    const deps = makeDeps(w.db)
+    const r = await handleUtterance(deps, { sessionId: w.sessionId, drillId: null, mode: 'attendance', transcript: 'Present: Priya, Leo and Maya' })
+    expect(r.cardLines).toEqual(['3 present', 'absent: Jake, Mia'])
+    const rows = await w.db.select().from(attendance).where(eq(attendance.sessionId, w.sessionId))
+    expect(rows.filter(x => x.status === 'present')).toHaveLength(3)
+    const unclear = await handleUtterance(deps, { sessionId: w.sessionId, drillId: null, mode: 'attendance', transcript: 'only Priya and Zed are here' })
+    expect(unclear.cardLines[0]).toBe("Didn't catch: Zed")
+    const [run] = await w.db.select().from(agentRuns).where(eq(agentRuns.utteranceId, r.utteranceId))
+    expect(run).toMatchObject({ agent: 'attendance', status: 'ok' })
+  })
+
+  it('aliases on the roster resolve STT spellings', async () => {
+    const w = await classWorld()
+    await w.db.update(students).set({ aliases: ['Bree ah'] }).where(eq(students.id, w.ss[0]!.id))
+    let routerPrompt = ''
+    const deps = makeDeps(w.db, { llm: fakeLlm(({ prompt }) => { routerPrompt = prompt; return { intents: [intent({ studentNames: ['Bree ah'], content: 'sharp kicks', skillTags: ['kicks'] })] } }) })
+    const r = await handleUtterance(deps, { sessionId: w.sessionId, drillId: null, mode: 'note', transcript: 'Bree ah sharp kicks' })
+    expect(r.cardLines).toEqual(['✓ Priya · kicks'])
+    expect(routerPrompt).toContain('Priya Rao ("Bree ah")')
   })
 
   it('billing + ambiguous name in one utterance', async () => {
@@ -62,7 +125,10 @@ describe('handleUtterance', () => {
     const r = await handleUtterance(deps, { sessionId: w.sessionId, drillId: null, mode: 'note', transcript: 'Leo owes for gear urgent, Mya kicks higher' })
     expect(r.cardLines[0]).toBe('✓ Billing flag · Leo · HIGH')
     expect(r.disambiguation?.options.map(o => o.name).sort()).toEqual(['Maya Chen', 'Mia Lopez'])
-    expect(await w.db.select().from(billingFlags)).toHaveLength(1)
+    const [flag] = await w.db.select().from(billingFlags)
+    expect(flag).toBeTruthy()
+    const [run] = await w.db.select().from(agentRuns).where(eq(agentRuns.agent, 'billing'))
+    expect(run).toMatchObject({ utteranceId: r.utteranceId, links: { billingFlagId: flag!.id, studentId: w.ss[1]!.id } })
   })
 
   it('router failure saves an unassigned note', async () => {

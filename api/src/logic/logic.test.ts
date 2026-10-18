@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveName, jaroWinkler } from './names'
+import { resolveName, jaroWinkler, addAlias } from './names'
 import { parseAttendance } from './attendance'
 import { isRecurring } from './recurring'
 import { rankNextStudent } from './ranking'
@@ -32,6 +32,23 @@ describe('names', () => {
   it('returns none for unknown names', () => {
     expect(resolveName('Bob', roster)).toEqual({ kind: 'none' })
   })
+  it('scores learned aliases', () => {
+    expect(resolveName('Bree', roster)).toEqual({ kind: 'none' })
+    const learned = roster.map(r => (r.id === 's1' ? { ...r, aliases: ['Bree ah'] } : r))
+    expect(resolveName('Bree ah', learned)).toMatchObject({ kind: 'match', student: { id: 's1' } })
+  })
+  it('addAlias dedupes, skips known names and keeps the latest 10', () => {
+    const s = { name: 'Priya Rao', nickname: null, aliases: ['Bree ah'] }
+    expect(addAlias(s, 'bree ah')).toBe(s.aliases)
+    expect(addAlias(s, 'Priya')).toBe(s.aliases)
+    expect(addAlias(s, null)).toBe(s.aliases)
+    expect(addAlias(s, ' Pria ')).toEqual(['Bree ah', 'Pria'])
+    const full = { ...s, aliases: Array.from({ length: 10 }, (_, i) => `a${'x'.repeat(i)}`) }
+    const next = addAlias(full, 'Preeya')
+    expect(next).toHaveLength(10)
+    expect(next[9]).toBe('Preeya')
+    expect(next[0]).toBe('ax')
+  })
 })
 
 describe('attendance', () => {
@@ -44,6 +61,14 @@ describe('attendance', () => {
   })
   it('returns null for other speech', () => {
     expect(parseAttendance('Priya guard drops')).toBeNull()
+    expect(parseAttendance('here comes Jake')).toBeNull()
+  })
+  it('parses roll call by presence', () => {
+    expect(parseAttendance('Present: Priya, Leo, and Maya.')).toEqual({ kind: 'present', names: ['Priya', 'Leo', 'Maya'] })
+    expect(parseAttendance('here: Jake, Mia')).toEqual({ kind: 'present', names: ['Jake', 'Mia'] })
+    expect(parseAttendance('Only Jake and Mia are here')).toEqual({ kind: 'present', names: ['Jake', 'Mia'] })
+    expect(parseAttendance('only Priya is here.')).toEqual({ kind: 'present', names: ['Priya'] })
+    expect(parseAttendance('present: the kids from the morning class')).toBeNull()
   })
 })
 
@@ -91,7 +116,13 @@ describe('deckDiff', () => {
 describe('cardLines', () => {
   it('builds the recurring feedback card', () => {
     expect(buildCardLines([{ kind: 'feedback', name: 'Priya', tag: 'guard', count: 3, recurring: true }]))
-      .toEqual(['✓ Priya · guard (3rd time)', '→ progress logged', '→ parent note drafting', '→ added to next deck'])
+      .toEqual(['✓ Priya · guard (3rd time)', '→ progress logged', '→ added to report card', '→ added to next deck'])
+  })
+  it('urgent notes say so; urgent + recurring still fits 4 lines', () => {
+    expect(buildCardLines([{ kind: 'feedback', name: 'Leo', tag: 'focus', count: 1, recurring: false, urgent: true }]))
+      .toEqual(['✓ Leo · focus', '⚠ urgent · parent note drafting'])
+    expect(buildCardLines([{ kind: 'feedback', name: 'Leo', tag: 'focus', count: 3, recurring: true, urgent: true }]))
+      .toEqual(['✓ Leo · focus (3rd time)', '⚠ urgent · parent note drafting', '→ added to report card', '→ added to next deck'])
   })
   it('combines feedback and billing and caps at 4 lines', () => {
     const lines = buildCardLines([
@@ -144,7 +175,7 @@ describe('review regressions', () => {
     expect(buildCardLines([
       { kind: 'feedback', name: 'Priya', tag: 'guard', count: 3, recurring: true },
       { kind: 'billing', name: 'Leo', urgency: 'high' },
-    ])).toEqual(['✓ Priya · guard (3rd time)', '→ progress logged', '→ parent note drafting', '+1 more'])
+    ])).toEqual(['✓ Priya · guard (3rd time)', '→ progress logged', '→ added to report card', '+1 more'])
   })
   it('attendance ignores feedback sentences', () => {
     expect(parseAttendance('Everyone but Priya needs to work on guard')).toBeNull()

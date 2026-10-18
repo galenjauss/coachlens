@@ -1,5 +1,5 @@
-import { pgTable, text, integer, real, timestamp, jsonb, primaryKey, uniqueIndex } from 'drizzle-orm/pg-core'
-import type { ModeId, SkillTag, Urgency, DeckDiff, ReportCardContent } from '@matside/shared'
+import { pgTable, text, integer, real, timestamp, jsonb, primaryKey, uniqueIndex, index } from 'drizzle-orm/pg-core'
+import type { ModeId, SkillTag, Urgency, DeckDiff, ReportCardContent, AgentRunLinks } from '@matside/shared'
 
 const id = () => text('id').primaryKey().$defaultFn(() => crypto.randomUUID())
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' })
@@ -18,6 +18,7 @@ export const classes = pgTable('classes', {
 })
 export const students = pgTable('students', {
   id: id(), name: text('name').notNull(), nickname: text('nickname'), belt: text('belt').notNull(), birthYear: integer('birth_year').notNull(),
+  aliases: jsonb('aliases').$type<string[]>().notNull().default([]), // learned STT spellings, max 10
 })
 export const guardians = pgTable('guardians', {
   id: id(), studentId: text('student_id').notNull(), name: text('name').notNull(), email: text('email').notNull(),
@@ -85,6 +86,8 @@ export const outbox = pgTable('outbox', {
   subject: text('subject').notNull(), body: text('body').notNull(),
   status: text('status').$type<'pending_review' | 'sending' | 'sent' | 'skipped' | 'error'>().notNull().default('pending_review'),
   error: text('error'), sentAt: ts('sent_at'), createdAt: createdAt(),
+  // What drafted it: request | urgent | recurring | monthly (null on rows drafted before v2).
+  trigger: text('trigger'),
 })
 export const reportCards = pgTable('report_cards', {
   id: id(), studentId: text('student_id').notNull(), month: text('month').notNull(),
@@ -94,7 +97,8 @@ export const agentRuns = pgTable('agent_runs', {
   id: id(), sessionId: text('session_id'), agent: text('agent').notNull(), trigger: text('trigger').notNull(),
   summary: text('summary').notNull(), reason: text('reason').notNull(), output: jsonb('output'),
   status: text('status').$type<'ok' | 'error'>().notNull(), ms: integer('ms').notNull(), createdAt: createdAt(),
-})
+  utteranceId: text('utterance_id'), links: jsonb('links').$type<AgentRunLinks>(),
+}, t => [index('agent_runs_utterance').on(t.utteranceId), index('agent_runs_agent_created').on(t.agent, t.createdAt)])
 export const preferences = pgTable('preferences', {
   id: id(), classId: text('class_id').notNull(), text: text('text').notNull(), createdAt: createdAt(),
 })

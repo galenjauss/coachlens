@@ -31,11 +31,11 @@ export function jaroWinkler(a: string, b: string): number {
   return jaro + p * 0.1 * (1 - jaro)
 }
 
-const norm = (s: string) => s.toLowerCase().replace(/['\u2019]s\b/g, '').replace(/[^a-z\s-]/g, '').trim()
+export const norm = (s: string) => s.toLowerCase().replace(/['\u2019]s\b/g, '').replace(/[^a-z\s-]/g, '').trim()
 
 function scoreStudent(heard: string, s: RosterStudent): number {
   const h = norm(heard)
-  const candidates = [s.name, s.name.split(' ')[0] ?? s.name, s.nickname ?? ''].map(norm).filter(Boolean)
+  const candidates = [s.name, s.name.split(' ')[0] ?? s.name, s.nickname ?? '', ...(s.aliases ?? [])].map(norm).filter(Boolean)
   return Math.max(...candidates.map(c => jaroWinkler(h, c)))
 }
 
@@ -51,4 +51,17 @@ export function resolveName(heard: string, roster: RosterStudent[]): NameMatch {
   if (best.score >= AUTO_MATCH && (!second || second.score < AUTO_MATCH || best.score - second.score >= 0.05)) return { kind: 'match', student: best.s }
   if (!second || second.score < AMBIGUOUS) return { kind: 'none' }
   return { kind: 'ambiguous', options: [{ id: best.s.id, name: best.s.name }, { id: second.s.id, name: second.s.name }] }
+}
+
+/**
+ * Learn a heard spelling as an alias: deduped (case/punctuation-insensitive), skipped when it already
+ * equals the name, first name or nickname, keeping the most recent `max`.
+ */
+export function addAlias(s: { name: string; nickname: string | null; aliases: string[] }, heard: string | null, max = 10): string[] {
+  const h = heard?.trim() ?? ''
+  const key = norm(h)
+  if (!key) return s.aliases
+  const known = [s.name, s.name.split(' ')[0] ?? '', s.nickname ?? ''].map(norm)
+  if (known.includes(key) || s.aliases.some(a => norm(a) === key)) return s.aliases
+  return [...s.aliases, h.slice(0, 40)].slice(-max)
 }

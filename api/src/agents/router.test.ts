@@ -15,7 +15,7 @@ describe('router', () => {
       llm: fakeLlm(({ name, prompt }) => {
         expect(name).toBe('router')
         seenPrompt = prompt
-        return { intents: [{ type: 'feedback', studentNames: ['Priya'], content: 'guard drops', skillTags: ['guard'], urgency: null, amount: null, minutes: null, attendanceStatus: null }] }
+        return { intents: [{ type: 'feedback', studentNames: ['Priya'], content: 'guard drops', skillTags: ['guard'], urgency: null, amount: null, minutes: null, attendanceStatus: null, urgent: false }] }
       }),
     })
     const intents = await routeUtterance(deps, { sessionId: 'sess', transcript: 'Priya guard drops', roster, drillName: 'Jab drill', theme: 'Stances', mode: MODES.martial_arts })
@@ -35,6 +35,8 @@ describe('router', () => {
     expect(pt).toContain('nutrition')
     expect(routerInstructions(MODES.martial_arts)).toContain("student's parent")
     expect(routerInstructions(MODES.tutoring)).toContain('procedure')
+    expect(routerInstructions(MODES.martial_arts)).toMatch(/urgent: true ONLY for a feedback intent about an injury, a safety concern, or serious behavior/)
+    expect(routerInstructions(MODES.personal_training)).toContain('that a client should hear today')
   })
 
   it('rejects a tag from another mode (router run errors → null)', async () => {
@@ -43,7 +45,7 @@ describe('router', () => {
     const deps = makeDeps(db, {
       llm: fakeLlm(({ instructions }) => {
         seenInstructions = instructions
-        return { intents: [{ type: 'feedback', studentNames: ['Maria'], content: 'x', skillTags: ['guard'], urgency: null, amount: null, minutes: null, attendanceStatus: null }] }
+        return { intents: [{ type: 'feedback', studentNames: ['Maria'], content: 'x', skillTags: ['guard'], urgency: null, amount: null, minutes: null, attendanceStatus: null, urgent: false }] }
       }),
     })
     const r = await routeUtterance(deps, { sessionId: 's', transcript: 'Maria guard', roster: [{ id: 'm', name: 'Maria Gomez', nickname: null, belt: 'client' }], drillName: null, theme: 'Lower-body strength', mode: MODES.personal_training })

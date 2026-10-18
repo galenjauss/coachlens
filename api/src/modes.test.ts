@@ -8,12 +8,12 @@ import { MODES } from '@matside/shared'
 import { classes, decks, guardians, issues, outbox, sessions } from './db/schema'
 import { plannerInstructions } from './agents/planner'
 
-const intent = (o: Record<string, unknown>) => ({ type: 'feedback', studentNames: [], content: '', skillTags: [], urgency: null, amount: null, minutes: null, attendanceStatus: null, ...o })
+const intent = (o: Record<string, unknown>) => ({ type: 'feedback', studentNames: [], content: '', skillTags: [], urgency: null, amount: null, minutes: null, attendanceStatus: null, urgent: false, ...o })
 const ex = (name: string) => ({ name, minutes: 6, kind: 'drill', cues: ['chest up'], focusStudentIds: [], rationale: 'program block' })
 
 type Call = { name: string; prompt: string; instructions: string }
 
-async function seededApp(now?: Date) {
+async function seededApp(now?: Date, opts: { urgent?: boolean } = {}) {
   const db = await makeTestDb()
   const w = await seed(db, { today: '2026-10-17', guardianEmail: i => `inbox${i}@example.com` })
   const calls: Call[] = []
@@ -21,7 +21,7 @@ async function seededApp(now?: Date) {
     ...(now ? { now: () => now } : {}),
     llm: fakeLlm(a => {
       calls.push(a)
-      if (a.name === 'router') return { intents: [intent({ studentNames: ['Maria'], content: 'squat depth great, knees caving on the last set', skillTags: ['depth'] })] }
+      if (a.name === 'router') return { intents: [intent({ studentNames: ['Maria'], content: 'squat depth great, knees caving on the last set', skillTags: ['depth'], urgent: opts.urgent ?? false })] }
       if (a.name === 'parent_email') return { subject: 'Your squat depth', body: 'Hi Maria, you hit great depth today. We will keep working on keeping your knees out on the last set.' }
       if (a.name === 'planner.draft') return { drills: ['Bike', 'Back squat 5×5', 'RDL', 'Split squat', 'Plank', 'Sled push', 'Stretch'].map(ex) }
       if (a.name === 'planner.diff') return { added: [{ ...ex('Box squat to depth'), afterPosition: 2, reason: 'depth' }], changed: [], removed: [], rememberSuggestion: null }
@@ -104,14 +104,27 @@ describe('teaching modes over HTTP', () => {
     expect(ti).toContain('No grade guarantees')
   })
 
-  it("PT recurring flow: Maria's 3rd depth note → recurring + email draft addressed to the client", async () => {
+  it("PT recurring flow: Maria's 3rd depth note → recurring + next plan, no email", async () => {
     const { app, h, db, w, deps, calls } = await seededApp()
     const start = (await (await app.request('/v1/sessions', { method: 'POST', headers: h, body: JSON.stringify({ classId: w.classIds.pt }) })).json()) as { sessionId: string }
     const form = new FormData()
     form.set('sessionId', start.sessionId); form.set('mode', 'note'); form.set('text', "Maria's squat depth was great, knees caving on the last set")
     const u = await app.request('/v1/utterance', { method: 'POST', headers: { Authorization: h.Authorization }, body: form })
+    expect(((await u.json()) as { cardLines: string[] }).cardLines).toEqual(['✓ Maria · depth (3rd time)', '→ progress logged', '→ added to report card', '→ added to next deck'])
+    await deps.flush()
+    expect(await db.select().from(outbox).where(eq(outbox.studentId, w.mariaId))).toHaveLength(0)
+    expect(calls.some(c => c.name === 'parent_email')).toBe(false)
+    expect(calls.some(c => c.name === 'planner.diff')).toBe(true)
+  })
+
+  it("PT urgent note: email draft addressed to the client", async () => {
+    const { app, h, db, w, deps, calls } = await seededApp(undefined, { urgent: true })
+    const start = (await (await app.request('/v1/sessions', { method: 'POST', headers: h, body: JSON.stringify({ classId: w.classIds.pt }) })).json()) as { sessionId: string }
+    const form = new FormData()
+    form.set('sessionId', start.sessionId); form.set('mode', 'note'); form.set('text', "Maria's squat depth was great, knees caving on the last set")
+    const u = await app.request('/v1/utterance', { method: 'POST', headers: { Authorization: h.Authorization }, body: form })
     expect(u.status).toBe(200)
-    expect(((await u.json()) as { cardLines: string[] }).cardLines).toEqual(['✓ Maria · depth (3rd time)', '→ progress logged', '→ parent note drafting', '→ added to next deck'])
+    expect(((await u.json()) as { cardLines: string[] }).cardLines).toEqual(['✓ Maria · depth (3rd time)', '⚠ urgent · parent note drafting', '→ added to report card', '→ added to next deck'])
     const router = calls.find(c => c.name === 'router')!
     expect(router.instructions).toContain('depth')
     expect(router.instructions).not.toContain('guard')
@@ -120,7 +133,7 @@ describe('teaching modes over HTTP', () => {
     const [mail] = await db.select().from(outbox).where(eq(outbox.studentId, w.mariaId))
     const [g] = await db.select().from(guardians).where(eq(guardians.studentId, w.mariaId))
     expect(g!.name).toBe('Maria Gomez')
-    expect(mail).toMatchObject({ kind: 'parent_email', status: 'pending_review', toEmail: g!.email })
+    expect(mail).toMatchObject({ kind: 'parent_email', status: 'pending_review', toEmail: g!.email, trigger: 'urgent' })
     const email = calls.find(c => c.name === 'parent_email')!
     expect(email.instructions).toMatch(/second person/i)
     expect(email.instructions).toContain('nutrition')

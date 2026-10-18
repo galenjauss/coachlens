@@ -16,25 +16,31 @@ Split the coach's spoken utterance into one or more intents. Output every field;
 ${contactLine(mode)}
 - add_drill: adding a ${mode.planItem} to TODAY's ${mode.planUnit.toLowerCase()}. content = ${mode.planItem} name; minutes if spoken.
 - Injuries or pain: record only as a feedback observation (no diagnosis, no advice).
+- urgent: true ONLY for a feedback intent about an injury, a safety concern, or serious behavior (e.g. hitting, bullying, leaving without permission) that a ${mode.recipient === 'client' ? mode.person : 'parent'} should hear today. Everything else, including every non-feedback intent and ordinary corrections or praise, is urgent: false.
 - ${mode.guardrails}
 - One utterance can hold several intents, e.g. feedback for two ${mode.people} plus a billing note.`
 }
 
+const rosterEntry = (s: RosterStudent) => {
+  const also = [s.nickname, ...(s.aliases ?? [])].filter(Boolean).map(x => `"${x}"`)
+  return also.length ? `${s.name} (${also.join(', ')})` : s.name
+}
+
 export async function routeUtterance(
   deps: Deps,
-  a: { sessionId: string; transcript: string; roster: RosterStudent[]; drillName: string | null; theme: string; mode: ModeConfig },
+  a: { sessionId: string; utteranceId?: string | null; transcript: string; roster: RosterStudent[]; drillName: string | null; theme: string; mode: ModeConfig },
 ): Promise<Intent[] | null> {
   const prompt = [
-    `Roster: ${a.roster.map(s => (s.nickname ? `${s.name} ("${s.nickname}")` : s.name)).join('; ')}`,
+    `Roster: ${a.roster.map(rosterEntry).join('; ')}`,
     `Current ${a.mode.planItem}: ${a.drillName ?? 'none'}`,
     `${a.mode.weeklyLabel}: ${a.theme}`,
     `Utterance: """${a.transcript}"""`,
   ].join('\n')
-  return withRun(deps, { agent: 'router', trigger: 'utterance', sessionId: a.sessionId }, async () => {
+  return withRun(deps, { agent: 'router', trigger: 'utterance', sessionId: a.sessionId, utteranceId: a.utteranceId ?? null }, async () => {
     const out = await deps.llm.object({ name: 'router', instructions: routerInstructions(a.mode), prompt, schema: routerOutputFor(a.mode.id) })
     return {
       result: out.intents,
-      summary: `Sorted "${a.transcript.slice(0, 60)}" into ${out.intents.map(i => i.type).join(', ') || 'nothing'}`,
+      summary: `Sorted "${a.transcript.slice(0, 60)}" into ${out.intents.map(i => (i.urgent ? `${i.type} (urgent)` : i.type)).join(', ') || 'nothing'}`,
       reason: `${out.intents.length} intent(s)`,
       output: out,
     }

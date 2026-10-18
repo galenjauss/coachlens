@@ -5,7 +5,7 @@ import type { Deps } from '../deps'
 import { agentRuns, attendance, drills, issues, notes, outbox, reportCards, students } from '../db/schema'
 
 export async function listStudents(db: Db): Promise<RosterStudent[]> {
-  return db.select({ id: students.id, name: students.name, nickname: students.nickname, belt: students.belt }).from(students).orderBy(asc(students.name))
+  return db.select({ id: students.id, name: students.name, nickname: students.nickname, belt: students.belt, aliases: students.aliases }).from(students).orderBy(asc(students.name))
 }
 
 export async function getStudentDetail(deps: Deps, id: string): Promise<StudentDetail> {

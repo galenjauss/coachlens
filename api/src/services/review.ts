@@ -41,7 +41,7 @@ export async function approveOutbox(deps: Deps, id: string, edits: { subject?: s
   const body = edits.body ?? row.body
   const to = deps.env.demoEmailOverride ?? row.toEmail
   let sendError: string | null = null
-  await withRun(deps, { agent: 'mailer', trigger: 'approved', sessionId: row.sessionId }, async () => {
+  await withRun(deps, { agent: 'mailer', trigger: 'approved', sessionId: row.sessionId, links: { outboxId: id, studentId: row.studentId } }, async () => {
     try {
       await deps.mail.send({ to, subject, text: body })
     } catch (e) {

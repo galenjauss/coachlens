@@ -23,14 +23,14 @@ export function reportCardInstructions(mode: ModeConfig): string {
 - ${mode.guardrails}`
 }
 
-const Out = z.object({ content: ReportCardContent, subject: z.string().min(3).max(80), body: z.string().min(60) })
+export const ReportCardOut = z.object({ content: ReportCardContent, subject: z.string().min(3).max(80), body: z.string().min(60) })
 const DAY = 86_400_000
 
 export async function draftReportCard(deps: Deps, studentId: string, month: string): Promise<string | null> {
   const { db } = deps
   const [existing] = await db.select().from(reportCards).where(and(eq(reportCards.studentId, studentId), eq(reportCards.month, month)))
   if (existing) return existing.outboxId
-  return withRun(deps, { agent: 'report_card', trigger: 'monthly', sessionId: null }, async () => {
+  return withRun(deps, { agent: 'report_card', trigger: 'monthly', sessionId: null, links: { studentId } }, async () => {
     const [s] = await db.select().from(students).where(eq(students.id, studentId))
     const [g] = await db.select().from(guardians).where(eq(guardians.studentId, studentId))
     if (!s || !g) throw new Error(`no student/guardian ${studentId}`)
@@ -50,16 +50,16 @@ export async function draftReportCard(deps: Deps, studentId: string, month: stri
       `Classes attended in the last 30 days (recorded): ${present?.n ?? 0}`, `Open focus areas: ${open.map(o => o.tag).join(', ') || 'none'}`,
       'Coach notes:', ...recent.map(r => `- ${r.at.toISOString().slice(0, 10)} [${r.drill ?? 'class'}] ${r.text}`),
     ].join('\n')
-    const out = await deps.llm.object({ name: 'report_card', instructions: reportCardInstructions(mode), prompt, schema: Out })
-    const [o] = await db.insert(outbox).values({ kind: 'report_card', studentId, toEmail: g.email, subject: out.subject, body: out.body }).returning()
+    const out = await deps.llm.object({ name: 'report_card', instructions: reportCardInstructions(mode), prompt, schema: ReportCardOut })
+    const [o] = await db.insert(outbox).values({ kind: 'report_card', studentId, toEmail: g.email, subject: out.subject, body: out.body, trigger: 'monthly' }).returning()
     const won = await db.insert(reportCards).values({ studentId, month, content: out.content, outboxId: o!.id }).onConflictDoNothing().returning()
     if (won.length === 0) {
       // A concurrent run drafted this month first: discard our outbox row, return theirs.
       await db.delete(outbox).where(eq(outbox.id, o!.id))
       const [theirs] = await db.select().from(reportCards).where(and(eq(reportCards.studentId, studentId), eq(reportCards.month, month)))
-      return { result: theirs!.outboxId, summary: `Report card for ${firstName} already drafted for ${month}`, reason: 'concurrent run won', output: out.content }
+      return { result: theirs!.outboxId, summary: `Report card for ${firstName} already drafted for ${month}`, reason: 'concurrent run won', output: out.content, links: { outboxId: theirs!.outboxId } }
     }
-    return { result: o!.id, summary: `Drafted ${month} report card for ${firstName}`, reason: `${recent.length} notes, ${present?.n ?? 0} classes`, output: out.content }
+    return { result: o!.id, summary: `Drafted ${month} report card for ${firstName}`, reason: `${recent.length} notes, ${present?.n ?? 0} classes`, output: out.content, links: { outboxId: o!.id } }
   })
 }
 

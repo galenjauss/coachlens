@@ -14,7 +14,7 @@ async function setup() {
   await db.insert(curriculum).values({ weekStart: '2026-10-19', theme: 'Stances', formsDue: ['Kata 2'] })
   const [d] = await db.insert(decks).values({ classId: c!.id, forDate: '2026-10-19' }).returning()
   const [dr] = await db.insert(drills).values({ deckId: d!.id, position: 1, name: 'Horse stance holds', minutes: 4, kind: 'drill' }).returning()
-  const deps = makeDeps(db, { llm: fakeLlm(() => ({ intents: [{ type: 'feedback', studentNames: ['Priya'], content: 'great stance', skillTags: ['stance'], urgency: null, amount: null, minutes: null, attendanceStatus: null }] })) })
+  const deps = makeDeps(db, { llm: fakeLlm(() => ({ intents: [{ type: 'feedback', studentNames: ['Priya'], content: 'great stance', skillTags: ['stance'], urgency: null, amount: null, minutes: null, attendanceStatus: null, urgent: false }] })) })
   const app = createApp(deps)
   const pair = await app.request('/pair', { method: 'POST', body: JSON.stringify({ code: '4242' }), headers: { 'Content-Type': 'application/json' } })
   const { token } = (await pair.json()) as { token: string }
