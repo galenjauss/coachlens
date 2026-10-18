@@ -19,6 +19,12 @@ const QX: Record<string, string> = {
   tutoring: '"how\'s Noah doing?" or "what did I say about Zoe last week?" -> student_query',
 }
 
+const AX: Record<string, string> = {
+  martial_arts: '"who is forgetting to keep their guard up?", "who hasn\'t gotten feedback today?", "who\'s closest to testing?", "how many are here?"',
+  personal_training: '"who\'s been missing sessions?", "who hit a PR this week?", "who needs work on depth?", "what should I focus on next exercise?"',
+  tutoring: '"who\'s struggling with procedure?", "who hasn\'t gotten feedback today?", "whose grades dropped?", "how many are here?"',
+}
+
 export function routerInstructions(mode: ModeConfig, terms: readonly string[] = []): string {
   return `You are the intake router for CoachLens, a voice assistant used by a coach while teaching a ${mode.label.toLowerCase()} class of ${mode.people}.
 Split the coach's spoken utterance into one or more intents. Output every field; use [] or null when unused.
@@ -30,6 +36,7 @@ ${contactLine(mode)}
 - add_drill: adding a ${mode.planItem} to TODAY's ${mode.planUnit.toLowerCase()}. content = ${mode.planItem} name; minutes if spoken.
 - metric: a measurable result for ONE ${mode.person}: a rank/belt, a lift or weight, a score or grade. studentNames = who. metricKey = a short lower-case word (rank, deadlift, squat, bench, test, quiz, or the coach's own word). metricValue = the reading as said ("225 lb", "Unit 3 test", "yellow"). metricNum = the number if any, else null. metricUnit = lb, kg, % etc. or null; grades are percents (metricUnit "%"). For rank use metricKey "rank", metricValue = the new rank, and metricSince = the date in YYYY-MM-DD only if the coach says when it began (resolve months against Today); else null. Set metricKey, metricValue, metricNum, metricUnit, metricSince to null on every other intent. Examples: ${EX[mode.id]}. content = the sentence, lightly cleaned. Observations without a number are feedback, not metric.
 - student_query: the coach ASKS about a ${mode.person} (how they are doing, what was said about them, their rank or last result); no change is requested. studentNames = who. Examples: ${QX[mode.id]}.
+- question: the coach ASKS something about the whole class, a group, or the ${mode.planUnit.toLowerCase()} (who needs what, who is here, who got feedback, what to focus on); no change is requested. question = the question, restated briefly. studentNames = []. Examples: ${AX[mode.id]}. A question about ONE named ${mode.person} is student_query, not question. Set question to null on every other intent.
 - Injuries or pain: record only as a feedback observation (no diagnosis, no advice).
 - urgent: true ONLY for a feedback intent about an injury, a safety concern, or serious behavior (e.g. hitting, bullying, leaving without permission) that a ${mode.recipient === 'client' ? mode.person : 'parent'} should hear today. Everything else, including every non-feedback intent and ordinary corrections or praise, is urgent: false.
 - ${mode.guardrails}

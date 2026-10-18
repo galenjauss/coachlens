@@ -11,7 +11,7 @@ export type SkillTag = z.infer<typeof SkillTag>
 export const Urgency = z.enum(['low', 'med', 'high'])
 export type Urgency = z.infer<typeof Urgency>
 
-export const IntentType = z.enum(['feedback', 'attendance', 'billing', 'plan_request', 'parent_message', 'add_drill', 'metric', 'student_query'])
+export const IntentType = z.enum(['feedback', 'attendance', 'billing', 'plan_request', 'parent_message', 'add_drill', 'metric', 'student_query', 'question'])
 export type IntentType = z.infer<typeof IntentType>
 
 // Core fields are required and nullable/array for LLM structured output; the metric* fields are nullish so older callers still parse.
@@ -40,6 +40,8 @@ const intentShape = <T extends z.ZodType<string>>(tag: T) => z.object({
   metricUnit: z.string().max(12).nullish(),
   /** A rank change with a date ("yellow belt since March"): YYYY-MM-DD resolved against today's date. */
   metricSince: z.string().nullish(),
+  /** question intents: the coach's question about the class, restated (nullish so older transports still parse). */
+  question: z.string().nullish(),
 })
 export const Intent = intentShape(SkillTag)
 export type Intent = z.infer<typeof Intent>
@@ -129,6 +131,8 @@ export const BRIEF_LINES_MAX = 5
 /** A glanceable student summary for the lens: ≤5 lines of ≤38 chars. */
 export const Brief = z.object({ name: z.string(), lines: z.array(z.string().max(BRIEF_LINE_MAX)).max(BRIEF_LINES_MAX) })
 export type Brief = z.infer<typeof Brief>
+/** Brief.name of a class-question answer: the lens titles it ANSWER instead of a student name. */
+export const ANSWER_BRIEF_NAME = 'Answer'
 
 export const UtteranceResponse = z.object({
   utteranceId: z.string(),
@@ -139,6 +143,8 @@ export const UtteranceResponse = z.object({
   disambiguation: Disambiguation.nullable(),
   /** Present for a student_query: the lens shows it in place of the agent-progress column. */
   brief: Brief.nullish(),
+  /** True when this utterance changed attendance (roll call or a voice "mark present"): the lens polls insights right away. */
+  attendanceChanged: z.boolean().optional(),
 })
 export type UtteranceResponse = z.infer<typeof UtteranceResponse>
 

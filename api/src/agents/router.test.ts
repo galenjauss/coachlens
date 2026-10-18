@@ -55,6 +55,16 @@ describe('router', () => {
     expect(run).toMatchObject({ agent: 'router', status: 'error' })
   })
 
+  it('parses a class question intent (question field nullish elsewhere) and teaches it in every mode', async () => {
+    const db = await makeTestDb()
+    const q = { type: 'question', studentNames: [], content: 'who is forgetting to keep their guard up?', skillTags: ['guard'], urgency: null, amount: null, minutes: null, attendanceStatus: null, urgent: false, question: 'Who keeps dropping their guard?' }
+    const deps = makeDeps(db, { llm: fakeLlm(() => ({ intents: [q] })) })
+    const intents = await routeUtterance(deps, { sessionId: 's', transcript: q.content, roster, drillName: null, theme: 'Stances', mode: MODES.martial_arts })
+    expect(intents).toEqual([expect.objectContaining({ type: 'question', question: 'Who keeps dropping their guard?' })])
+    for (const m of Object.values(MODES)) expect(routerInstructions(m)).toMatch(/- question: the coach ASKS something about the whole class/)
+    expect(routerInstructions(MODES.martial_arts)).toContain('who is forgetting to keep their guard up?')
+  })
+
   it('withRun records errors and returns null', async () => {
     const db = await makeTestDb()
     const deps = makeDeps(db)

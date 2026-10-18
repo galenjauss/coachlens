@@ -1,4 +1,5 @@
 import type { Autonomy, SkillTag, Urgency } from '@matside/shared'
+import { clip as clipWords } from './text'
 
 export type CardAction =
   | { kind: 'feedback'; name: string; tag: SkillTag | null; count: number; recurring: boolean; urgent?: boolean; deck?: Autonomy; mail?: Autonomy }
@@ -11,6 +12,8 @@ export type CardAction =
   | { kind: 'metric'; name: string; text: string }
   | { kind: 'metric_off' }
   | { kind: 'student_query'; name: string }
+  | { kind: 'question'; question: string }
+  | { kind: 'answer_failed' }
   | { kind: 'unassigned' }
   | { kind: 'urgent_unassigned' }
   | { kind: 'saved_unsorted' }
@@ -41,6 +44,8 @@ function linesFor(a: CardAction): string[] {
     case 'metric': return [`✓ ${a.name} · ${a.text}`]
     case 'metric_off': return ['● Progress logging off · not saved']
     case 'student_query': return [`${a.name} · see profile`]
+    case 'question': return [clipWords(`? ${a.question}`, MAX_CHARS)]
+    case 'answer_failed': return ["● Couldn't answer · try again"]
     case 'unassigned': return ['● Saved · pick student in Review']
     case 'urgent_unassigned': return ['⚠ urgent · pick student']
     case 'saved_unsorted': return ['● Saved · sorting failed, see Review']

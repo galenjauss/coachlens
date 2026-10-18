@@ -17,5 +17,10 @@
   {"t": "Leo's been a yellow belt since March", "types": ["metric"], "names": ["Leo"]},
   {"t": "Ava got a nine out of ten on her kata", "types": ["metric"], "names": ["Ava"]},
   {"t": "How's Priya doing?", "types": ["student_query"], "names": ["Priya"]},
-  {"t": "What did I say about Sam last week?", "types": ["student_query"], "names": ["Sam"]}
+  {"t": "What did I say about Sam last week?", "types": ["student_query"], "names": ["Sam"]},
+  {"t": "Who is forgetting to keep their guard up?", "types": ["question"], "names": []},
+  {"t": "Who hasn't gotten feedback today?", "types": ["question"], "names": []},
+  {"t": "How many are here?", "types": ["question"], "names": []},
+  {"t": "Who's closest to testing for their next belt?", "types": ["question"], "names": []},
+  {"t": "What should I focus on next drill?", "types": ["question"], "names": []}
 ]

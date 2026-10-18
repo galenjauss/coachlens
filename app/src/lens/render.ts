@@ -1,4 +1,4 @@
-import type { Insight, WrapUp } from '@matside/shared'
+import { ANSWER_BRIEF_NAME, type Insight, type WrapUp } from '@matside/shared'
 import { INSIGHT_GLYPH, QUEUED_GLYPH } from '../config'
 import { progressLines } from './agentRuns'
 import { SAID_COLS, SAID_LINES, clip, clipWithSuffix, classHeader, colsFor, fitNames, paginate, rowsFor, transcriptPages, wrap } from './text'
@@ -201,6 +201,9 @@ export function cardPageCount(cd: Pick<Card, 'transcript' | 'brief'>): number {
   return (cd.brief ? 1 : 0) + transcriptPages(cd.transcript).length
 }
 
+/** Header over a class-question answer (the brief named ANSWER_BRIEF_NAME) instead of a student name. */
+export const ANSWER_HEADER = 'ANSWER'
+
 /** Bottom hint on the brief page: swipe goes on to what the coach said. */
 export const BRIEF_HINT = 'swipe: what you said'
 
@@ -221,7 +224,7 @@ function card(s: LensState, now: number): PageSpec {
   const said = brief && onBrief ? brief.lines.flatMap(l => wrap(l, SAID_COLS)).slice(0, SAID_LINES) : pages[page - (brief ? 1 : 0)]!
   const progress = onBrief ? [BRIEF_HINT] : cd ? wrap((cd.provisional ? [SORTING_LINE] : progressLines(cd)).join(' · '), SAID_COLS, 2) : []
   const bottom = [...progress, cd?.provisional ? 'tap: close' : 'tap: close · 2×: undo'].slice(0, 2)
-  const title = brief && onBrief ? brief.name : cd?.lines[0] ?? c.drillHeader
+  const title = brief && onBrief ? (brief.name === ANSWER_BRIEF_NAME ? ANSWER_HEADER : brief.name) : cd?.lines[0] ?? c.drillHeader
   return { key: 'card', list: null, texts: [
     t(1, 'hdr', 0, 0, W, 40, clip(`${pageTag}${title}`, FULL)),
     t(2, 'said', 0, 44, W, 164, said.join('\n'), { border: true, capture: true }),

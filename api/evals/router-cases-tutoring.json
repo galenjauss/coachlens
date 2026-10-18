@@ -6,5 +6,7 @@
   {"t": "Zoe explained her reasoning really clearly at the board", "types": ["feedback"], "names": ["Zoe"], "tags": ["reasoning"]},
   {"t": "Sam got an 88 on the unit test", "types": ["metric"], "names": ["Sam"]},
   {"t": "Zoe scored 72 on the fractions quiz", "types": ["metric"], "names": ["Zoe"]},
-  {"t": "What did I say about Noah last week?", "types": ["student_query"], "names": ["Noah"]}
+  {"t": "What did I say about Noah last week?", "types": ["student_query"], "names": ["Noah"]},
+  {"t": "Who's struggling with procedure?", "types": ["question"], "names": []},
+  {"t": "Who hasn't gotten feedback today?", "types": ["question"], "names": []}
 ]

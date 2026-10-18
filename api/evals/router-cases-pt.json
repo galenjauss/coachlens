@@ -6,5 +6,7 @@
   {"t": "Lena rushed the tempo on her lunges, slow it down next set", "types": ["feedback"], "names": ["Lena"], "tags": ["tempo"]},
   {"t": "Maria hit 225 on deadlift", "types": ["metric"], "names": ["Maria"]},
   {"t": "Tom squatted 185 for five today", "types": ["metric"], "names": ["Tom"]},
-  {"t": "How's Lena doing?", "types": ["student_query"], "names": ["Lena"]}
+  {"t": "How's Lena doing?", "types": ["student_query"], "names": ["Lena"]},
+  {"t": "Who's been missing sessions lately?", "types": ["question"], "names": []},
+  {"t": "Who needs the most work on depth?", "types": ["question"], "names": []}
 ]

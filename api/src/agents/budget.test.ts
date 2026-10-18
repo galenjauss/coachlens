@@ -33,9 +33,10 @@ describe('daily AI budget', () => {
 })
 
 describe('anthropicLlm', () => {
-  it('routes the router to the fast model and every other agent to the smart model', () => {
+  it('routes the router and the class-question answer to the fast model and every other agent to the smart model', () => {
     const opts = { fast: 'f-model', smart: 's-model' }
     expect(modelFor('router', opts)).toBe('f-model')
+    expect(modelFor('answer', opts)).toBe('f-model')
     for (const name of ['planner.draft', 'planner.diff', 'planner.alternatives', 'parent_email', 'report_card']) expect(modelFor(name, opts)).toBe('s-model')
     expect(MODEL_FAST).toBe('claude-haiku-5-5')
     expect(MODEL_SMART).toBe('claude-sonnet-5-5')

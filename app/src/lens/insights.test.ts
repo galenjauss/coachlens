@@ -3,7 +3,7 @@ import type { Insight, Today } from '@matside/shared'
 import { INSIGHT_BANNER_MS, INSIGHT_GLYPH } from '../config'
 import { topInsight } from './insights'
 import { BANNER_HIDDEN, STATUS_MS, initialState, reduce } from './reducer'
-import { BRIEF_HINT, INSIGHT_HINT, remindHint, render, summaryRow, type PageSpec } from './render'
+import { ANSWER_HEADER, BRIEF_HINT, INSIGHT_HINT, remindHint, render, summaryRow, type PageSpec } from './render'
 import type { Card, LensEvent, LensState } from './state'
 import { colsFor, fitNames, rowsFor } from './text'
 
@@ -238,6 +238,22 @@ describe('student brief on the agent card', () => {
     expect(st.card?.brief).toBeNull()
     expect(txt(render(st, 0), 'said')).toBe('"how is Jake doing"')
     expect(reduce(st, { type: 'swipeDown' }).state).toBe(st)
+  })
+})
+
+describe('class-question answer on the agent card', () => {
+  const answer = { name: 'Answer', lines: ['Guard: Priya (3), Leo (2), Sam (1)'] }
+  const res = { utteranceId: 'u2', transcript: 'who is forgetting to keep their guard up', cardLines: ['? Who is forgetting to keep their…'], coverage: { covered: 3, present: 12 }, nextStudent: null, disambiguation: null, brief: answer }
+  const sending: LensState = { ...peekState, screen: 'sending', pending: { mode: 'note', returnTo: 'peek', viaLongPress: false, at: 0 } }
+  it('the brief page is headed ANSWER (not a student name); swipe still reaches the transcript', () => {
+    let st = run(sending, { type: 'utteranceResult', res }).state
+    let p = render(st, 0)
+    expect(txt(p, 'hdr')).toBe(`1/2 swipe · ${ANSWER_HEADER}`)
+    expect(txt(p, 'said')).toBe('Guard: Priya (3), Leo (2), Sam (1)')
+    expect(txt(p, 'agents')).toBe(`${BRIEF_HINT}\ntap: close · 2×: undo`)
+    st = run(st, { type: 'swipeDown' }).state
+    p = render(st, 0)
+    expect(txt(p, 'hdr')).toMatch(/^2\/2 swipe · \? Who is forgetting/)
   })
 })
 

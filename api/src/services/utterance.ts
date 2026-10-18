@@ -1,6 +1,6 @@
 import { clampMinutes, clip, NAME_MAX } from '../logic/planNormalize'
 import { and, eq, gte, sql } from 'drizzle-orm'
-import { isRealDate, type Brief, type Disambiguation, type Intent, type UtteranceResponse } from '@matside/shared'
+import { ANSWER_BRIEF_NAME, isRealDate, type Brief, type Disambiguation, type Intent, type UtteranceResponse } from '@matside/shared'
 import type { Deps } from '../deps'
 import { attendance, billingFlags, drills, issues, notes, students, utterances } from '../db/schema'
 import { routeUtterance } from '../agents/router'
@@ -18,6 +18,7 @@ import { isGradeMetric, metricPhrase, normalizeKey, shortDate } from '../logic/m
 import { localDate } from '../logic/dates'
 import { coverageAndNext, loadSessionContext, markPresent, type SessionContext } from './context'
 import { insightsOnAttendance } from './insights'
+import { answerQuestion } from '../agents/answer'
 
 const DAY = 86_400_000
 const first = (name: string) => name.split(' ')[0]!
@@ -52,6 +53,7 @@ export async function handleUtterance(
     }
   }
   const { coverage, next } = await coverageAndNext(db, ctx, deps.now())
+  const attendanceChanged = actions.some(a => a.kind === 'attendance' || a.kind === 'marked')
   return {
     utteranceId,
     transcript: input.transcript,
@@ -60,6 +62,7 @@ export async function handleUtterance(
     nextStudent: next,
     disambiguation,
     ...(brief ? { brief } : {}),
+    ...(attendanceChanged ? { attendanceChanged: true } : {}),
   }
 }
 
@@ -108,6 +111,7 @@ async function applyIntent(deps: Deps, ctx: SessionContext, utteranceId: string,
     case 'billing': return applyBilling(deps, ctx, utteranceId, intent)
     case 'metric': return applyMetric(deps, ctx, utteranceId, intent)
     case 'student_query': return applyStudentQuery(deps, ctx, utteranceId, intent)
+    case 'question': return applyQuestion(deps, ctx, utteranceId, intent)
     case 'attendance': return applyAttendanceIntent(deps, ctx, utteranceId, intent)
     case 'plan_request': {
       safeDefer(deps, 'plan_request', (async () => {
@@ -298,4 +302,12 @@ async function applyStudentQuery(deps: Deps, ctx: SessionContext, utteranceId: s
   }))
   if (!brief) return { actions: [{ kind: 'name_unclear', name: first(m.student.name) }], disambiguation: null }
   return { actions: [{ kind: 'student_query', name: first(m.student.name) }], disambiguation: null, brief }
+}
+
+/** "Who is forgetting to keep their guard up?": no writes; the answer rides the brief field (titled ANSWER on the lens). */
+async function applyQuestion(deps: Deps, ctx: SessionContext, utteranceId: string, intent: Intent): Promise<Applied> {
+  const question = (intent.question?.trim() || intent.content.trim() || 'question')
+  const lines = await answerQuestion(deps, { sessionId: ctx.sessionId, drillId: ctx.drill?.id ?? null, utteranceId, question })
+  if (!lines) return { actions: [{ kind: 'answer_failed' }], disambiguation: null }
+  return { actions: [{ kind: 'question', question }], disambiguation: null, brief: { name: ANSWER_BRIEF_NAME, lines } }
 }
