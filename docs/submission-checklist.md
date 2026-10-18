@@ -4,6 +4,9 @@
 
 ## 1. Devpost (LA Hacks, deadline Sun 12:00 PM PT)
 
+**Draft:** https://devpost.com/submit-to/30323-ai-hackathon-2026-by-la-hacks/manage/submissions/1244478-coachlens (AI Hackathon 2026 by LA Hacks). It is filled in except: the video link, the two attestation checkboxes, the ASI:One handle, and the final Terms checkbox and Submit. NOT submitted.
+
+
 | Field | Ready | Source |
 |---|---|---|
 | Project name | CoachLens | |
