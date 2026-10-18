@@ -17,7 +17,7 @@
 | GitHub repo | https://github.com/galenjauss/coachlens | public |
 | Challenge | ✅ Select **Even Realities** | 👤 |
 | Even Hub app name | **CoachLens** | |
-| Demo video (2–3 min, shows G2 view) | ✅ final cut: `video/out/coachlens-launch-v3.1-web.mp4` (2:30, 28 MB) | 👤 upload to YouTube/Vimeo, paste the link into Devpost |
+| Demo video (2–3 min, shows G2 view) | ✅ final cut: `video/out/coachlens-launch-v3.2-web.mp4` (2:30, 27.5 MB) | 👤 upload to YouTube/Vimeo, paste the link into Devpost |
 | Try it | Beta build on Even Hub; README "Install and run on G2" | |
 | Team present at judging | 👤 | |
 
