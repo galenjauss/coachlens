@@ -96,7 +96,7 @@ The simplest, safest option is to replace the whole story with the new [`docs/de
 - Left unchanged on purpose, for you to decide:
   - Quiet scene `dark until it matters.` describes the **Quiet display mode in source** (idle display hides after 8 s), not the deployed build, which keeps the drill and timer visible. Keep it only once Quiet mode is deployed, or accept that it describes the next version.
   - Originality scene `until now.` still implies a world first; consider removing or rewording it (for example `in our survey.`) on the next render.
-- Voiceover in v3.3, if it says "hands free", "two seconds later" or "the first Even Hub app for coaches and teachers": these remain in the uploaded audio until the next render. The corrected lines are in [`demo-script.md`](demo-script.md).
+- The film has no voiceover (music and on-screen text only). Its on-screen claims are fixed in v3.4: `video/out/coachlens-launch-v3.4-web.mp4`, rendered locally on Oct 18 and not uploaded. The tagline is at 0:19, the originality text at 1:45 and the store line at 2:21. To replace the published video, upload v3.4 and swap the Devpost video link.
 - YouTube description (add as the first lines):
   > CoachLens, an Even Realities G2 app for instructors (LA Hacks 2026). Submitted to the Even Hub store; in review. The film sequences real simulator renders at authored timings; it is not a latency measurement. Demo students are synthetic.
 
