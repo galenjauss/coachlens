@@ -1,11 +1,10 @@
 import { Audio } from '@remotion/media'
 import { Sequence, staticFile, useCurrentFrame } from 'remotion'
 import { lin } from '../lib/anim'
-import { CUES, type Cue, FINALE_AT, FINALE_TRACK_OFFSET, FPS, SECTIONS } from '../timeline'
+import { CUES, type Cue, FPS, MUSIC_JUMP_AT, MUSIC_JUMP_TO_SEC, SECTIONS } from '../timeline'
 import { IMPACTS, SFX } from './sfx'
 
 const MAIN_GAIN = 0.46
-const FINALE_GAIN = 0.74
 /** Overall SFX trim so the mix peaks under -1 dBFS (measured with scripts/audio-check.mjs). */
 const SFX_TRIM = 0.8
 const IMPACT_FRAMES = CUES.filter(c => IMPACTS.includes(c.s)).map(c => c.f)
@@ -17,17 +16,24 @@ const duck = (f: number): number => {
   return hit * quiet
 }
 
+const MAIN = 'audio/music/main-minimal-techno-120bpm.mp3'
+/** Frames of crossfade at the jump (centred on the bar line, so no click and no audible seam). */
+const XF = 3
+
+/** Film 0→124 s: the track from the top. */
 function MainMusic() {
   const f = useCurrentFrame()
-  const fadeOut = lin(f, [FINALE_AT - 4, FINALE_AT + 2], [1, 0])
-  return <Audio src={staticFile('audio/music/main-minimal-techno-120bpm.mp3')} volume={MAIN_GAIN * duck(f) * fadeOut} />
+  const out = lin(f, [MUSIC_JUMP_AT, MUSIC_JUMP_AT + XF], [1, 0])
+  return <Audio src={staticFile(MAIN)} volume={MAIN_GAIN * duck(f) * out} />
 }
 
-function FinaleMusic() {
+/** Film 124→150 s: the same track from its drop phrase (track 104 s, a bar and phrase line). */
+function DropMusic() {
   const f = useCurrentFrame()
-  const g = FINALE_AT + f
-  const fade = lin(g, [SECTIONS.close.from + 30, SECTIONS.close.to - 2], [1, 0])
-  return <Audio src={staticFile('audio/music/finale-pick-it-up-175bpm.mp3')} trimBefore={Math.round(FINALE_TRACK_OFFSET * FPS)} volume={FINALE_GAIN * duck(g) * fade} />
+  const g = MUSIC_JUMP_AT - XF + f
+  const fadeIn = lin(g, [MUSIC_JUMP_AT - XF, MUSIC_JUMP_AT], [0, 1])
+  const fadeOut = lin(g, [SECTIONS.close.to - 45, SECTIONS.close.to - 1], [1, 0])
+  return <Audio src={staticFile(MAIN)} trimBefore={MUSIC_JUMP_TO_SEC * FPS - XF} volume={MAIN_GAIN * duck(g) * fadeIn * fadeOut} />
 }
 
 function CueSound({ cue }: { cue: Cue }) {
@@ -46,11 +52,11 @@ function CueSound({ cue }: { cue: Cue }) {
 export function Soundtrack() {
   return (
     <>
-      <Sequence name="music-main" durationInFrames={FINALE_AT + 4}>
+      <Sequence name="music-main" durationInFrames={MUSIC_JUMP_AT + XF + 1}>
         <MainMusic />
       </Sequence>
-      <Sequence name="music-finale" from={FINALE_AT}>
-        <FinaleMusic />
+      <Sequence name="music-drop" from={MUSIC_JUMP_AT - XF}>
+        <DropMusic />
       </Sequence>
       {CUES.map((c, i) => {
         const meta = SFX[c.s]

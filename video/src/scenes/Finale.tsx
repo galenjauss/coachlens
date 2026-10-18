@@ -8,7 +8,7 @@ import { Shot } from '../components/Shot'
 import { STORE_LINE } from '../config'
 import { ease, lin, pop } from '../lib/anim'
 import { C, FIELD, FONT, PHOSPHOR } from '../theme'
-import { FLASH_STARTS, SECTIONS, T, USE_CASES, fieldAt } from '../timeline'
+import { FLASH_STARTS, SECTIONS, T, USE_CASES, YOUR_CLASS_AT, fieldAt, flashCard } from '../timeline'
 
 /**
  * The hypothetical use-case lens line: the one allowed exception to "never redraw the lens"
@@ -38,12 +38,13 @@ function LensStrip({ text, at }: { text: string; at: number }) {
 }
 
 function Flash({ i, len }: { i: number; len: number }) {
-  const u = USE_CASES[i]
-  if (!u) return null
+  const u = flashCard(i)
   const ink = FIELD[u.field].ink
   const size = Math.min(250, 1640 / (u.role.length * 0.56))
   const fromDir = i % 2 === 0 ? 'right' : 'left'
   const fast = len < 20
+  /** The 1/16 and 1/32 stream: cards cut in already landed, like single film frames. */
+  const flicker = len < 8
   const f = useCurrentFrame()
   const drift = (fromDir === 'right' ? -1 : 1) * lin(f, [0, Math.max(len, 1)], [0, 60])
   return (
@@ -64,16 +65,16 @@ function Flash({ i, len }: { i: number; len: number }) {
           transform: `translateX(${drift}px)`,
         }}
       >
-        {String(i + 1).padStart(2, '0')}
+        {String(u.index).padStart(2, '0')}
       </div>
       <div style={{ position: 'absolute', left: 150, top: 200, fontFamily: FONT.mono, fontSize: 22, letterSpacing: '0.32em', color: ink, opacity: 0.8 }}>
-        {`USE CASE ${String(i + 1).padStart(2, '0')}/${USE_CASES.length}`}
+        {`USE CASE ${String(u.index).padStart(2, '0')}/${USE_CASES.length}`}
       </div>
       <div style={{ position: 'absolute', left: 140, top: 300 }}>
-        <Word text={u.role} at={fast ? -4 : -2} size={size} color={ink} from={fromDir} distance={fast ? 260 : 520} snappy={fast} />
+        <Word text={u.role} at={flicker ? -30 : fast ? -4 : -2} size={size} color={ink} from={fromDir} distance={fast ? 260 : 520} snappy={fast} />
       </div>
       <div style={{ position: 'absolute', left: 150, top: 300 + size * 1.05 }}>
-        <LensStrip text={u.line} at={fast ? -6 : 2} />
+        <LensStrip text={u.line} at={flicker ? -30 : fast ? -6 : 2} />
       </div>
     </AbsoluteFill>
   )
@@ -84,9 +85,9 @@ function YourClass() {
   return (
     <AbsoluteFill>
       <AbsoluteFill style={{ background: 'radial-gradient(ellipse at 50% 50%, rgba(61,255,122,0.14), transparent 60%)' }} />
-      <div style={{ position: 'absolute', left: 150, top: 200, fontFamily: FONT.mono, fontSize: 22, letterSpacing: '0.32em', color: C.green }}>USE CASE 16/16 · YOURS</div>
+      <div style={{ position: 'absolute', left: 150, top: 200, fontFamily: FONT.mono, fontSize: 22, letterSpacing: '0.32em', color: C.green }}>AND THEN · YOURS</div>
       <div style={{ position: 'absolute', left: 140, top: 270 }}>
-        <Word text="Your class." at={-2} size={210} color={C.paper} mode="letters" stagger={1.2} />
+        <Word text="Your class." at={0} size={210} color={C.paper} mode="slam" />
       </div>
       <div style={{ position: 'absolute', left: 700, top: 420, opacity: lin(f, [4, 12], [0, 1]) }}>
         <LensShot
@@ -114,26 +115,27 @@ function AnyRoom() {
   const f = useCurrentFrame()
   const field = FIELD[fieldAt(f + SECTIONS.finale.from).field]
   return (
-    <AbsoluteFill style={{ opacity: 0.55 * lin(f, [0, 20], [0, 1]) * lin(f + SECTIONS.finale.from, [(FLASH_STARTS[15] ?? 0) - 4, FLASH_STARTS[15] ?? 0], [1, 0]) }}>
+    <AbsoluteFill style={{ opacity: 0.55 * lin(f, [0, 20], [0, 1]) * lin(f + SECTIONS.finale.from, [YOUR_CLASS_AT - 4, YOUR_CLASS_AT], [1, 0]) }}>
       <CurvedMarquee text="ANY ROOM • ANY COACH • ANY ROOM • ANY COACH •" radius={1500} cx={960} cy={2560} size={64} color={field.ink} dotColor={field.ink === C.black ? C.black : C.green} speed={-0.09} />
     </AbsoluteFill>
   )
 }
 
-/** 2:04–2:26 · the finale track: one full-screen card per coach, cut on its kicks, accelerating. */
+/** 2:04–2:26 · the use-case stream: three readable cards, then ×0.82 per card down to 1/16 and 1/32 notes. */
 export function Finale() {
-  const last = USE_CASES.length - 1
   return (
     <>
-      {USE_CASES.map((_, i) => {
-        const from = FLASH_STARTS[i] ?? SECTIONS.finale.from
-        const to = i === last ? SECTIONS.finale.to + 12 : (FLASH_STARTS[i + 1] ?? SECTIONS.finale.to)
+      {FLASH_STARTS.map((from, i) => {
+        const to = FLASH_STARTS[i + 1] ?? YOUR_CLASS_AT
         return (
           <Shot key={i} from={from} to={to}>
-            {i === last ? <YourClass /> : <Flash i={i} len={to - from} />}
+            <Flash i={i} len={to - from} />
           </Shot>
         )
       })}
+      <Shot from={YOUR_CLASS_AT} to={SECTIONS.finale.to + 12}>
+        <YourClass />
+      </Shot>
       <Sequence from={SECTIONS.finale.from} durationInFrames={SECTIONS.finale.to - SECTIONS.finale.from}>
         <AnyRoom />
       </Sequence>

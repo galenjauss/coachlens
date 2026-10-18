@@ -98,18 +98,23 @@ function Phone() {
 }
 
 const INSIGHTS = [
-  { text: 'GUS · READY TO TEST', color: C.paper, from: 'right' as const },
-  { text: 'NOAH · GRADE DROP', color: C.black, from: 'left' as const },
-  { text: 'ELI · NO FEEDBACK', color: C.black, from: 'right' as const },
+  { name: 'GUS', what: 'READY TO TEST' },
+  { name: 'NOAH', what: 'GRADE DROP' },
+  { name: 'ELI', what: 'NO FEEDBACK' },
 ]
 
-function Insight({ i }: { i: number }) {
-  const it = INSIGHTS[i]
-  if (!it) return null
+/** Three insights stack on eighth notes and hold as one readable card. */
+function Insights() {
   return (
-    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center' }}>
-      <Word text={it.text} at={-3} size={176} color={it.color} from={it.from} distance={700} snappy />
-      <div style={{ position: 'absolute', top: 680, ...mono(it.color), fontSize: 26, opacity: 0.75 }}>{`INSIGHT 0${i + 1} / 07 · THE AGENTS NOTICED`}</div>
+    <AbsoluteFill>
+      <div style={{ position: 'absolute', left: 150, top: 190, ...mono(FIELD.cobalt.soft), fontSize: 24 }}>3 OF 7 INSIGHTS · THE AGENTS NOTICED</div>
+      <div style={{ position: 'absolute', left: 140, top: 270, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        {INSIGHTS.map((it, i) => (
+          <div key={it.name} style={{ height: 170, display: 'flex', alignItems: 'center' }}>
+            <Word text={`${it.name} · ${it.what}`} at={(N.words[i] ?? N.words[0]) - N.words[0] - 1} size={150} color={C.paper} from={i % 2 ? 'left' : 'right'} distance={700} snappy />
+          </div>
+        ))}
+      </div>
     </AbsoluteFill>
   )
 }
@@ -128,9 +133,9 @@ function Wrapup() {
         <LensShot
           frames={[
             { src: 'lens/wrapup/01.png', at: 0 },
-            { src: 'lens/wrapup/02.png', at: 12 },
-            { src: 'lens/wrapup/03.png', at: 22 },
-            { src: 'lens/wrapup/04.png', at: 32 },
+            { src: 'lens/wrapup/02.png', at: 10 },
+            { src: 'lens/wrapup/03.png', at: 18 },
+            { src: 'lens/wrapup/04.png', at: 26 },
           ]}
           scale={2}
           dolly={[0.98, 1.14]}
@@ -162,11 +167,9 @@ export function Notice() {
       <Shot from={N.phone} to={N.words[0]} enter="whipL">
         <Phone />
       </Shot>
-      {INSIGHTS.map((_, i) => (
-        <Shot key={i} from={N.words[i] ?? 0} to={N.words[i + 1] ?? N.wrapup}>
-          <Insight i={i} />
-        </Shot>
-      ))}
+      <Shot from={N.words[0]} to={N.wrapup}>
+        <Insights />
+      </Shot>
       <Shot from={N.wrapup} to={T.origin.count} enter="whipL">
         <Wrapup />
       </Shot>

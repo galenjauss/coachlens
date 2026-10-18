@@ -80,24 +80,23 @@ function HandsFull() {
   )
 }
 
-const TASKS: readonly { word: string; color: string; from: 'left' | 'right' | 'up' | 'down' }[] = [
-  { word: 'FEEDBACK', color: C.paper, from: 'right' },
-  { word: 'ATTENDANCE', color: C.black, from: 'left' },
-  { word: 'PARENT EMAILS', color: C.black, from: 'down' },
-  { word: 'REPORT CARDS', color: C.paper, from: 'right' },
-]
+const TASKS = ['FEEDBACK', 'ATTENDANCE', 'PARENT EMAILS', 'REPORT CARDS'] as const
 
-function Task({ i }: { i: number }) {
-  const t = TASKS[i]
-  if (!t) return null
-  const size = Math.min(300, 1720 / (t.word.length * 0.66))
+/** The four jobs land on eighth notes, stack, and hold together as one readable card. */
+function Tasks() {
+  const at = (i: number) => (H.tasks[i] ?? H.tasks[0]) - H.tasks[0]
   return (
     <AbsoluteFill>
-      <div style={center}>
-        <Word text={t.word} at={-2} size={size} color={t.color} from={t.from} distance={700} snappy />
+      <div style={{ position: 'absolute', left: 150, top: 170, fontFamily: FONT.mono, fontSize: 24, letterSpacing: '0.32em', color: C.paper, opacity: 0.75 }}>
+        WHILE YOU TEACH, SOMEONE HAS TO DO
       </div>
-      <div style={{ position: 'absolute', left: 0, right: 0, top: 740, textAlign: 'center', fontFamily: FONT.mono, fontSize: 26, letterSpacing: '0.32em', color: t.color, opacity: 0.75 }}>
-        {`TASK 0${i + 1} / 04 · WHILE YOU TEACH`}
+      <div style={{ position: 'absolute', left: 140, top: 240, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {TASKS.map((w, i) => (
+          <div key={w} style={{ height: 160, display: 'flex', alignItems: 'center', gap: 34 }}>
+            <span style={{ fontFamily: FONT.mono, fontSize: 30, color: C.orange, width: 60 }}>{`0${i + 1}`}</span>
+            <Word text={w} at={at(i) - 1} size={150} color={C.paper} from={i % 2 ? 'left' : 'right'} distance={700} snappy />
+          </div>
+        ))}
       </div>
     </AbsoluteFill>
   )
@@ -133,11 +132,9 @@ export function Hook() {
       <Shot from={H.hands} to={H.tasks[0]}>
         <HandsFull />
       </Shot>
-      {TASKS.map((_, i) => (
-        <Shot key={i} from={H.tasks[i] ?? 0} to={H.tasks[i + 1] ?? H.noProblem}>
-          <Task i={i} />
-        </Shot>
-      ))}
+      <Shot from={H.tasks[0]} to={H.noProblem}>
+        <Tasks />
+      </Shot>
       <Shot from={H.noProblem} to={T.reveal.classStart}>
         <NoProblem />
       </Shot>

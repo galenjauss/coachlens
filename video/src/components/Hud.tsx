@@ -1,10 +1,8 @@
 import { AbsoluteFill, useCurrentFrame } from 'remotion'
 import { timecode } from '../lib/anim'
 import { C, FIELD, FONT } from '../theme'
-import { BAR, BEAT, FINALE_AT, LABELS, fieldAt } from '../timeline'
+import { BAR, BEAT, LABELS, fieldAt } from '../timeline'
 
-/** Finale beat length in frames (~176 BPM measured; the HUD reads 175). */
-const FINALE_BEAT = (60 / 175.5) * 30
 
 const Bracket = ({ x, y, color }: { x: 'left' | 'right'; y: 'top' | 'bottom'; color: string }) => (
   <div
@@ -25,9 +23,8 @@ export function Hud() {
   const frame = useCurrentFrame()
   const field = FIELD[fieldAt(frame).field]
   const label = [...LABELS].reverse().find(l => l.at <= frame) ?? LABELS[0]
-  const finale = frame >= FINALE_AT
-  const beatIdx = finale ? Math.floor((frame - FINALE_AT) / FINALE_BEAT) : Math.floor(frame / BEAT)
-  const barIdx = finale ? Math.floor(beatIdx / 4) : Math.floor(frame / BAR)
+  const beatIdx = Math.floor(frame / BEAT)
+  const barIdx = Math.floor(frame / BAR)
   const inBeat = beatIdx % 4
   const text: React.CSSProperties = { fontFamily: FONT.mono, fontWeight: 500, fontSize: 15, letterSpacing: '0.22em', color: field.soft, whiteSpace: 'nowrap' }
   const strong: React.CSSProperties = { color: field.ink, fontWeight: 700 }
@@ -50,7 +47,7 @@ export function Hud() {
           ))}
         </span>
         <span>
-          BAR <span style={strong}>{(barIdx % 8) + 1}/8</span> · <span style={strong}>{finale ? 175 : 120} BPM</span>
+          BAR <span style={strong}>{(barIdx % 8) + 1}/8</span> · <span style={strong}>120 BPM</span>
         </span>
       </div>
       <div style={{ ...text, position: 'absolute', left: 80, bottom: 46 }}>{label?.label}</div>

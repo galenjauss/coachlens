@@ -2,10 +2,14 @@
  * THE timeline. Every scene, cut, field flip, word, whip and sound effect is placed here, on the
  * music's beat grid. Scenes read their shot times from `T`; the soundtrack reads `CUES`.
  *
- * Main track (Mixkit "Minimal Techno 01"): 120 BPM, a kick on track 0.0 s and every 0.5 s after it,
- * so it plays from 0 and track time = film time: a beat is 15 frames, a bar 60. Breakdowns at
- * 24–40 s (frames 720–1200) and 96–104 s (2880–3120). The finale track (Mixkit "Pick It Up",
- * ~175 BPM, syncopated breakbeat) takes over at 124 s; its cuts snap to measured kick onsets.
+ * One track only (Mixkit "Minimal Techno 01"): 120 BPM, a kick on track 0.0 s and every 0.5 s after,
+ * so it plays from 0 and track time = film time: a beat is 15 frames, a bar 60, an 8-bar phrase 16 s.
+ * Breakdowns at 24–40 s (frames 720–1200) and 96–104 s (2880–3120). The track goes soft after
+ * ~136 s, so at film 124 s (a bar line) the music cuts back to track 104 s, the start of its drop
+ * phrase, and plays 104→130 s for film 124→150 s: same tempo, same grid, same texture.
+ *
+ * Readability rule (v3): every text card holds at least max(1.2 s, 0.4 s + 0.25 s × words) from fully
+ * landed to cut. Only the end-of-finale flicker is exempt.
  */
 import type { FieldName } from './theme'
 import type { SfxName } from './audio/sfx'
@@ -32,9 +36,10 @@ export const SECTIONS: Record<SectionId, { from: number; to: number }> = {
   close: { from: sec(146), to: sec(150) },
 }
 
-/** Finale: track offset at the hand-off, and the film time it plays from. */
+/** Where the music jumps back into the track's drop phrase (film frame → track second). */
+export const MUSIC_JUMP_AT = bar(62)
+export const MUSIC_JUMP_TO_SEC = 104
 export const FINALE_AT = SECTIONS.finale.from
-export const FINALE_TRACK_OFFSET = 26.055
 
 // ── Shot times (global frames) ────────────────────────────────────────────────────────────────
 export const T = {
@@ -43,78 +48,133 @@ export const T = {
     min45: bar(1), minWord: bar(1) + beat(1),
     coach: bar(2), coachSerif: bar(2) + beat(2),
     hands: bar(3),
-    tasks: [bar(4), bar(4) + beat(1), bar(4) + beat(2), bar(4) + beat(3)],
+    /** The task list lands on eighth notes and holds as one card. */
+    tasks: [beat(15), beat(15.5), beat(16), beat(16.5)],
     noProblem: bar(5), noSerif: bar(5) + beat(2),
   },
   reveal: {
     classStart: bar(6), lit1: bar(6) + beat(2), lit2: bar(6) + beat(5), serif: bar(7),
     ring: bar(8), irisOpen: bar(8) + beat(1), wordmark: bar(8) + beat(2), tagline: bar(8) + beat(3),
-    marquee: bar(10), seven: bar(10) + beat(2), zero: bar(11), exit: bar(12) - 6,
+    marquee: bar(10), seven: bar(10) + beat(1), zero: bar(11),
   },
   quiet: {
-    g2: bar(12), serif: bar(12) + beat(3), dolly: bar(14), glass: bar(14) + beat(2),
-    tap: sec(29.33), peek: sec(30), lobby: sec(33), planning: sec(35.5), planResult: sec(37.5), diff: sec(38.4),
+    g2: bar(12), serif: bar(12) + beat(3), tap: bar(14), dolly: bar(14) + 6, glass: sec(30),
+    peek: sec(30), lobby: sec(33), planning: sec(35.5), planResult: sec(37.5), diff: sec(38.4),
   },
   sentence: {
-    rec: bar(20), talk: bar(20) + beat(2), typed: bar(21), card: bar(22), ticks: [sec(46.25), sec(46.5), sec(46.75), sec(47.5)],
-    outcomes: [bar(24) + beat(1), bar(24) + beat(2), bar(24) + beat(3), bar(25)], summary: bar(25) + beat(1),
-    urgent: bar(26), urgentLens: bar(26) + beat(1), phone: bar(28), phoneZoom: bar(28) + beat(2), send: bar(29),
+    rec: bar(20), talk: bar(20) + beat(1), typed: bar(21), card: beat(91),
+    summary: beat(99), urgent: beat(106), urgentLens: beat(107), phone: beat(113), phoneZoom: beat(115),
   },
   notes: {
-    prCard: bar(30), pr: bar(30) + beat(2), checkCard: bar(32) + beat(2), brief: bar(32) + beat(3),
-    askCard: bar(35), ask: bar(35) + beat(2), answer: bar(36) + beat(1), names: [bar(36) + beat(2), bar(36) + beat(2) + 8, bar(36) + beat(3), bar(36) + beat(3) + 8],
-    rollCard: bar(38), roll: bar(38) + beat(1), rollDone: bar(38) + beat(4) + 8,
+    prCard: bar(30), pr: beat(123), checkCard: beat(130), brief: beat(134),
+    askCard: beat(141), ask: bar(36), answer: bar(37), names: [beat(148.5), beat(149), beat(149.5), beat(150)],
+    rollCard: beat(153), roll: bar(39), rollDone: bar(39) + 22,
   },
   notice: {
     banner: bar(40), slam: bar(40) + beat(2), serif: bar(40) + beat(3),
-    phone: bar(41) + beat(2), working: bar(42) + beat(2), scroll: bar(42) + beat(2) + 2, drafted: bar(43) + beat(1), reviewTap: bar(44), review: bar(44) + beat(1),
-    words: [bar(44) + beat(3), bar(45), bar(45) + beat(1)], wrapup: bar(45) + beat(3), missed: bar(46) + beat(2), tap: bar(47), nextClass: bar(47) + beat(1),
+    phone: beat(166), working: beat(169), scroll: beat(169) + 2, drafted: beat(171.5), reviewTap: beat(173.5), review: beat(174),
+    words: [beat(178), beat(178.5), beat(179)], wrapup: bar(46), missed: beat(187), tap: beat(187.5), nextClass: beat(187.5) + 2,
   },
   origin: {
     count: bar(48), serif: bar(48) + beat(2), built: bar(50), zero: bar(52), shakeEnd: bar(52) + 12, untilNow: bar(53),
   },
   control: {
-    autonomy: bar(54), tapReview: bar(55) + beat(1), card: bar(56), agents: bar(56) + beat(1), kidCard: bar(58),
-    priya: bar(58) + beat(1), priya3: bar(59) + beat(1), montage: [bar(60), bar(60) + beat(1), bar(60) + beat(2), bar(60) + beat(3)], teach: bar(61),
+    autonomy: bar(54), tapReview: bar(55) + beat(1), card: bar(56), agents: beat(227), kidCard: beat(234),
+    priya: beat(237), priya3: beat(240), montage: [beat(242), beat(242.5), beat(243), beat(243.5)], teach: bar(61),
   },
   close: { iris: sec(146), lines: sec(146) + 8 },
 } as const
 
-// ── Finale flash-bys: 16 coach types, accelerating, snapped to the finale track's kick onsets ──
-/** Strong low-band onsets of the finale track (track seconds, 26–52 s), from scripts/audio-check.mjs. */
-const FINALE_ONSETS = [
-  26.055, 26.34, 26.8, 26.93, 27.475, 27.635, 27.845, 28.38, 28.79, 29.515, 30.08, 30.645, 30.93, 31.36, 31.79, 31.95,
-  32.205, 32.5, 32.66, 32.925, 33.285, 33.93, 34.23, 35.215, 35.935, 36.795, 37.8, 37.955, 38.285, 38.93, 39.075, 39.4,
-  39.645, 40.09, 40.53, 40.65, 41.22, 41.385, 42.375, 43.515, 43.665, 43.84, 43.95, 44.66, 45.325, 45.805, 45.95,
+// ── Finale: an exponentially accelerating stream of coaches ───────────────────────────────────
+export const USE_CASES: readonly { role: string; line: string }[] = [
+  { role: 'Football coach', line: '#12 late off the snap · 3rd time' },
+  { role: 'Math tutor', line: 'Sam: distribute the negative' },
+  { role: 'Martial arts', line: 'Priya · guard (3rd time)' },
+  { role: 'Classroom teacher', line: "Row 3 hasn't spoken today" },
+  { role: 'Personal trainer', line: 'Maria · deadlift PR +10' },
+  { role: 'Swim coach', line: 'Lane 4 · 50m split -0.8s' },
+  { role: 'Basketball coach', line: 'Jay · elbow out on the jumper' },
+  { role: 'Piano teacher', line: 'Ava · left-hand tempo' },
+  { role: 'Choir director', line: 'Altos · flat on the high G' },
+  { role: 'ESL tutor', line: 'Lin · past tense, 4 of 5' },
+  { role: 'Dance instructor', line: 'Leo · late on the 5-6-7-8' },
+  { role: 'Robotics mentor', line: 'Team 2 · gearbox slipping' },
+  { role: 'Climbing coach', line: 'Nina · flag the left foot' },
+  { role: 'Lifeguard instructor', line: 'Omar · rescue tow 0:41' },
+  { role: 'Gymnastics coach', line: 'Zoe · bent knees on the kip' },
+  { role: 'Boxing coach', line: 'Rico · dropping the right' },
+  { role: 'Debate coach', line: 'Theo · rebuttal ran 40s long' },
+  { role: 'Rowing coach', line: 'Seat 3 · rushing the slide' },
+  { role: 'Golf pro', line: 'Dan · open face at impact' },
+  { role: 'Art teacher', line: 'Mia · shading, 2nd week' },
+  { role: 'Chemistry lab TA', line: 'Bench 4 · goggles off' },
+  { role: 'Soccer coach', line: 'Back line · step up together' },
+  { role: 'Orchestra conductor', line: 'Cellos · rushing bar 32' },
+  { role: 'CPR instructor', line: 'Pat · compressions too shallow' },
+  { role: 'Ski instructor', line: 'Ella · weight on the back seat' },
+  { role: 'Yoga instructor', line: 'Kim · knee past toes' },
+  { role: 'Surf coach', line: 'Ben · popping up too late' },
+  { role: 'Flight instructor', line: 'Flare high · 3rd landing' },
+  { role: 'Esports coach', line: 'Mid · rotate 10s earlier' },
+  { role: 'Speech coach', line: 'Ana · filler words: 14' },
+  { role: 'Tennis coach', line: 'Max · split-step late' },
+  { role: 'Cheer coach', line: 'Base 2 · late on the lift' },
+  { role: 'Track coach', line: 'Kai · 200m split 27.4' },
+  { role: 'Volleyball coach', line: 'Sky · platform too high' },
+  { role: 'Baseball coach', line: 'Cole · dropping the back elbow' },
+  { role: 'Chess coach', line: 'Ari · hung a piece twice' },
+  { role: 'Hockey coach', line: 'Line 2 · slow off the bench' },
+  { role: 'Wrestling coach', line: 'Gus · head down on the shot' },
+  { role: 'Fencing coach', line: 'Ivy · lunge too early' },
+  { role: 'Pilates instructor', line: 'Row 2 · ribs flaring' },
+  { role: 'Cycling coach', line: 'Zone 4 · cadence 82' },
+  { role: 'SAT tutor', line: 'Noor · reading pace +2 min' },
+  { role: 'Coding bootcamp', line: 'Team B · tests still red' },
+  { role: 'Kindergarten teacher', line: 'Sunflowers · 3 need help' },
+  { role: 'Special-ed teacher', line: 'Eli · break at 10:15' },
+  { role: 'Riding instructor', line: 'Rosa · heels down' },
+  { role: 'Music theory teacher', line: 'Quiz · 6/9 on cadences' },
+  { role: 'Language teacher', line: 'Hugo · subjunctive again' },
+  { role: 'Sign-language teacher', line: 'Row 1 · handshape for "work"' },
+  { role: 'Driving instructor', line: 'Check blind spot · 2nd time' },
 ]
-const onsetFrame = (trackSec: number): number => FINALE_AT + Math.round((trackSec - FINALE_TRACK_OFFSET) * FPS)
-const snapToOnset = (f: number): number => {
-  const cands = FINALE_ONSETS.map(onsetFrame).filter(o => Math.abs(o - f) <= 6)
-  return cands.length ? cands.reduce((a, b) => (Math.abs(b - f) < Math.abs(a - f) ? b : a)) : f
+const FIELD_CYCLE: readonly FieldName[] = ['orange', 'cobalt', 'paper', 'green', 'black', 'cobalt', 'orange', 'paper', 'black', 'green']
+/** "Your class." lands on this beat (141.0 s) with an impact and holds to the close. */
+export const YOUR_CLASS_AT = beat(282)
+
+/**
+ * Card durations: three readable holds (2.0, 2.0, 1.8 s), then ×0.82 per card down to a 1/16-note
+ * stream, ending with eight 1/32-note flickers. Cut times are quantised to the 1/32 grid (1.875 f).
+ */
+const buildFlash = (): number[] => {
+  const d: number[] = [60, 60, 54]
+  let x = 54
+  while (x * 0.82 >= BEAT / 4) {
+    x *= 0.82
+    d.push(x)
+  }
+  const total = YOUR_CLASS_AT - FINALE_AT
+  const head = d.reduce((a, b) => a + b, 0)
+  const tail32 = 8 * (BEAT / 8)
+  const n16 = Math.max(0, Math.floor((total - head - tail32) / (BEAT / 4)))
+  for (let i = 0; i < n16; i++) d.push(BEAT / 4)
+  const left = total - d.reduce((a, b) => a + b, 0)
+  for (let i = 0; i < 8; i++) d.push(left / 8)
+  const grid = BEAT / 8
+  const starts: number[] = []
+  let t = 0
+  for (const dur of d) {
+    starts.push(FINALE_AT + Math.round(Math.round(t / grid) * grid))
+    t += dur
+  }
+  return starts
 }
-export const USE_CASES: readonly { role: string; line: string; field: FieldName }[] = [
-  { role: 'Football coach', line: '#12 late off the snap · 3rd time', field: 'orange' },
-  { role: 'Math tutor', line: 'Sam: distribute the negative', field: 'cobalt' },
-  { role: 'Martial arts', line: 'Priya · guard (3rd time)', field: 'paper' },
-  { role: 'Classroom teacher', line: "Row 3 hasn't spoken today", field: 'green' },
-  { role: 'Personal trainer', line: 'Maria · deadlift PR +10', field: 'black' },
-  { role: 'Swim coach', line: 'Lane 4 · 50m split -0.8s', field: 'cobalt' },
-  { role: 'Piano teacher', line: 'Ava · left-hand tempo', field: 'orange' },
-  { role: 'Dance instructor', line: 'Leo · late on the 5-6-7-8', field: 'paper' },
-  { role: 'Climbing coach', line: 'Nina · flag the left foot', field: 'black' },
-  { role: 'Debate coach', line: 'Theo · rebuttal ran 40s long', field: 'green' },
-  { role: 'Soccer coach', line: 'Back line · step up together', field: 'cobalt' },
-  { role: 'Yoga instructor', line: 'Kim · knee past toes', field: 'orange' },
-  { role: 'Tennis coach', line: 'Max · split-step late', field: 'paper' },
-  { role: 'Chess coach', line: 'Ari · hung a piece twice', field: 'cobalt' },
-  { role: 'Driving instructor', line: 'Check blind spot · 2nd time', field: 'orange' },
-  { role: 'Your class', line: '> Tap to start class', field: 'black' },
-]
-const FLASH_DURATIONS = [2.2, 2.0, 1.9, 1.7, 1.6, 1.4, 1.3, 1.1, 1.0, 0.9, 0.75, 0.6, 0.5, 0.4, 0.35]
-export const FLASH_STARTS: readonly number[] = FLASH_DURATIONS.reduce<number[]>(
-  (acc, d) => [...acc, snapToOnset((acc[acc.length - 1] ?? FINALE_AT) + sec(d))],
-  [FINALE_AT],
-)
+/** Start frame of every flash-by card (the "Your class." card starts at YOUR_CLASS_AT). */
+export const FLASH_STARTS: readonly number[] = buildFlash()
+export const flashCard = (i: number): { role: string; line: string; field: FieldName; index: number } => {
+  const u = USE_CASES[i % USE_CASES.length] ?? USE_CASES[0] ?? { role: '', line: '' }
+  return { ...u, field: FIELD_CYCLE[i % FIELD_CYCLE.length] ?? 'black', index: (i % USE_CASES.length) + 1 }
+}
 
 // ── Colour fields (the global background), flipped on downbeats ──────────────────────────────
 export type FieldCut = { at: number; field: FieldName; wipe?: 'left' | 'up' | 'iris' }
@@ -123,21 +183,14 @@ export const FIELDS: readonly FieldCut[] = [
   { at: T.hook.min45, field: 'cobalt', wipe: 'left' },
   { at: T.hook.coach, field: 'paper', wipe: 'up' },
   { at: T.hook.hands, field: 'black' },
-  { at: T.hook.tasks[0], field: 'cobalt' },
-  { at: T.hook.tasks[1], field: 'orange' },
-  { at: T.hook.tasks[2], field: 'paper' },
-  { at: T.hook.tasks[3], field: 'black' },
+  { at: T.hook.tasks[0], field: 'cobalt', wipe: 'left' },
   { at: T.hook.noProblem, field: 'green', wipe: 'iris' },
   { at: T.reveal.classStart, field: 'black' },
   { at: T.reveal.marquee, field: 'cobalt', wipe: 'left' },
   { at: T.quiet.g2, field: 'black' },
   { at: T.sentence.rec, field: 'cobalt' },
   { at: T.sentence.typed, field: 'black' },
-  { at: T.sentence.outcomes[0], field: 'cobalt' },
-  { at: T.sentence.outcomes[1], field: 'black' },
-  { at: T.sentence.outcomes[2], field: 'green' },
-  { at: T.sentence.outcomes[3], field: 'paper' },
-  { at: T.sentence.summary, field: 'cobalt' },
+  { at: T.sentence.summary, field: 'cobalt', wipe: 'left' },
   { at: T.sentence.urgent, field: 'orange' },
   { at: T.sentence.phone, field: 'black' },
   { at: T.notes.prCard, field: 'orange' },
@@ -150,9 +203,7 @@ export const FIELDS: readonly FieldCut[] = [
   { at: T.notes.roll, field: 'black' },
   { at: T.notice.banner, field: 'orange' },
   { at: T.notice.phone, field: 'black' },
-  { at: T.notice.words[0], field: 'cobalt' },
-  { at: T.notice.words[1], field: 'orange' },
-  { at: T.notice.words[2], field: 'paper' },
+  { at: T.notice.words[0], field: 'cobalt', wipe: 'up' },
   { at: T.notice.wrapup, field: 'black' },
   { at: T.origin.built, field: 'paper', wipe: 'up' },
   { at: T.origin.zero, field: 'orange' },
@@ -164,7 +215,8 @@ export const FIELDS: readonly FieldCut[] = [
   { at: T.control.priya, field: 'cobalt' },
   { at: T.control.montage[0], field: 'black' },
   { at: T.control.teach, field: 'green', wipe: 'iris' },
-  ...USE_CASES.map((u, i) => ({ at: FLASH_STARTS[i] ?? FINALE_AT, field: u.field })),
+  ...FLASH_STARTS.map((at, i) => ({ at, field: flashCard(i).field })),
+  { at: YOUR_CLASS_AT, field: 'black' },
   { at: T.close.iris, field: 'black', wipe: 'iris' },
 ]
 
@@ -187,7 +239,7 @@ export const LABELS: readonly { at: number; scene: number; label: string }[] = [
   { at: SECTIONS.sentence.from, scene: 3, label: 'AGENTS / ONE SENTENCE IN' },
   { at: SECTIONS.notes.from, scene: 4, label: 'NOTES / REAL CLASS' },
   { at: SECTIONS.notice.from, scene: 5, label: 'INSIGHTS / OPPORTUNISTIC' },
-  { at: SECTIONS.origin.from, scene: 6, label: `ORIGINALITY / 0 OF 220+` },
+  { at: SECTIONS.origin.from, scene: 6, label: 'ORIGINALITY / 0 OF 220+' },
   { at: SECTIONS.control.from, scene: 6, label: 'CONTROL / YOUR CALL' },
   { at: SECTIONS.finale.from, scene: 7, label: 'EVERY COACH / FLASH' },
   { at: SECTIONS.close.from, scene: 7, label: 'COACHLENS / EVEN G2' },
@@ -199,22 +251,22 @@ export const WHIP_LEN = 6
 export const WHIPS: readonly number[] = [
   T.hook.min45, T.hook.coach, T.reveal.marquee, T.sentence.typed, T.sentence.urgent, T.sentence.phone,
   T.notes.pr, T.notes.brief, T.notes.ask, T.notes.roll, T.notice.phone, T.notice.wrapup,
-  T.control.autonomy, T.control.agents, T.control.priya, ...T.control.montage,
+  T.control.autonomy, T.control.agents, T.control.priya, T.control.montage[0],
 ]
 export const inWhip = (f: number): boolean => WHIPS.some(w => f >= w - WHIP_LEN / 2 && f < w + WHIP_LEN / 2)
 
 // ── Footage slots (SHOTLIST.md) ───────────────────────────────────────────────────────────────
 export const SLOTS = {
   A: { from: T.quiet.lobby, to: SECTIONS.quiet.to, shot: 'Through the lens: lobby, double-tap, plan the class out loud, the plan diff lands (7 s).' },
-  B: { from: T.notes.pr, to: T.notes.askCard, shot: 'Through the lens in class: the PR card, then the "How\'s Priya doing?" brief (9.5 s).' },
+  B: { from: T.notes.pr, to: T.notes.askCard, shot: 'Through the lens in class: the PR card, then the "How\'s Priya doing?" brief (9 s).' },
   C: { from: T.control.autonomy, to: T.control.teach, shot: 'Phone: Agents → Parent emails → Auto·Review·Off set to Review, the Agents tiles, a student profile (14 s).' },
 } as const
 
 // ── Typewriter lines (their keystrokes are sound cues too) ────────────────────────────────────
 export type TypeLine = { id: string; text: string; at: number; cps: number }
 export const TYPED: readonly TypeLine[] = [
-  { id: 'priya', text: '“Priya keeps dropping her guard on the jab.”', at: T.sentence.typed + 4, cps: 34 },
-  { id: 'ask', text: '“Who is forgetting to keep their guard up?”', at: T.notes.ask + 2, cps: 40 },
+  { id: 'priya', text: '“Priya keeps dropping her guard on the jab.”', at: T.sentence.typed + 3, cps: 52 },
+  { id: 'ask', text: '“Who is forgetting to keep their guard up?”', at: T.notes.ask + 2, cps: 44 },
   { id: 'built', text: 'Built for coaches & teachers:', at: T.origin.built + 6, cps: 22 },
 ]
 export const typedChars = (line: TypeLine, frame: number): number =>
@@ -240,10 +292,17 @@ const typingCues = (): Cue[] =>
     return out
   })
 
-const FLASH_SFX: readonly SfxName[] = [
-  'whoosh-air', 'swoosh-fast', 'whoosh-pop-light', 'sweep-fast-small', 'whoosh-cinematic-fast', 'swoosh-fast', 'select-tech',
-  'sweep-fast-small', 'click-check', 'swoosh-fast', 'select-tech', 'confirm-scifi', 'click-device', 'select-tech', 'confirm-scifi',
-]
+/** One sound per readable flash-by; the stream itself rides the riser. */
+const FLASH_SFX: readonly SfxName[] = ['whoosh-air', 'swoosh-fast', 'whoosh-pop-light', 'sweep-fast-small', 'whoosh-cinematic-fast', 'swoosh-fast', 'select-tech', 'sweep-fast-small', 'click-check', 'swoosh-fast', 'select-tech']
+const flashCues = (): Cue[] => {
+  const out: Cue[] = []
+  for (let i = 1; i < FLASH_STARTS.length; i++) {
+    const f = FLASH_STARTS[i] ?? 0
+    const len = (FLASH_STARTS[i + 1] ?? YOUR_CLASS_AT) - f
+    if (len >= 10 && out.length < FLASH_SFX.length) out.push({ f, s: FLASH_SFX[out.length] ?? 'select-tech', v: len > 30 ? 0.85 : 0.6 })
+  }
+  return out
+}
 
 const RAW_CUES: Cue[] = [
   // Hook
@@ -255,8 +314,8 @@ const RAW_CUES: Cue[] = [
   { f: T.hook.hands, s: 'glitch-text-intro' },
   { f: T.hook.tasks[0], s: 'swoosh-fast', v: 0.8 },
   { f: T.hook.tasks[1], s: 'select-tech' },
-  { f: T.hook.tasks[2], s: 'sweep-fast-small', v: 0.8 },
-  { f: T.hook.tasks[3], s: 'click-check' },
+  { f: T.hook.tasks[2], s: 'click-check' },
+  { f: T.hook.tasks[3], s: 'confirm-scifi' },
   { f: T.hook.noProblem, s: 'impact-tech-break' },
   // Reveal
   { f: T.reveal.classStart, s: 'whoosh-pop-light' },
@@ -269,10 +328,11 @@ const RAW_CUES: Cue[] = [
   { f: T.reveal.seven, s: 'select-option' },
   { f: T.reveal.zero, s: 'confirm-scifi' },
   // Quiet by design (breakdown: sparse and soft)
-  { f: T.quiet.dolly + 24, s: 'zoom-in-long', v: 0.7 },
+  { f: T.quiet.g2 + 20, s: 'slide-tech', v: 0.6 },
   { f: T.quiet.tap, s: 'click-device' },
-  { f: T.quiet.peek, s: 'ui-start' },
-  { f: T.quiet.lobby, s: 'slide-tech', v: 0.8 },
+  { f: T.quiet.tap + 4, s: 'ui-start' },
+  { f: T.quiet.glass - 4, s: 'zoom-in-long', v: 0.7 },
+  { f: T.quiet.lobby, s: 'whoosh-pop-light', v: 0.6 },
   { f: T.quiet.planning, s: 'select-tech', v: 0.7 },
   { f: T.quiet.diff, s: 'bleep-notify' },
   { f: SECTIONS.sentence.from, s: 'riser-synth', len: 4 },
@@ -281,16 +341,14 @@ const RAW_CUES: Cue[] = [
   { f: T.sentence.talk, s: 'swoosh-fast' },
   { f: T.sentence.typed, s: 'whoosh-air' },
   { f: T.sentence.card, s: 'zoom-move' },
-  { f: T.sentence.ticks[0], s: 'bleep-notify' },
-  { f: T.sentence.ticks[1], s: 'select-tech' },
-  { f: T.sentence.ticks[2], s: 'bleep-confirm' },
-  { f: T.sentence.card + 94, s: 'click-check', v: 0.7 },
-  { f: T.sentence.ticks[3], s: 'notify-positive' },
-  { f: T.sentence.outcomes[0], s: 'sweep-fast-small' },
-  { f: T.sentence.outcomes[1], s: 'swoosh-fast' },
-  { f: T.sentence.outcomes[2], s: 'whoosh-pop-light' },
-  { f: T.sentence.outcomes[3], s: 'sweep-fast-small' },
-  { f: T.sentence.summary, s: 'confirm-scifi' },
+  { f: T.sentence.card + 48, s: 'bleep-notify' },
+  { f: T.sentence.card + 54, s: 'select-tech' },
+  { f: T.sentence.card + 60, s: 'bleep-confirm' },
+  { f: T.sentence.card + 68, s: 'click-check', v: 0.7 },
+  { f: T.sentence.card + 76, s: 'notify-positive' },
+  { f: T.sentence.summary, s: 'sweep-fast-small' },
+  { f: T.sentence.summary + 11, s: 'select-tech' },
+  { f: T.sentence.summary + 26, s: 'confirm-scifi' },
   { f: T.sentence.urgent, s: 'glitch-quick' },
   { f: T.sentence.urgentLens + 21, s: 'pop-notify' },
   { f: T.sentence.urgentLens + 60, s: 'bleep-confirm' },
@@ -317,18 +375,18 @@ const RAW_CUES: Cue[] = [
   { f: T.notice.banner, s: 'whoosh-fast' },
   { f: T.notice.slam, s: 'impact-zoom-quick' },
   { f: T.notice.phone, s: 'whoosh-air' },
-  { f: T.notice.scroll, s: 'swoosh-fast' },
   { f: T.notice.working, s: 'click-device' },
+  { f: T.notice.scroll, s: 'swoosh-fast' },
   { f: T.notice.drafted, s: 'notify-positive' },
   { f: T.notice.reviewTap, s: 'click-check' },
   { f: T.notice.review, s: 'sweep-fast-small' },
   { f: T.notice.words[0], s: 'whoosh-pop-light' },
-  { f: T.notice.words[1], s: 'swoosh-fast' },
-  { f: T.notice.words[2], s: 'sweep-fast-small' },
+  { f: T.notice.words[1], s: 'select-tech' },
+  { f: T.notice.words[2], s: 'bleep-confirm' },
   { f: T.notice.wrapup, s: 'whoosh-cinematic-fast' },
   { f: T.notice.missed, s: 'slide-tech', v: 0.9 },
   { f: T.notice.tap, s: 'click-device' },
-  { f: T.notice.nextClass, s: 'bleep-confirm' },
+  { f: T.notice.nextClass + 2, s: 'notify-positive' },
   // Originality (breakdown, then the drop on the 0)
   { f: T.origin.count, s: 'tone-quick', v: 0.7 },
   { f: T.origin.serif, s: 'whoosh-pop-light', v: 0.5 },
@@ -346,16 +404,18 @@ const RAW_CUES: Cue[] = [
   { f: T.control.priya, s: 'swoosh-fast' },
   { f: T.control.priya3, s: 'zoom-move' },
   { f: T.control.montage[0], s: 'whoosh-air' },
-  { f: T.control.montage[1], s: 'swoosh-fast' },
-  { f: T.control.montage[2], s: 'sweep-fast-small' },
-  { f: T.control.montage[3], s: 'click-check' },
+  { f: T.control.montage[1], s: 'select-tech' },
+  { f: T.control.montage[2], s: 'click-check' },
+  { f: T.control.montage[3], s: 'confirm-scifi' },
   { f: T.control.teach, s: 'whoosh-stutter', v: 0.9 },
   { f: SECTIONS.finale.from, s: 'sweep-scifi-fast', len: 2 },
-  // Finale: one sound per flash-by, rotating, getting smaller as the cuts speed up
+  // Finale: an impact on the jump, a sound per readable card, a long riser under the acceleration
   { f: SECTIONS.finale.from, s: 'impact-whoosh-deep' },
-  ...FLASH_STARTS.slice(1).map((f, i): Cue => ({ f, s: FLASH_SFX[i] ?? 'select-tech', v: i < 6 ? 0.85 : 0.65 })),
-  { f: (FLASH_STARTS[15] ?? 0) + 40, s: 'click-device' },
-  { f: (FLASH_STARTS[15] ?? 0) + 82, s: 'select-tech' },
+  ...flashCues(),
+  { f: YOUR_CLASS_AT, s: 'riser-synth', len: 9, v: 0.9 },
+  { f: YOUR_CLASS_AT, s: 'impact-tech-break' },
+  { f: YOUR_CLASS_AT + 40, s: 'click-device' },
+  { f: YOUR_CLASS_AT + 82, s: 'select-tech' },
   // Close
   { f: T.close.iris, s: 'impact-logo' },
   { f: T.close.lines + 30, s: 'power-up', v: 0.6 },

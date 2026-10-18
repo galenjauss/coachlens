@@ -15,7 +15,7 @@ export function TypeCard({ text, color, tag, size, mode = 'letters' }: TypeCardP
   const s = size ?? Math.min(280, 1700 / (text.length * 0.6))
   return (
     <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center' }}>
-      <Word text={text} at={-1} size={s} color={color} mode={mode} stagger={0.9} from="down" />
+      <Word text={text} at={-5} size={s} color={color} mode={mode} stagger={0.9} from="down" />
       {tag ? (
         <div style={{ position: 'absolute', top: 540 + s * 0.62, fontFamily: FONT.mono, fontSize: 24, letterSpacing: '0.34em', color, opacity: 0.72 }}>{tag}</div>
       ) : null}

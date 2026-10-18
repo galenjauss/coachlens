@@ -4,29 +4,31 @@ import { SlotShot } from '../components/FootageSlot'
 import { Serif } from '../components/Kinetic'
 import { LensShot } from '../components/LensShot'
 import { Shot } from '../components/Shot'
-import { WireG2 } from '../components/WireG2'
-import { ease, EASE, lin } from '../lib/anim'
+import { G2Model } from '../components/G2Model'
+import { lin } from '../lib/anim'
 import { C, FONT } from '../theme'
 import { SECTIONS, SLOTS, T } from '../timeline'
 
 const Q = T.quiet
 const monoStep: React.CSSProperties = { fontFamily: FONT.mono, fontSize: 22, letterSpacing: '0.3em', color: C.green }
 
+/** 0:24–0:30 · the 3D G2 product shot: dark turntable reveal, temple tap, the real display lights, dolly in. */
 function G2() {
   const f = useCurrentFrame()
-  const dollyStart = Q.dolly - Q.g2
-  const yaw = lin(f, [0, dollyStart], [-58, -20])
-  const pitch = lin(f, [0, dollyStart], [14, 8])
-  const scale = 1.55 + lin(f, [0, dollyStart], [0, 0.25])
-  const z = 1 + ease(f, [dollyStart, dollyStart + 30], [0, 1], EASE.inExpo) * 7
-  const dispX = 960 + 184 * Math.cos((yaw * Math.PI) / 180) * scale
-  const dispY = 520 + 6 * scale
+  const dollyFrom = Q.dolly - Q.g2
+  const dollyTo = Q.glass - Q.g2
+  const focus = lin(f, [0, 30], [8, 0])
+  const fadeOut = lin(f, [dollyTo, dollyTo + 6], [1, 0])
   return (
-    <AbsoluteFill>
-      <AbsoluteFill style={{ transform: `scale(${z})`, transformOrigin: `${dispX}px ${dispY}px`, opacity: lin(f, [dollyStart + 22, dollyStart + 30], [1, 0]) }}>
-        <WireG2 yaw={yaw} pitch={pitch} scale={scale} cx={960} cy={520} draw={ease(f, [0, 42], [0, 1], EASE.inOut)} labels={lin(f, [30, 46], [0, 1])} />
+    <AbsoluteFill style={{ opacity: fadeOut }}>
+      <AbsoluteFill style={{ background: 'radial-gradient(ellipse at 50% 55%, rgba(170,190,200,0.10), transparent 55%)' }} />
+      <AbsoluteFill style={{ filter: focus > 0.3 ? `blur(${focus}px)` : undefined }}>
+        <G2Model width={1920} height={1080} display="captures/lens/peekTick/01.png" litAt={Q.tap - Q.g2 + 4} dollyFrom={dollyFrom} dollyTo={dollyTo} />
       </AbsoluteFill>
-      <div style={{ position: 'absolute', left: 0, right: 0, top: 860, display: 'flex', justifyContent: 'center', opacity: lin(f, [dollyStart, dollyStart + 12], [1, 0]) }}>
+      <div style={{ position: 'absolute', left: 150, top: 160, fontFamily: FONT.mono, fontSize: 18, letterSpacing: '0.3em', color: 'rgba(236,239,234,0.6)', opacity: lin(f, [24, 40], [0, 1]) * lin(f, [dollyFrom - 10, dollyFrom], [1, 0]) }}>
+        EVEN G2 · MAGNESIUM FRAME · TITANIUM TEMPLES · 36 G
+      </div>
+      <div style={{ position: 'absolute', left: 0, right: 0, top: 880, display: 'flex', justifyContent: 'center', opacity: lin(f, [dollyFrom - 6, dollyFrom + 6], [1, 0]) }}>
         <Serif text="dark until it matters." at={Q.serif - Q.g2} size={92} color={C.paper} stagger={5} />
       </div>
     </AbsoluteFill>
@@ -34,7 +36,6 @@ function G2() {
 }
 
 const LENS_FRAMES = [
-  { src: 'lens/dark/02.png', at: 0 },
   { src: 'lens/peekTick/01.png', at: Q.peek - Q.glass },
   { src: 'lens/peekTick/02.png', at: Q.peek - Q.glass + 30 },
   { src: 'lens/peekTick/03.png', at: Q.peek - Q.glass + 60 },
@@ -72,14 +73,12 @@ function Lens({ g0 }: { g0: number }) {
             scale={2}
             enter="fade"
             enterAt={-2}
-            ry={[-15, -5]}
-            rx={[8, 3]}
+            ry={[-1, -8]}
+            rx={[1, 4]}
             dolly={[1.0, 1.2]}
             span={[0, SECTIONS.quiet.to - Q.glass]}
             xfade={3}
             focus={focus}
-            taps={[Q.tap - Q.glass]}
-            power={fr => (fr < Q.peek - Q.glass ? 1 : lin(fr, [Q.peek - Q.glass, Q.peek - Q.glass + 14], [0, 1]))}
           />
         </Sequence>
       </div>
@@ -97,7 +96,7 @@ function Lens({ g0 }: { g0: number }) {
 export function Quiet() {
   return (
     <>
-      <Shot from={Q.g2} to={Q.glass}>
+      <Shot from={Q.g2} to={Q.glass + 6}>
         <G2 />
       </Shot>
       <Shot from={Q.glass} to={SLOTS.A.from}>

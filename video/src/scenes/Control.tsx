@@ -118,18 +118,15 @@ const MONTAGE = [
   { src: 'phone/review/02.png', label: 'DRAFTS', from: 'left' as const },
 ]
 
+/** Four more real screens on eighth notes: a burst, not a read (no text on these). */
 function Montage({ i }: { i: number }) {
   const m = MONTAGE[i]
   if (!m) return null
-  const left = i % 2 === 0
+  const x = [1150, 260, 820, 1500][i] ?? 900
   return (
     <AbsoluteFill>
-      <div style={{ position: 'absolute', left: left ? 1100 : 300, top: 90 }}>
-        <PhoneShot screens={[{ src: m.src, at: 0 }]} height={860} enterAt={-8} enterFrom={m.from} ry={left ? [-20, -16] : [20, 16]} span={[0, 15]} cam={[{ f: 0, s: 1.05, x: 215, y: 420 }, { f: 15, s: 1.18, x: 215, y: 400 }]} />
-      </div>
-      <div style={{ position: 'absolute', left: left ? 150 : 900, top: 420 }}>
-        <Word text={m.label} at={-3} size={150} color={C.paper} from={left ? 'left' : 'right'} distance={400} snappy />
-        <div style={{ ...mono(C.green), marginTop: 10 }}>{`0${i + 1} / 04 · ON YOUR PHONE`}</div>
+      <div style={{ position: 'absolute', left: x - 200, top: 90 }}>
+        <PhoneShot screens={[{ src: m.src, at: 0 }]} height={860} enterAt={-10} enterFrom={m.from} ry={i % 2 ? [20, 18] : [-20, -18]} span={[0, 8]} cam={[{ f: 0, s: 1.05, x: 215, y: 420 }, { f: 8, s: 1.12, x: 215, y: 400 }]} />
       </div>
     </AbsoluteFill>
   )
@@ -183,7 +180,7 @@ function SlotCFallback() {
         <Priya />
       </Shot>
       {MONTAGE.map((_, i) => (
-        <Shot key={i} from={K.montage[i] ?? 0} to={K.montage[i + 1] ?? K.teach} enter={i === 0 ? 'whipL' : i % 2 ? 'whipR' : 'whipL'} exit={i < 3 ? (i % 2 ? 'whipL' : 'whipR') : 'cut'}>
+        <Shot key={i} from={K.montage[i] ?? 0} to={K.montage[i + 1] ?? K.teach} enter={i === 0 ? 'whipL' : 'cut'}>
           <Montage i={i} />
         </Shot>
       ))}

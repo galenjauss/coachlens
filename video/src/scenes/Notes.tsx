@@ -65,8 +65,8 @@ function Brief() {
           focus={fr => (fr >= 27 && fr < 40 ? lin(fr, [27, 40], [8, 0]) : 0)}
         />
       </div>
-      <div style={{ position: 'absolute', right: 130, bottom: 150, opacity: lin(f, [70, 80], [0, 1]) }}>
-        <Serif text="five lines. one glance." at={70} size={58} color={C.green} />
+      <div style={{ position: 'absolute', right: 130, bottom: 150, opacity: lin(f, [42, 52], [0, 1]) }}>
+        <Serif text="five lines. one glance." at={42} size={58} color={C.green} />
       </div>
     </AbsoluteFill>
   )
@@ -122,7 +122,7 @@ function Roll() {
           frames={[
             { src: 'lens/rollCall/03.png', at: 0 },
             { src: 'lens/rollCall/04.png', at: 10 },
-            { src: 'lens/rollCall/05.png', at: 24 },
+            { src: 'lens/rollCall/05.png', at: 16 },
             { src: 'lens/rollCall/06.png', at: done },
           ]}
           scale={2}

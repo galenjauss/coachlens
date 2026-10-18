@@ -54,7 +54,7 @@ function Typed() {
 }
 
 const STAGES = ['HEARD', 'SENDING', 'THINKING', 'CARD', 'AGENTS'] as const
-const STAGE_AT = [0, 8, 16, 68, 75]
+const STAGE_AT = [0, 6, 12, 48, 54]
 
 function Card() {
   const f = useCurrentFrame()
@@ -74,64 +74,51 @@ function Card() {
         <LensShot
           frames={[
             { src: 'lens/note/01.png', at: 0 },
-            { src: 'lens/note/02.png', at: 8 },
-            { src: 'lens/note/03.png', at: 16 },
-            { src: 'lens/note/04.png', at: 24 },
-            { src: 'lens/note/05.png', at: 32 },
-            { src: 'lens/note/06.png', at: 68 },
-            { src: 'lens/note/07.png', at: 75 },
-            { src: 'lens/note/08.png', at: 83 },
-            { src: 'lens/note/09.png', at: 94 },
-            { src: 'lens/note/10.png', at: 105 },
+            { src: 'lens/note/02.png', at: 6 },
+            { src: 'lens/note/03.png', at: 12 },
+            { src: 'lens/note/04.png', at: 18 },
+            { src: 'lens/note/05.png', at: 24 },
+            { src: 'lens/note/06.png', at: 48 },
+            { src: 'lens/note/07.png', at: 54 },
+            { src: 'lens/note/08.png', at: 60 },
+            { src: 'lens/note/09.png', at: 68 },
+            { src: 'lens/note/10.png', at: 76 },
           ]}
           scale={2}
           enter="pop"
           dolly={[0.96, 1.1]}
           ry={[-10, -3]}
           rx={[6, 2]}
-          span={[0, 135]}
+          span={[0, 120]}
           xfade={0}
-          punchAt={68}
+          punchAt={48}
         />
       </div>
-      <Connectors from={[1540, 560]} to={[[2000, 300], [2000, 460], [2000, 640], [2000, 800]]} at={i => 120 + i * 2} dur={10} color={C.green} />
+      <Connectors from={[1540, 560]} to={[[2000, 300], [2000, 460], [2000, 640], [2000, 800]]} at={i => 108 + i * 2} dur={10} color={C.green} />
     </AbsoluteFill>
   )
 }
 
 const OUTCOMES = [
-  { word: 'PROGRESS', sub: '3rd time → now a pattern', color: C.paper },
-  { word: 'REPORT CARD', sub: 'note added for the term', color: C.paper },
-  { word: 'NEXT PLAN', sub: 'guard drill goes first', color: C.black },
-  { word: 'COVERAGE', sub: '7 of 12 kids got feedback', color: C.black },
+  { word: 'PROGRESS', sub: '3rd time → now a pattern' },
+  { word: 'REPORT CARD', sub: 'note added for the term' },
+  { word: 'NEXT PLAN', sub: 'guard drill goes first' },
+  { word: 'COVERAGE', sub: '7 of 12 kids got feedback' },
 ] as const
 
-function Outcome({ i }: { i: number }) {
-  const o = OUTCOMES[i]
-  if (!o) return null
-  return (
-    <AbsoluteFill>
-      <Connectors from={[-40, 540]} to={[[240, 540]]} at={() => -3} dur={6} color={o.color} width={5} />
-      <div style={{ position: 'absolute', left: 300, top: 360 }}>
-        <Word text={o.word} at={-3} size={250} color={o.color} from="right" distance={500} snappy />
-        <div style={{ ...mono(o.color), fontSize: 30, marginTop: 24, opacity: 0.8 }}>{`AGENT ${i + 1}/4 · ${o.sub.toUpperCase()}`}</div>
-      </div>
-    </AbsoluteFill>
-  )
-}
-
 function Summary() {
-  const rows = OUTCOMES.map((o, i) => [1080, 300 + i * 150] as [number, number])
+  const rows = OUTCOMES.map((o, i) => [1040, 210 + i * 175] as [number, number])
+  const land = (i: number) => Math.round(i * 7.5) + 2
   return (
     <AbsoluteFill>
       <div style={{ position: 'absolute', left: 110, top: 330 }}>
-        <LensShot frames={[{ src: 'lens/note/10.png', at: 0 }]} scale={1} enter="pop" ry={[12, 6]} rx={[4, 2]} dolly={[1.25, 1.35]} span={[0, 45]} />
+        <LensShot frames={[{ src: 'lens/note/10.png', at: 0 }]} scale={1} enter="pop" ry={[12, 6]} rx={[4, 2]} dolly={[1.25, 1.35]} span={[0, 105]} />
       </div>
-      <Connectors from={[790, 540]} to={rows.map(([x, y]) => [x - 30, y + 40] as [number, number])} at={i => i * 3} dur={10} color={C.paper} />
+      <Connectors from={[790, 540]} to={rows.map(([x, y]) => [x - 30, y + 40] as [number, number])} at={i => land(i) - 4} dur={8} color={C.paper} />
       {OUTCOMES.map((o, i) => (
         <div key={o.word} style={{ position: 'absolute', left: rows[i]?.[0] ?? 0, top: rows[i]?.[1] ?? 0 }}>
-          <Word text={o.word} at={i * 3 + 6} size={74} color={C.paper} from="right" distance={300} />
-          <div style={{ ...mono(FIELD.cobalt.soft), marginTop: 8 }}>{o.sub.toUpperCase()}</div>
+          <Word text={o.word} at={land(i)} size={104} color={C.paper} from="right" distance={360} snappy />
+          <div style={{ ...mono(FIELD.cobalt.soft), fontSize: 24, marginTop: 6 }}>{o.sub.toUpperCase()}</div>
         </div>
       ))}
     </AbsoluteFill>
@@ -145,7 +132,7 @@ function Urgent() {
       <div style={{ position: 'absolute', left: 140, top: 330 }}>
         <Word text="Urgent?" at={0} size={180} color={C.black} mode="slam" />
         <div style={{ marginTop: 20 }}>
-          <Serif text="the parent hears tonight." at={at + 60} size={66} color={C.black} />
+          <Serif text="the parent hears tonight." at={at + 20} size={66} color={C.black} />
         </div>
       </div>
       <div style={{ position: 'absolute', left: 740, top: 270 }}>
@@ -180,7 +167,7 @@ function Phone() {
           <Word text="Drafted." at={10} size={190} color={C.paper} from="left" distance={500} />
         </div>
         <div style={{ marginTop: 18 }}>
-          <Serif text="you decide when it sends." at={z + 20} size={70} color={C.green} />
+          <Serif text="you decide when it sends." at={z} size={70} color={C.green} />
         </div>
       </div>
       <div style={{ position: 'absolute', left: 1080, top: 60 }}>
@@ -209,14 +196,9 @@ export function Sentence() {
       <Shot from={S.typed} to={S.card} enter="whipL">
         <Typed />
       </Shot>
-      <Shot from={S.card} to={S.outcomes[0]}>
+      <Shot from={S.card} to={S.summary}>
         <Card />
       </Shot>
-      {OUTCOMES.map((_, i) => (
-        <Shot key={i} from={S.outcomes[i] ?? 0} to={S.outcomes[i + 1] ?? S.summary}>
-          <Outcome i={i} />
-        </Shot>
-      ))}
       <Shot from={S.summary} to={S.urgent} exit="whipL">
         <Summary />
       </Shot>

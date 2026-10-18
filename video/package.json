@@ -7,23 +7,27 @@
     "studio": "remotion studio",
     "stills": "node scripts/stills.mjs",
     "check": "node scripts/check-timeline.mjs",
-    "audio-check": "node scripts/audio-check.mjs out/coachlens-launch-v2.mp4",
-    "render": "remotion render CoachLensLaunch out/coachlens-launch-v2.mp4 --codec=h264 --crf=20 --concurrency=6",
+    "audio-check": "node scripts/audio-check.mjs out/coachlens-launch-v3.mp4",
+    "render": "remotion render CoachLensLaunch out/coachlens-launch-v3.mp4 --codec=h264 --crf=20 --concurrency=6 --gl=angle",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@react-three/fiber": "9.3.0",
     "@remotion/cli": "4.0.536",
     "@remotion/google-fonts": "4.0.536",
     "@remotion/media": "4.0.536",
     "@remotion/motion-blur": "4.0.536",
     "@remotion/paths": "4.0.536",
+    "@remotion/three": "4.0.536",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "remotion": "4.0.536",
+    "three": "0.180.0",
     "zod": "4.5.4"
   },
   "devDependencies": {
     "@types/react": "19.3.0",
+    "@types/three": "0.180.0",
     "typescript": "5.9.3"
   },
   "type": "module"
