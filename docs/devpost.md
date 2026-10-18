@@ -19,7 +19,7 @@ CoachLens turns the G2 into an instructor's assistant during class.
 - **Home and lobby.** Swipe through your classes and tap one to open its lobby: the plan and the top insight. Tap starts class. Double-tap starts a **planning listen**: talk the plan through with your assistant, and the AI reshapes the drills, showing a diff on the lens (`+ Partner sparring 6m`, `- Kata 2`) with undo.
 - **In class.** Tap and talk in plain language. Swipe opens the drill deck, double-tap ends class, long-press is hold-to-talk, a nod turns the lens dark or on. Roll call is one sentence: "everyone except Jake and Mia".
 - **Agent card.** What you said appears first, then live agent progress. "Dee rolled her ankle and sat out the last drill" is urgent, so a parent email draft is created. Recurring issues roll into the report card and the next plan. "Maria hit 225 on deadlift" logs a PR (`√ Maria · deadlift 225 lb (PR +10)`). "How's Priya doing?" shows her brief: rank and time in rank, attendance dots (`●●○●●●`), last notes, metrics.
-- **Class questions.** Tap and ask "who is forgetting to keep their guard up?" and the lens shows an ANSWER card such as `Guard: Priya (3), Leo (2)`. Also "who hasn't gotten feedback today?", "how many are here?" (instant, no AI call) and "what should I focus on next drill?" (fast model, grounded only in class data; says "Not enough notes yet" when thin).
+- **Class questions.** Tap and ask "who is forgetting to keep their guard up?" and the lens shows an ANSWER card such as `Guard: Priya (3), Sam (3), Ava (1), Ben (1)`. Also "who hasn't gotten feedback today?", "how many are here?" (instant, no AI call) and "what should I focus on next drill?" (fast model, grounded only in class data; says "Not enough notes yet" when thin).
 - **Opportunistic insights.** Deterministic detectors find attendance decline, returning students, kids with no feedback, students ready to test, new PRs, grade drops, resolved issues and repeated billing flags. Each has a one-tap action: draft an email, put the student first next class, or mark the issue resolved. A returning student shows mid-class as `★ Jake's back after 3 missed`, the way Even's Conversate shows AI insights.
 - **End-of-class summary.** Minutes, drills, feedback coverage (who got none), agent actions, items to review, top insight. Tap puts the missed kids first next class.
 - **Phone companion** (in the Even app): Review queue for drafts, Insights with Do it / Dismiss, an Agents tab with per-agent **Auto / Review / Off**, student profiles with metrics, a plan editor that works with or without AI (repeat last class, copy another class, blank, AI draft, manual edits), custom vocabulary for speech-to-text, and an AI onboarding quiz that reads pasted text, CSV or photos of rosters, schedules and curriculum.
@@ -48,6 +48,7 @@ Three modes run on one engine: martial arts, personal training and tutoring.
 ## Accomplishments
 
 - A voice-to-agents loop that runs end to end on real G2 hardware.
+- Submitted to the Even Hub store (v0.1.0, in review) with a full listing, privacy policy and simulator screenshots.
 - Agents that act on their own initiative, with an honest autonomy control per agent.
 - Three teaching modes from one engine, with onboarding from a photo of a roster.
 - Quiet by default: the lens shows almost nothing until something real happens.
@@ -64,7 +65,7 @@ Three modes run on one engine: martial arts, personal training and tutoring.
 - Pilot with instructors at my dojo and a local gym.
 - A parent-facing view for report cards.
 - Android background hardening.
-- Public Even Hub release after review.
+- Public release: v0.1.0 is submitted to the Even Hub store and in review.
 
 ## Judging criteria
 
@@ -82,7 +83,7 @@ Yes. The team pairs the loaner G2 at the table. Tap a class, tap to start, say "
 
 ### Made for G2
 *"Does the experience make thoughtful use of G2 and its place in the wearer's line of sight?"*
-Every screen fits about three rows within the SDK's container limits, including the ANSWER card for class questions (`Guard: Priya (3), Leo (2)`). It uses the IMU (nod to go dark), the glasses mic, partial text updates for the timer, and a gesture map designed around a coach's hands: tap to talk, swipe for the deck, double-tap to end, long-press to hold-to-talk.
+Every screen fits about three rows within the SDK's container limits, including the ANSWER card for class questions (`Guard: Priya (3), Sam (3), Ava (1), Ben (1)`). It uses the IMU (nod to go dark), the glasses mic, partial text updates for the timer, and a gesture map designed around a coach's hands: tap to talk, swipe for the deck, double-tap to end, long-press to hold-to-talk.
 
 ### Quiet by Design
 *"Does the technology appear when it is useful and stay out of the way when it isn't?"*
@@ -106,6 +107,6 @@ Even Hub SDK, Even Realities G2, TypeScript, React, Vite, Hono, Vercel Fluid Com
 
 ## Links
 
-- Code: `<GitHub repo URL>`
+- Code: https://github.com/galenjauss/coachlens
 - Demo video: `<video URL>`
 - Try it: Even Hub app **CoachLens** (Beta); see the README section "Install and run on G2". Pairing code given in person.
