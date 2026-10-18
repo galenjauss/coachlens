@@ -164,6 +164,15 @@ describe('lens controller', () => {
     expect(b.sent.join('\n')).toContain("Didn't catch that")
   })
 
+  it('resume re-arms the IMU and an open mic', async () => {
+    const b = await toDark()
+    b.emit(tap); await flush() // recording: mic open
+    b.raw.imuControl.mockClear(); b.raw.audioControl.mockClear()
+    b.emit({ sysEvent: { eventType: OsEventTypeList.FOREGROUND_ENTER_EVENT } }); await flush()
+    expect(b.raw.imuControl).toHaveBeenCalledWith(true, ImuReportPace.P500)
+    expect(b.raw.audioControl).toHaveBeenCalledWith(true, expect.anything())
+  })
+
   it('home double-tap exits via shutDownPageContainer(1)', async () => {
     const b = await boot()
     b.emit(dbl); await flush()

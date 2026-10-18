@@ -1,4 +1,4 @@
-import { ImuReportPace, type EvenAppBridge } from '@evenrealities/even_hub_sdk'
+import { AudioInputSource, ImuReportPace, type EvenAppBridge } from '@evenrealities/even_hub_sdk'
 import { ApiError, NetworkError, type Api } from '../core/api'
 import { MAX_RECORD_MS, Recorder } from '../core/audio'
 import { bus } from '../core/bus'
@@ -189,7 +189,11 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     }
     const le = toLensEvent(e)
     if (!le) return
-    if (le.type === 'resumed' && imuOn) void setImu(true, true) // re-arm IMU reporting after background
+    if (le.type === 'resumed') {
+      // The host may close sensors while we're in the background: re-arm what was on.
+      if (imuOn) void setImu(true, true)
+      if (recorder.recording) void d.bridge.audioControl(true, AudioInputSource.Glasses).catch(err => console.warn('[mic] re-arm failed', err))
+    }
     dispatch(le)
   })
   const offPaired = bus.on('paired', () => dispatch({ type: 'resumed' }))
