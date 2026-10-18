@@ -67,7 +67,7 @@ describe('patch building', () => {
 
 describe('cue clamping', () => {
   it('max 2 cues of 40 chars, drops blanks', () => {
-    expect(clampCues(['  knees out ', '', 'x'.repeat(60), 'third'])).toEqual(['knees out', 'x'.repeat(40)])
+    expect(clampCues(['  knees out ', '', 'x'.repeat(120), 'third'])).toEqual(['knees out', 'x'.repeat(90)])
   })
   it('applies in patch', () => {
     const e = { ...toEditable(drill('a')), cues: ['1', '2', '3'] }

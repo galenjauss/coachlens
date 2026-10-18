@@ -6,8 +6,8 @@ export type Editable = DrillDraft & { id: string | null }
 
 export const MAX_ITEMS = 20
 export const MAX_CUES = 2
-export const CUE_MAX_CHARS = 40
-export const NAME_MAX_CHARS = 40
+export const CUE_MAX_CHARS = 90 // = shared Drill contract; the lens wraps long text (never cuts mid-word)
+export const NAME_MAX_CHARS = 80
 export const RATIONALE_MAX_CHARS = 160
 
 /** One-tap requests for the planner, per mode. */
@@ -33,7 +33,7 @@ export const toEditable = (x: Drill): Editable => ({
 
 export const blankItem = (): Editable => ({ id: null, name: '', minutes: 5, kind: 'drill', cues: [], focusStudentIds: [], rationale: '' })
 
-/** Trim, drop empties, and enforce the lens limits (≤2 cues, ≤40 chars each). */
+/** Trim, drop empties, and enforce the lens limits (≤2 cues, ≤CUE_MAX_CHARS chars each). */
 export function clampCues(cues: readonly string[]): string[] {
   return cues.map(c => c.trim().slice(0, CUE_MAX_CHARS)).filter(Boolean).slice(0, MAX_CUES)
 }
