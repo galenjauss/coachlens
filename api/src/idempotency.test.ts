@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { resetRateLimits } from './http/rateLimit'
 import { demoWorld, intent } from './test/demo'
-import { notes, outbox, utterances, deferredTasks } from './db/schema'
+import { notes, operations, outbox, utterances, deferredTasks } from './db/schema'
+import { opEntityId } from './services/operations'
 import { deferOnce } from './services/deferred'
 
 /** C1 / F03: a stable operation id makes a retried POST /v1/utterance replay instead of re-running. */
@@ -111,6 +112,58 @@ describe('C1 idempotency', () => {
     await w.deps.flush()
     expect(runs).toBe(2)
     expect((await w.db.select().from(deferredTasks).where(eq(deferredTasks.utteranceId, u!.id))).map(t => t.status).sort()).toEqual(['done', 'done'])
+  })
+})
+
+describe('C1 idempotency: fix round 1', () => {
+  beforeEach(() => resetRateLimits())
+
+  it('keys are scoped by route: the same opId on transcribe then utterance still runs the utterance', async () => {
+    const w = await demoWorld(dee, { stt: { async transcribe() { return 'Dee rolled her ankle' } } })
+    const sid = await w.start('Kids · Tue')
+    const key = crypto.randomUUID()
+    const f = new FormData(); f.set('sessionId', sid); f.set('audio', new File([new Uint8Array(10)], 'a.wav', { type: 'audio/wav' }))
+    expect((await w.app.request('/v1/transcribe', { method: 'POST', headers: { Authorization: w.h.Authorization, 'Idempotency-Key': key }, body: f })).status).toBe(200)
+    const u = await w.utter(sid, 'Dee rolled her ankle', { key, opId: key })
+    expect(u.status).toBe(200)
+    expect(u.headers.get('Idempotent-Replay')).toBeNull()
+    expect(((await u.json()) as { utteranceId: string }).utteranceId).toBeTruthy()
+    expect((await w.db.select().from(utterances).where(eq(utterances.sessionId, sid))).length).toBe(1)
+  })
+
+  it('crash gap: work committed but the response was never stored; the takeover finds the utterance, no duplicates', async () => {
+    const w = await demoWorld(dee)
+    const sid = await w.start('Kids · Tue')
+    const key = crypto.randomUUID()
+    const first = await w.utter(sid, 'Dee rolled her ankle', { key })
+    const { utteranceId } = await first.json() as { utteranceId: string }
+    expect(utteranceId).toBe(opEntityId((await w.db.select().from(operations))[0]!.instructorId, 'utterance', key))
+    // Simulate the crash: the operation row is left pending and stale, without its response.
+    await w.db.update(operations).set({ status: 'pending', responseJson: null, createdAt: new Date('2026-10-19T00:00:00Z') })
+    const retry = await w.utter(sid, 'Dee rolled her ankle', { key })
+    expect(retry.status).toBe(200)
+    const body = await retry.json() as { utteranceId: string; cardLines: string[] }
+    expect(body).toMatchObject({ utteranceId, cardLines: ['√ Already saved'] })
+    await w.deps.flush()
+    expect((await w.db.select().from(utterances).where(eq(utterances.sessionId, sid))).length).toBe(1)
+    expect((await w.db.select().from(notes).where(eq(notes.sessionId, sid))).length).toBe(1)
+    expect((await w.db.select().from(outbox).where(eq(outbox.trigger, 'urgent'))).length).toBe(1)
+  })
+
+  it('a 5xx after a partial write: the retry answers from the committed utterance instead of writing again', async () => {
+    let failNow = false
+    const w = await demoWorld(() => { failNow = true; return [intent({ studentNames: ['Dee'], content: 'Dee great kicks today' })] })
+    const realNow = w.deps.now
+    w.deps.now = () => { if (failNow) { failNow = false; throw new Error('boom after the utterance insert') } return realNow() }
+    const sid = await w.start('Kids · Tue')
+    const key = crypto.randomUUID()
+    expect((await w.utter(sid, 'Dee rolled her ankle', { key })).status).toBe(500)
+    expect((await w.db.select().from(utterances).where(eq(utterances.sessionId, sid))).length).toBe(1)
+    const retry = await w.utter(sid, 'Dee rolled her ankle', { key })
+    expect(retry.status).toBe(200)
+    expect(((await retry.json()) as { cardLines: string[] }).cardLines).toEqual(['√ Already saved'])
+    expect((await w.db.select().from(utterances).where(eq(utterances.sessionId, sid))).length).toBe(1)
+    expect(w.calls.filter(c => c.name === 'router')).toHaveLength(1)
   })
 })
 

@@ -3,7 +3,7 @@ import { cors } from 'hono/cors'
 import { HTTPException } from 'hono/http-exception'
 import { and, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
-import { AgentTask, InsightsQuery, DeckPatch, ReplaceDeckRequest, VoicePlanRequest, SettingsPatch, ExtractRequest, MAX_ALIASES, MetricCreate, MAX_IMAGE_BASE64, MAX_ONBOARDING_TEXT, OnboardingCommit, RedraftRequest, TranscribeForm, UtteranceForm } from '@matside/shared'
+import { AgentTask, InsightsQuery, DeckPatch, ReplaceDeckRequest, VoicePlanRequest, SettingsPatch, ExtractRequest, MAX_ALIASES, MetricCreate, MAX_IMAGE_BASE64, MAX_ONBOARDING_TEXT, OnboardingCommit, RedraftRequest, TranscribeForm, UtteranceForm, type UtteranceResponse } from '@matside/shared'
 import { SttUnavailableError, type Deps } from './deps'
 import { getStatus } from './services/status'
 import { attendance, billingFlags, drills, enrollments, instructors, insights as insightsTable, notes, sessions, students, classes, utterances } from './db/schema'
@@ -34,13 +34,13 @@ import { addAlias } from './logic/names'
 import { draftParentEmail } from './agents/parentEmail'
 import { redraftOutbox } from './agents/redraft'
 import { ClassCreate, ClassLiveError, ClassUpdate, StudentCreate, StudentUpdateBody, createClass, createStudent, deleteClass, deleteStudent, noteCandidates, studentView, updateClass, updateStudent } from './services/roster'
-import { claimOperation, completeOperation, MAX_KEY, releaseOperation } from './services/operations'
+import { claimOperation, completeOperation, MAX_KEY, opEntityId, releaseOperation } from './services/operations'
 import { undoUtterance, UndoError } from './services/undo'
 import { deferOnce } from './services/deferred'
 import { recordAttendance } from './services/ledger'
 import { agentRunDetail, agentTaskRuns, agentsSummary, utteranceRuns } from './services/agents'
 import { localDate } from './logic/dates'
-import { computeCoverage, loadSessionContext, markPresent, nextStudentFor } from './services/context'
+import { computeCoverage, coverageAndNext, loadSessionContext, markPresent, nextStudentFor } from './services/context'
 import { extractOnboarding } from './agents/onboarding'
 import { BudgetExceededError } from './agents/budget'
 import { getSettings, patchSettings, SettingsError } from './services/settings'
@@ -197,6 +197,19 @@ export function createApp(deps: Deps) {
     }
   }
 
+  const isUniqueViolation = (e: unknown): boolean => {
+    const code = (x: unknown) => (x && typeof x === 'object' && 'code' in x ? (x as { code: unknown }).code : null)
+    return code(e) === '23505' || code((e as { cause?: unknown })?.cause) === '23505'
+  }
+  const utteranceExists = async (id: string) => (await db.select({ id: utterances.id }).from(utterances).where(eq(utterances.id, id))).length > 0
+  /** The reply for an utterance an earlier attempt committed (its card lines are not replayed; its actions stand). */
+  const savedUtterance = async (id: string): Promise<UtteranceResponse> => {
+    const [u] = await db.select().from(utterances).where(eq(utterances.id, id))
+    const ctx = await loadSessionContext(db, u!.sessionId!, null)
+    const { coverage, next } = await coverageAndNext(db, ctx, deps.now())
+    return { utteranceId: id, transcript: u!.transcript, cardLines: ['√ Already saved'], coverage, nextStudent: next, disambiguation: null }
+  }
+
   /** C1: the stable operation id, from the Idempotency-Key header or the multipart field `opId`. */
   const opKey = (c: Context<Vars>, str: (k: string) => string | null): string | null => {
     const key = c.req.header('idempotency-key')?.trim() || str('opId')
@@ -205,6 +218,7 @@ export function createApp(deps: Deps) {
   }
   /** C1: runs `work` once per key; a done key replays its stored response, a pending one is 409 in_progress. */
   const once = async (c: Context<Vars>, key: string | null, route: string, work: () => Promise<unknown>) => {
+    // Scoped by route (the same opId on transcribe and utterance are two operations).
     if (!key) return c.json(await work() as object)
     const claim = await claimOperation(db, me(c), key, route, deps.now())
     // The response is stored as its exact JSON text, so a replay is byte-identical to the lost original.
@@ -215,10 +229,10 @@ export function createApp(deps: Deps) {
     if (claim.kind === 'in_progress') throw new HTTPException(409, { message: 'in_progress' })
     try {
       const text = JSON.stringify(await work())
-      await completeOperation(db, me(c), key, text)
+      await completeOperation(db, me(c), key, route, text)
       return c.body(text, 200, { 'Content-Type': 'application/json' })
     } catch (e) {
-      await releaseOperation(db, me(c), key).catch(() => {})
+      await releaseOperation(db, me(c), key, route).catch(() => {})
       throw e
     }
   }
@@ -234,11 +248,22 @@ export function createApp(deps: Deps) {
       if (!dr) throw new HTTPException(400, { message: 'drill not in this class plan' })
     }
     const file = form.data.text ? null : audio()
-    return once(c, opKey(c, str), 'utterance', async () => {
+    const key = opKey(c, str)
+    const utteranceId = key ? opEntityId(me(c), 'utterance', key) : undefined
+    return once(c, key, 'utterance', async () => {
+      // A re-run after a crash or a 5xx that already committed this utterance answers from it instead of repeating it.
+      if (utteranceId && await utteranceExists(utteranceId)) return savedUtterance(utteranceId)
       let transcript = form.data.text
       if (file) transcript = await transcribe(file, await hintsFor(db, { sessionId: form.data.sessionId }))
       if (!transcript) throw new HTTPException(422, { message: 'empty_transcript' })
-      return handleUtterance(deps, { sessionId: form.data.sessionId, drillId: form.data.drillId, mode: form.data.mode, transcript })
+      try {
+        return await handleUtterance(deps, { sessionId: form.data.sessionId, drillId: form.data.drillId, mode: form.data.mode, transcript, utteranceId })
+      } catch (e) {
+        // Only a duplicate insert (a concurrent run with the same id won) is answered from the saved utterance;
+        // any other failure is a real 5xx, and the retry answers from whatever the first attempt committed.
+        if (utteranceId && isUniqueViolation(e) && await utteranceExists(utteranceId)) return savedUtterance(utteranceId)
+        throw e
+      }
     })
   })
 

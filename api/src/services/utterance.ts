@@ -32,11 +32,12 @@ const first = (name: string) => name.split(' ')[0]!
 
 export async function handleUtterance(
   deps: Deps,
-  input: { sessionId: string; drillId: string | null; mode: 'note' | 'attendance'; transcript: string },
+  input: { sessionId: string; drillId: string | null; mode: 'note' | 'attendance'; transcript: string; utteranceId?: string },
 ): Promise<UtteranceResponse> {
   const { db } = deps
   const ctx = await loadSessionContext(db, input.sessionId, input.drillId)
-  const [utt] = await db.insert(utterances).values({ sessionId: ctx.sessionId, transcript: input.transcript, mode: input.mode }).returning()
+  // C1: a queued item's utterance id is derived from its operation id, so a retried run cannot insert a second one.
+  const [utt] = await db.insert(utterances).values({ ...(input.utteranceId ? { id: input.utteranceId } : {}), sessionId: ctx.sessionId, transcript: input.transcript, mode: input.mode }).returning()
   const utteranceId = utt!.id
   bindUtterance(utteranceId) // C2: work deferred from this request is cancellable by this utterance's Undo
   const actions: CardAction[] = []
