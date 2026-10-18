@@ -1,6 +1,5 @@
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
-import { z } from 'zod'
-import { Alias, MAX_ALIASES, ModeId, isRealDate, modeConfig } from '@matside/shared'
+import { Alias, ClassCreate, ClassUpdate, MAX_ALIASES, StudentCreate, StudentUpdate, isRealDate, modeConfig, type GuardianInput, type NoteCandidates } from '@matside/shared'
 import type { Db } from '../db/client'
 import {
   agentRuns, attendance, billingFlags, classes, deckDiffs, decks, drills, enrollments, guardians, insights, issues, notes, outbox,
@@ -11,30 +10,20 @@ import { aliasKey } from '../logic/names'
 
 /** C3 · roster and class maintenance. Every function assumes the route already checked ownership (C4). */
 
-const Name = z.string().trim().min(1).max(80)
-const Nickname = z.string().trim().max(40).nullable().transform(v => v || null) // '' clears it
-const Guardian = z.object({ name: z.string().trim().min(1).max(80), email: z.string().trim().toLowerCase().email().max(200) })
-const ClassIds = z.array(z.string().min(1).max(64)).max(20)
-
-export const StudentCreate = z.object({
-  name: Name, belt: z.string().trim().min(1).max(40).optional(), nickname: Nickname.optional(),
-  classIds: ClassIds, guardians: z.array(Guardian).max(4).optional(),
+/**
+ * Request bodies are the shared client contracts (StudentCreate, StudentUpdate, ClassCreate, ClassUpdate). The
+ * server adds the rules the old StudentPatch enforced: aliases must look like names, rankSince must be a real
+ * date, and a patch must change something.
+ */
+export const StudentUpdateBody = StudentUpdate.superRefine((p, ctx) => {
+  if (!Object.values(p).some(v => v !== undefined)) ctx.addIssue({ code: 'custom', message: 'nothing to change' })
+  if (p.aliases && (p.aliases.length > MAX_ALIASES || p.aliases.some(a => !Alias.safeParse(a).success))) ctx.addIssue({ code: 'custom', message: 'bad alias' })
+  if (p.rankSince && !isRealDate(p.rankSince)) ctx.addIssue({ code: 'custom', message: 'not a real date' })
 })
-export type StudentCreate = z.infer<typeof StudentCreate>
+export { ClassCreate, ClassUpdate, StudentCreate }
 
-/** The existing patch (aliases, belt, rankSince) plus name, nickname, classIds and guardians (replace). */
-export const StudentUpdate = z.object({
-  aliases: z.array(Alias).max(MAX_ALIASES).optional(),
-  belt: z.string().trim().min(1).max(40).optional(),
-  rankSince: z.string().refine(isRealDate, 'not a real date').nullable().optional(),
-  name: Name.optional(), nickname: Nickname.optional(), classIds: ClassIds.optional(), guardians: z.array(Guardian).max(4).optional(),
-}).refine(p => Object.values(p).some(v => v !== undefined), 'nothing to change')
-export type StudentUpdate = z.infer<typeof StudentUpdate>
-
-const StartTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'HH:MM')
-const Weekday = z.number().int().min(0).max(6)
-export const ClassCreate = z.object({ name: Name, mode: ModeId, startTime: StartTime, weekday: Weekday })
-export const ClassUpdate = ClassCreate.partial()
+const nick = (v: string | null | undefined) => (v === undefined ? undefined : v?.trim() || null) // '' clears it
+const guardianRows = (studentId: string, gs: GuardianInput[]) => gs.map(g => ({ studentId, name: g.name, email: g.email.toLowerCase() }))
 
 export interface StudentView {
   id: string; name: string; nickname: string | null; belt: string; aliases: string[]; rankSince: string | null
@@ -58,9 +47,9 @@ export async function createStudent(db: Db, instructorId: string, body: StudentC
   const classIds = [...new Set(body.classIds)]
   await atomically(db, h => [
     // Unknown age: birthYear = this year (reported as null), as onboarding does.
-    h.insert(students).values({ id, instructorId, name: body.name, nickname: body.nickname ?? null, belt: body.belt ?? 'new', birthYear: year }),
+    h.insert(students).values({ id, instructorId, name: body.name, nickname: nick(body.nickname) ?? null, belt: body.belt ?? 'new', birthYear: year }),
     ...(classIds.length ? [h.insert(enrollments).values(classIds.map(classId => ({ classId, studentId: id })))] : []),
-    ...(body.guardians?.length ? [h.insert(guardians).values(body.guardians.map(g => ({ studentId: id, ...g })))] : []),
+    ...(body.guardians?.length ? [h.insert(guardians).values(guardianRows(id, body.guardians))] : []),
   ])
   return (await studentView(db, id))!
 }
@@ -71,14 +60,14 @@ export async function updateStudent(db: Db, id: string, p: StudentUpdate): Promi
   if (p.belt !== undefined) set.belt = p.belt
   if (p.rankSince !== undefined) set.rankSince = p.rankSince
   if (p.name !== undefined) set.name = p.name
-  if (p.nickname !== undefined) set.nickname = p.nickname
+  if (p.nickname !== undefined) set.nickname = nick(p.nickname) ?? null
   const classIds = p.classIds ? [...new Set(p.classIds)] : null
   await atomically(db, h => [
     ...(Object.keys(set).length ? [h.update(students).set(set).where(eq(students.id, id))] : []),
     ...(classIds ? [h.delete(enrollments).where(eq(enrollments.studentId, id))] : []),
     ...(classIds?.length ? [h.insert(enrollments).values(classIds.map(classId => ({ classId, studentId: id })))] : []),
     ...(p.guardians ? [h.delete(guardians).where(eq(guardians.studentId, id))] : []),
-    ...(p.guardians?.length ? [h.insert(guardians).values(p.guardians.map(g => ({ studentId: id, ...g })))] : []),
+    ...(p.guardians?.length ? [h.insert(guardians).values(guardianRows(id, p.guardians))] : []),
   ])
 }
 
@@ -114,12 +103,12 @@ const classView = (c: typeof classes.$inferSelect): ClassView => {
   return { id: c.id, name: c.name, mode: mode.id, modeLabel: mode.label, weekday: c.weekday, startTime: c.startTime }
 }
 
-export async function createClass(db: Db, instructorId: string, body: z.infer<typeof ClassCreate>): Promise<ClassView> {
+export async function createClass(db: Db, instructorId: string, body: ClassCreate): Promise<ClassView> {
   const [row] = await db.insert(classes).values({ instructorId, ...body }).returning()
   return classView(row!)
 }
 
-export async function updateClass(db: Db, id: string, body: z.infer<typeof ClassUpdate>): Promise<ClassView> {
+export async function updateClass(db: Db, id: string, body: ClassUpdate): Promise<ClassView> {
   const set = Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined))
   const [row] = Object.keys(set).length
     ? await db.update(classes).set(set).where(eq(classes.id, id)).returning()
@@ -147,7 +136,7 @@ export async function deleteClass(db: Db, id: string): Promise<void> {
  * C3 / F16: who a note can be assigned to: its own class's roster, with the class name and the capture time.
  * A note captured outside a class has no roster to offer: 'no_class' (the route answers 409).
  */
-export async function noteCandidates(db: Db, noteId: string) {
+export async function noteCandidates(db: Db, noteId: string): Promise<NoteCandidates | 'no_class' | null> {
   const [n] = await db.select({ sessionId: notes.sessionId, createdAt: notes.createdAt }).from(notes).where(eq(notes.id, noteId))
   if (!n) return null
   if (!n.sessionId) return 'no_class' as const

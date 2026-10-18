@@ -33,7 +33,7 @@ import { applyDiff, totalMinutes } from './logic/deckDiff'
 import { addAlias } from './logic/names'
 import { draftParentEmail } from './agents/parentEmail'
 import { redraftOutbox } from './agents/redraft'
-import { ClassCreate, ClassLiveError, ClassUpdate, StudentCreate, StudentUpdate, createClass, createStudent, deleteClass, deleteStudent, noteCandidates, studentView, updateClass, updateStudent } from './services/roster'
+import { ClassCreate, ClassLiveError, ClassUpdate, StudentCreate, StudentUpdateBody, createClass, createStudent, deleteClass, deleteStudent, noteCandidates, studentView, updateClass, updateStudent } from './services/roster'
 import { claimOperation, completeOperation, MAX_KEY, releaseOperation } from './services/operations'
 import { undoUtterance, UndoError } from './services/undo'
 import { deferOnce } from './services/deferred'
@@ -458,7 +458,7 @@ export function createApp(deps: Deps) {
   })
   app.patch('/v1/students/:id', async c => {
     const id = c.req.param('id')
-    const patch = await json(c.req.raw, StudentUpdate)
+    const patch = await json(c.req.raw, StudentUpdateBody)
     await ownAllClasses(c, patch.classIds)
     await updateStudent(db, id, patch)
     const view = (await studentView(db, id))!

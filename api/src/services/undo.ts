@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm'
-import type { Coverage } from '@matside/shared'
+import type { Coverage, UndoResponse } from '@matside/shared'
 import type { Deps } from '../deps'
 import type { Db } from '../db/client'
 import { actionLedger, attendance, billingFlags, deckDiffs, deferredTasks, drills, issues, notes, outbox, studentMetrics, students, utterances } from '../db/schema'
@@ -9,7 +9,8 @@ import { computeCoverage, loadSessionContext, modeForStudent } from './context'
 import type { AttendanceBefore, RankState } from './ledger'
 
 /** C2 · POST /v1/utterances/:id/undo. Labels are short human lines (at most 38 characters). */
-export interface UndoResult { ok: true; reversed: string[]; cancelled: string[]; notReversible: string[]; coverage: Coverage | null }
+/** The shared UndoResponse (C2) plus coverage, which the lens uses to refresh its counter. */
+export type UndoResult = UndoResponse & { coverage: Coverage | null }
 export class UndoError extends Error {
   constructor(readonly code: 'not_found' | 'already_undone') { super(code) }
 }
