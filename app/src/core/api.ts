@@ -119,9 +119,10 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
     } finally { clearTimeout(timer) }
     if (!res.ok) {
       const msg = raw && typeof raw === 'object' ? (raw as { error?: unknown }).error : undefined
-      // The token no longer works: re-pair. Not when the token could not be read at all (a storage stall says
-      // nothing about the token; re-pairing would wipe a valid one).
-      if (res.status === 401 && path !== '/pair' && (token || read.known)) bus.emit('unauthorized', undefined)
+      // The token no longer works: re-pair. Not when the token could not be read (a storage stall says nothing
+      // about the stored token; re-pairing would wipe a valid one, possibly one a re-pair just wrote).
+      // Only a token read for this request counts: a cached one may already have been replaced by a re-pair.
+      if (res.status === 401 && path !== '/pair' && read.known) bus.emit('unauthorized', undefined)
       throw new ApiError(res.status, typeof msg === 'string' ? msg : res.statusText, parseRetryAfter(res.headers.get('retry-after')))
     }
     if (!schema) return (raw ?? {}) as T

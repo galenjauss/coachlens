@@ -38,6 +38,24 @@ describe('token read stalls', () => {
     } finally { off(); vi.useRealTimers() }
   })
 
+  it('a 401 for a cached token (read stalled) does not wipe the stored token, which a re-pair may have replaced', async () => {
+    vi.useFakeTimers()
+    const seen: number[] = []
+    const off = bus.on('unauthorized', () => seen.push(1))
+    try {
+      let stall = false
+      const api = createApi('http://x', () => (stall ? new Promise<string | null>(() => {}) : Promise.resolve('old')), ((_u: string, init: RequestInit) =>
+        Promise.resolve(new Headers(init.headers).get('Authorization') ? new Response('{"error":"bad token"}', { status: 401 }) : new Response('{}', { status: 200 }))) as unknown as typeof fetch)
+      await expect(api.today()).rejects.toMatchObject({ status: 401 })
+      expect(seen).toEqual([1]) // read fresh and rejected: re-pair
+      stall = true
+      const p = api.today().catch(e => e)
+      await vi.advanceTimersByTimeAsync(TOKEN_READ_TIMEOUT_MS)
+      expect(await p).toMatchObject({ status: 401 })
+      expect(seen).toEqual([1]) // the cached token's 401 does not trigger another wipe
+    } finally { off(); vi.useRealTimers() }
+  })
+
   it('a 401 for a token that was read still re-pairs (revoked or expired)', async () => {
     const seen: number[] = []
     const off = bus.on('unauthorized', () => seen.push(1))
