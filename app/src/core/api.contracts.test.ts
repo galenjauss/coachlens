@@ -112,3 +112,19 @@ describe('review items carry an optional urgent flag (F17)', () => {
     expect(got[1]!.urgent).toBeUndefined()
   })
 })
+
+describe('batch 2 follow-ups', () => {
+  it('POST /v1/tokens/revoke-others returns how many other phones were signed out', async () => {
+    const { api, seen } = fake(() => json({ ok: true, revoked: 2 }))
+    await expect(api.revokeOtherTokens()).resolves.toEqual({ ok: true, revoked: 2 })
+    expect(seen[0]).toMatchObject({ url: 'http://x/v1/tokens/revoke-others', method: 'POST' })
+    expect(seen[0]!.headers.get('Authorization')).toBe('Bearer tok')
+  })
+  it('an Undo reply with the extra coverage field parses (and keeps it)', async () => {
+    const body = { ok: true, reversed: ['Removed Priya note'], cancelled: [], notReversible: [], coverage: { covered: 3, present: 12 } }
+    await expect(fake(() => json(body)).api.undo('u')).resolves.toEqual(body)
+  })
+  it('candidates for a note captured outside a class: 409 no_class', async () => {
+    await expect(fake(() => json({ error: 'no_class' }, 409)).api.noteCandidates('n')).rejects.toMatchObject({ status: 409, message: 'no_class' })
+  })
+})

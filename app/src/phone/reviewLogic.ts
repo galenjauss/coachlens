@@ -52,3 +52,16 @@ export function filterCandidates<T extends Candidate>(students: readonly T[], qu
   if (!q) return [...students]
   return students.filter(s => [s.name, s.nickname ?? '', ...s.aliases].some(v => v.toLowerCase().includes(q)))
 }
+
+/** Why the class roster for an unassigned note can't be shown (batch 2: 409 no_class = captured outside any class). */
+export function candidatesError(e: unknown): { text: string; retry: boolean } {
+  if (e instanceof ApiError && e.status === 409 && e.message === 'no_class') return { text: 'This note wasn’t captured in a class, so there is no class roster to pick from. Dismiss it, or record it again during class.', retry: false }
+  if (e instanceof ApiError && e.status === 404) return { text: 'This note is gone. The list will refresh.', retry: false }
+  return { text: `Couldn’t load this class’s roster. ${outcomeFor(e, 'Loading').text}`, retry: true }
+}
+
+/** "Signed out 2 other phones" (or that there were none). */
+export function revokedNotice(n: number): string {
+  if (n <= 0) return 'No other phones were signed in.'
+  return `Signed out ${n} other ${n === 1 ? 'phone' : 'phones'}.`
+}

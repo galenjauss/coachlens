@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { FailedItem, OutboxItem } from '../core/outbox'
 import { storageWarning, unsentRows, unsentSummary } from './outboxLogic'
 import { classPayload, classUpdatePayload, studentCreatePayload, studentUpdatePayload, WEEKDAYS } from './rosterLogic'
-import { filterCandidates, urgentFirst } from './reviewLogic'
+import { candidatesError, filterCandidates, revokedNotice, urgentFirst } from './reviewLogic'
+import { ApiError, NetworkError } from '../core/api'
 import { classInsightsQuery } from './insightsLogic'
 import { parseStatus } from './settingsLogic'
 
@@ -112,5 +113,17 @@ describe('review round 1 · #1 storage warning on the phone', () => {
     expect(storageWarning(0.5)).toBeNull()
     expect(storageWarning(0.72)).toBe('Unsent notes are 72% full. Send or discard some soon.')
     expect(storageWarning(1)).toMatch(/full: new voice notes can’t be saved/)
+  })
+})
+
+describe('batch 2 follow-ups on the phone', () => {
+  it('no_class gets its own message (no retry); other failures offer a retry', () => {
+    expect(candidatesError(new ApiError(409, 'no_class'))).toMatchObject({ retry: false, text: expect.stringMatching(/wasn’t captured in a class/) })
+    expect(candidatesError(new NetworkError('offline'))).toMatchObject({ retry: true, text: expect.stringMatching(/No connection/) })
+  })
+  it('revoke-others notice', () => {
+    expect(revokedNotice(0)).toBe('No other phones were signed in.')
+    expect(revokedNotice(1)).toBe('Signed out 1 other phone.')
+    expect(revokedNotice(3)).toBe('Signed out 3 other phones.')
   })
 })
