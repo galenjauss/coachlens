@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@matside/shared": ["../shared/src/index.ts"],
+      "@evenrealities/even_hub_sdk": ["src/stubs/even_hub_sdk.ts"],
+      "zod": ["node_modules/zod"]
+    },
+    "types": []
+  },
+  "include": ["src", "remotion.config.ts", "src/env.d.ts"]
+}

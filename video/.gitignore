@@ -1,0 +1,10 @@
+node_modules/
+out/
+# Local drop-ins: footage, voiceover and music are added per machine, not committed.
+public/footage/*
+!public/footage/.gitkeep
+public/vo/*
+!public/vo/.gitkeep
+public/music.mp3
+.DS_Store
+.claude/
