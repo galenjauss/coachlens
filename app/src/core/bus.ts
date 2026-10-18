@@ -1,4 +1,11 @@
-type Events = { paired: void; startClass: void; sessionChanged: string | null; classChanged: string | null; deckChanged: void }
+export type ImuSampleEvent = { x: number; y: number; z: number; nod: boolean }
+type Events = {
+  paired: void; startClass: void; sessionChanged: string | null; classChanged: string | null; deckChanged: void
+  /** Every IMU sample the lens receives (for the phone calibration readout); `nod` = the detector fired on it. */
+  imuSample: ImuSampleEvent
+  /** The phone IMU readout opened (true) or closed (false): the lens keeps the IMU on while it is open. */
+  imuDebug: boolean
+}
 type Handler<T> = (p: T) => void
 const handlers: { [K in keyof Events]?: Handler<Events[K]>[] } = {}
 export const bus = {

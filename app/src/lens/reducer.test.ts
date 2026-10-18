@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Today } from '@matside/shared'
-import { CARD_MS, PEEK_MS, initialState, reduce } from './reducer'
+import { STATUS_MS, initialState, reduce } from './reducer'
 import type { LensEvent, LensState } from './state'
 
 const today: Today = {
@@ -35,7 +35,7 @@ describe('lens reducer', () => {
     expect(r.state.screen).toBe('peek')
     expect(r.state.active?.drillId).toBe('d1')
     expect(r.effects).toContainEqual({ type: 'logDrill', sessionId: 's1', drillId: 'd1', event: 'start' })
-    expect(r.effects).toContainEqual({ type: 'scheduleHide', ms: PEEK_MS })
+    expect(r.effects.some(x => (x as { type: string }).type === 'expireStatus')).toBe(false) // persistent: nothing hides it
   })
 
   it('first-run double-tap exits (root screen)', () => {
@@ -50,105 +50,129 @@ describe('lens reducer', () => {
 
   const inPeek = () => run(initialState(true), { type: 'todayLoaded', today }, { type: 'tap' },
     { type: 'sessionStarted', res: { sessionId: 's1', startedAt: '2026-10-20T00:00:00Z', coverage: cov, nextStudent: { id: 'p', name: 'Priya', reason: 'guard' } }, resumed: true, now: 1000 }).state
-  const inDark = () => run(inPeek(), { type: 'hide' }).state
+  const inDark = () => run(inPeek(), { type: 'nod' }).state
+  const note = (cardLines: string[], utteranceId = 'u1') => ({ type: 'utteranceResult' as const, res: { utteranceId, transcript: 'Priya keep your guard up', cardLines, coverage: { covered: 1, present: 12 }, nextStudent: null, disambiguation: null } })
 
-  it('resumed session goes straight to a peek of the drill', () => {
+  it('resumed session goes straight to a peek of the drill; nod toggles dark and back', () => {
     expect(inPeek().screen).toBe('peek')
     expect(inDark().screen).toBe('dark')
+    expect(run(inDark(), { type: 'nod' }).state.screen).toBe('peek')
   })
 
-  it('tap in dark starts talking (no lead word)', () => {
-    const r = run(inDark(), { type: 'tap' })
+  it('nod does nothing outside peek/dark (home, recording, card)', () => {
+    expect(run(initialState(true), { type: 'nod' }).state.screen).toBe('home')
+    const rec = run(inPeek(), { type: 'tap' }).state
+    expect(reduce(rec, { type: 'nod' }).state).toBe(rec)
+  })
+
+  it('peek is persistent during class: no hide timer, ticks of time do not leave it', () => {
+    const p = inPeek()
+    expect(p.status).toBeNull()
+    expect(reduce(p, { type: 'statusExpired' }).state).toBe(p)
+  })
+
+  it('tap in peek starts talking (no lead word)', () => {
+    const r = run(inPeek(), { type: 'tap' })
     expect(r.state.screen).toBe('recording')
     expect(r.effects).toContainEqual({ type: 'startMic' })
   })
 
-  it('headTilt in dark peeks and schedules the hide; hide returns to dark', () => {
-    let r = run(inDark(), { type: 'headTilt' })
+  it('tap in dark only wakes the lens to peek: it never records', () => {
+    const r = run(inDark(), { type: 'tap' })
     expect(r.state.screen).toBe('peek')
-    expect(r.effects).toContainEqual({ type: 'scheduleHide', ms: 5000 })
-    r = run(r.state, { type: 'hide' })
-    expect(r.state.screen).toBe('dark')
-    expect(run(inDark(), { type: 'hide' }).state.screen).toBe('dark')
+    expect(r.effects).not.toContainEqual({ type: 'startMic' })
   })
 
-  it('hide does not interrupt other screens', () => {
-    const rec = run(inDark(), { type: 'tap' }).state
-    expect(reduce(rec, { type: 'hide' }).state.screen).toBe('recording')
-  })
-
-  it('timerEnded peeks with the next drill name, or wrap up after the last', () => {
+  it('timerEnded peeks with the next drill name (waking a dark lens), or wrap up after the last', () => {
     let r = run(inDark(), { type: 'timerEnded' })
     expect(r.state).toMatchObject({ screen: 'peek', status: 'Time · next: Holds' })
-    expect(r.effects).toContainEqual({ type: 'scheduleHide', ms: PEEK_MS })
-    r = run(inDark(), { type: 'swipeDown' }, { type: 'listSelect', index: 1, now: 5 }, { type: 'hide' }, { type: 'timerEnded' })
+    expect(r.effects).toContainEqual({ type: 'expireStatus', ms: STATUS_MS })
+    r = run(r.state, { type: 'statusExpired' })
+    expect(r.state).toMatchObject({ screen: 'peek', status: null })
+    r = run(inDark(), { type: 'swipeDown' }, { type: 'listSelect', index: 1, now: 5 }, { type: 'timerEnded' })
     expect(r.state.status).toBe('Time · next: wrap up')
   })
 
-  it('tap to talk, tap to send, card then timeout back to dark', () => {
+  it('tap to talk, tap to send; the card stays (no timeout) and polls agent runs until tapped away', () => {
     let r = run(inPeek(), { type: 'tap' })
     expect(r.state.screen).toBe('recording')
     r = run(r.state, { type: 'tap' })
     expect(r.effects).toContainEqual({ type: 'stopMicAndSend', mode: 'note', sessionId: 's1', drillId: 'd1' })
-    r = run(r.state, { type: 'utteranceResult', res: { utteranceId: 'u1', transcript: 't', cardLines: ['✓ Priya · guard (3rd time)'], coverage: { covered: 1, present: 12 }, nextStudent: null, disambiguation: null } })
+    r = run(r.state, note(['✓ Priya · guard (3rd time)']))
     expect(r.state.screen).toBe('card')
+    expect(r.state.card).toMatchObject({ transcript: 'Priya keep your guard up', utteranceId: 'u1', runs: null, runsFinal: false })
     expect(r.state.coverage.covered).toBe(1)
-    expect(r.effects).toContainEqual({ type: 'scheduleCardTimeout', ms: CARD_MS })
-    r = run(r.state, { type: 'cardTimeout' })
-    expect(r.state.screen).toBe('dark')
+    expect(r.effects).toEqual([{ type: 'pollRuns', utteranceId: 'u1' }])
+    for (const e of [{ type: 'statusExpired' }, { type: 'swipeDown' }, { type: 'longPress' }, { type: 'nod' }] as const) {
+      expect(reduce(r.state, e).state.screen).toBe('card')
+    }
+    r = run(r.state, { type: 'tap' })
+    expect(r.state).toMatchObject({ screen: 'peek', card: null })
+  })
+
+  it('runsLoaded updates only the matching card', () => {
+    const c = run(inPeek(), { type: 'tap' }, { type: 'tap' }, note(['✓ x'])).state
+    const runs = [{ agent: 'router', summary: 's', status: 'ok', createdAt: 'x' }]
+    expect(reduce(c, { type: 'runsLoaded', utteranceId: 'other', runs, final: false }).state).toBe(c)
+    const r = reduce(c, { type: 'runsLoaded', utteranceId: 'u1', runs, final: true })
+    expect(r.state.card).toMatchObject({ runs, runsFinal: true })
+    expect(reduce(r.state, { type: 'runsLoaded', utteranceId: 'u1', runs: null, final: true }).state.card?.runs).toEqual(runs)
   })
 
   it('double-tap on a card undoes', () => {
-    let r = run(inDark(), { type: 'tap' }, { type: 'tap' },
-      { type: 'utteranceResult', res: { utteranceId: 'u1', transcript: 't', cardLines: ['✓ x'], coverage: cov, nextStudent: null, disambiguation: null } })
+    let r = run(inPeek(), { type: 'tap' }, { type: 'tap' }, note(['✓ x']))
     r = run(r.state, { type: 'doubleTap' })
     expect(r.effects).toContainEqual({ type: 'undo', utteranceId: 'u1' })
     expect(r.state).toMatchObject({ screen: 'peek', status: 'Undone' })
-    expect(r.effects).toContainEqual({ type: 'scheduleHide', ms: PEEK_MS })
+    expect(r.effects).toContainEqual({ type: 'expireStatus', ms: STATUS_MS })
   })
 
-  it('long press records and release sends', () => {
-    let r = run(inDark(), { type: 'longPress' })
-    expect(r.state.screen).toBe('recording')
-    r = run(r.state, { type: 'longPressRelease' })
-    expect(r.state.screen).toBe('sending')
+  it('long press records (from peek or dark) and release sends', () => {
+    for (const start of [inPeek(), inDark()]) {
+      let r = run(start, { type: 'longPress' })
+      expect(r.state.screen).toBe('recording')
+      r = run(r.state, { type: 'longPressRelease' })
+      expect(r.state.screen).toBe('sending')
+    }
   })
 
-  it('queued and empty results show a one-line peek with a status, then hide', () => {
-    let r = run(inDark(), { type: 'tap' }, { type: 'tap' }, { type: 'utteranceQueued' })
+  it('queued and empty results show a status on the peek, then the status expires (peek stays)', () => {
+    let r = run(inPeek(), { type: 'tap' }, { type: 'tap' }, { type: 'utteranceQueued' })
     expect(r.state).toMatchObject({ screen: 'peek', status: '● Saved · will sync' })
-    expect(r.effects).toContainEqual({ type: 'scheduleHide', ms: PEEK_MS })
-    r = run(inDark(), { type: 'tap' }, { type: 'tap' }, { type: 'utteranceEmpty' })
+    expect(r.effects).toContainEqual({ type: 'expireStatus', ms: STATUS_MS })
+    r = run(inPeek(), { type: 'tap' }, { type: 'tap' }, { type: 'utteranceEmpty' })
     expect(r.state.status).toBe("Didn't catch that · tap to retry")
-    r = run(r.state, { type: 'hide' })
-    expect(r.state).toMatchObject({ screen: 'dark', status: null })
+    r = run(r.state, { type: 'statusExpired' })
+    expect(r.state).toMatchObject({ screen: 'peek', status: null })
   })
 
   it('disambiguation picks a student', () => {
-    let r = run(inDark(), { type: 'tap' }, { type: 'tap' }, { type: 'utteranceResult', res: {
+    let r = run(inPeek(), { type: 'tap' }, { type: 'tap' }, { type: 'utteranceResult', res: {
       utteranceId: 'u', transcript: 't', cardLines: [], coverage: cov, nextStudent: null,
       disambiguation: { noteId: 'n1', heard: 'Mya', options: [{ id: 'a', name: 'Maya Chen' }, { id: 'b', name: 'Mia Lopez' }] } } })
     expect(r.state.screen).toBe('disambiguation')
     r = run(r.state, { type: 'listSelect', index: 1 })
     expect(r.effects).toContainEqual({ type: 'assignNote', noteId: 'n1', studentId: 'b' })
-    expect(r.state.screen).toBe('dark')
+    expect(r.state.screen).toBe('peek')
   })
 
-  it('swipe opens deck; selecting switches drill and peeks', () => {
+  it('swipe opens deck (from peek or dark); selecting switches drill and peeks', () => {
+    expect(run(inPeek(), { type: 'swipeUp' }).state.screen).toBe('deck')
     let r = run(inDark(), { type: 'swipeDown' })
     expect(r.state.screen).toBe('deck')
     r = run(r.state, { type: 'listSelect', index: 1 })
     expect(r.state.screen).toBe('peek')
     expect(r.state.active?.drillId).toBe('d2')
     expect(r.effects).toContainEqual({ type: 'logDrill', sessionId: 's1', drillId: 'd2', event: 'start' })
-    expect(run(inDark(), { type: 'swipeDown' }, { type: 'doubleTap' }).state.screen).toBe('dark')
+    expect(run(inDark(), { type: 'swipeDown' }, { type: 'doubleTap' }).state.screen).toBe('peek')
   })
 
   it('end class needs confirm, then wrap-up and remind', () => {
-    let r = run(inDark(), { type: 'doubleTap' })
+    let r = run(inPeek(), { type: 'doubleTap' })
     expect(r.state.screen).toBe('confirmEnd')
     r = run(r.state, { type: 'swipeUp' })
-    expect(r.state.screen).toBe('dark')
+    expect(r.state.screen).toBe('peek')
+    expect(run(inDark(), { type: 'doubleTap' }).state.screen).toBe('confirmEnd')
     r = run(r.state, { type: 'doubleTap' }, { type: 'tap' })
     expect(r.effects).toContainEqual({ type: 'endSession', sessionId: 's1' })
     r = run(r.state, { type: 'wrapupLoaded', wrapup: { sessionId: 's1', minutes: 47, drillsRun: 7, coverage: { covered: 9, present: 12 }, missed: [{ id: 'j', name: 'Jake' }], agentActions: 11, pendingReview: 3 } })
@@ -160,7 +184,7 @@ describe('lens reducer', () => {
   })
 
   const resumeRes = { sessionId: 's1', startedAt: '2026-10-20T00:00:00Z', coverage: cov, nextStudent: null }
-  const wrapEnd = () => run(inDark(), { type: 'doubleTap' }, { type: 'tap' })
+  const wrapEnd = () => run(inPeek(), { type: 'doubleTap' }, { type: 'tap' })
 
   it('failed end-class escapes the wrapup spinner and keeps the session', () => {
     let r = wrapEnd()
@@ -168,8 +192,8 @@ describe('lens reducer', () => {
     r = run(r.state, { type: 'actionFailed', message: 'offline' })
     expect(r.state).toMatchObject({ screen: 'peek', status: "Couldn't end class · offline" })
     expect(r.state.session?.id).toBe('s1')
-    expect(r.effects).toContainEqual({ type: 'scheduleHide', ms: PEEK_MS })
-    expect(run(wrapEnd().state, { type: 'doubleTap' }).state.screen).toBe('dark')
+    expect(r.effects).toContainEqual({ type: 'expireStatus', ms: STATUS_MS })
+    expect(run(wrapEnd().state, { type: 'doubleTap' }).state.screen).toBe('peek')
   })
 
   it('home tap twice starts the session once; duplicate sessionStarted is ignored', () => {
@@ -192,11 +216,10 @@ describe('lens reducer', () => {
     expect(r.state.screen).toBe('peek')
     expect(r.state.active?.drillId).toBe('d2')
     expect(r.effects.some(x => (x as { type: string }).type === 'logDrill')).toBe(false)
-    expect(r.effects).toContainEqual({ type: 'scheduleHide', ms: PEEK_MS })
   })
 
-  it('double-tap in sending escapes to dark', () => {
-    expect(run(inDark(), { type: 'tap' }, { type: 'tap' }, { type: 'doubleTap' }).state.screen).toBe('dark')
+  it('double-tap in sending escapes to peek', () => {
+    expect(run(inPeek(), { type: 'tap' }, { type: 'tap' }, { type: 'doubleTap' }).state.screen).toBe('peek')
   })
 
   it('attendance empty/queued report that roll call was not saved', () => {
@@ -206,7 +229,7 @@ describe('lens reducer', () => {
   })
 
   it('clears the card on disambiguation skip and pick', () => {
-    const dis = () => run(inDark(), { type: 'tap' }, { type: 'tap' }, { type: 'utteranceResult', res: {
+    const dis = () => run(inPeek(), { type: 'tap' }, { type: 'tap' }, { type: 'utteranceResult', res: {
       utteranceId: 'u', transcript: 't', cardLines: [], coverage: cov, nextStudent: null,
       disambiguation: { noteId: 'n1', heard: 'Mya', options: [{ id: 'a', name: 'Maya Chen' }, { id: 'b', name: 'Mia Lopez' }] } } }).state
     expect(run(dis(), { type: 'doubleTap' }).state.card).toBeNull()
@@ -214,10 +237,50 @@ describe('lens reducer', () => {
   })
 
   it('cancel paths emit cancelMic; firstRun tap loads today', () => {
-    expect(run(inDark(), { type: 'tap' }, { type: 'doubleTap' }).effects).toContainEqual({ type: 'cancelMic' })
+    expect(run(inPeek(), { type: 'tap' }, { type: 'doubleTap' }).effects).toContainEqual({ type: 'cancelMic' })
     const att = run(initialState(true), { type: 'todayLoaded', today }, { type: 'tap' }, { type: 'sessionStarted', res: resumeRes, resumed: false, now: 1 }, { type: 'doubleTap' })
     expect(att.effects).toContainEqual({ type: 'cancelMic' })
     expect(att.state).toMatchObject({ screen: 'peek', status: 'Roll call skipped · use phone' })
     expect(run(initialState(false), { type: 'tap' }).effects).toContainEqual({ type: 'loadToday' })
+  })
+
+  describe('home class choice', () => {
+    const classes = [{ id: 'c1', name: 'Kids · Tue', modeLabel: 'Martial arts' }, { id: 'c2', name: 'PT · Sam', modeLabel: 'Personal training' }, { id: 'c3', name: 'Algebra', modeLabel: 'Tutoring' }]
+    const home = () => run(initialState(true), { type: 'todayLoaded', today }, { type: 'classesLoaded', classes }).state
+
+    it('swipe down/up cycles classes (wrapping) and saves the pick', () => {
+      let r = run(home(), { type: 'swipeDown' })
+      expect(r.state.selectedClassId).toBe('c2')
+      expect(r.effects).toEqual([{ type: 'selectClass', classId: 'c2' }])
+      r = run(r.state, { type: 'swipeDown' }, { type: 'swipeDown' })
+      expect(r.state.selectedClassId).toBe('c1')
+      r = run(home(), { type: 'swipeUp' })
+      expect(r.state.selectedClassId).toBe('c3')
+    })
+
+    it('tap waits for the shown class to load, then starts it', () => {
+      let r = run(home(), { type: 'swipeDown' }, { type: 'tap' })
+      expect(r.effects.some(x => (x as { type: string }).type === 'startSession')).toBe(false)
+      r = run(r.state, { type: 'todayLoaded', today: { ...today, classId: 'c2', className: 'PT · Sam' } })
+      expect(r.state.selectedClassId).toBeNull()
+      r = run(r.state, { type: 'tap' })
+      expect(r.effects).toContainEqual({ type: 'startSession', classId: 'c2' })
+    })
+
+    it('one class (or none loaded): swipe does nothing', () => {
+      const one = run(initialState(true), { type: 'todayLoaded', today }, { type: 'classesLoaded', classes: classes.slice(0, 1) }).state
+      expect(run(one, { type: 'swipeDown' }).effects).toEqual([])
+      expect(run(initialState(true), { type: 'todayLoaded', today }, { type: 'swipeDown' }).effects).toEqual([])
+    })
+
+    it('swipe is ignored while a class is starting; a load failure clears the pending pick', () => {
+      const starting = run(home(), { type: 'tap' }).state
+      expect(run(starting, { type: 'swipeDown' }).effects).toEqual([])
+      expect(run(home(), { type: 'swipeDown' }, { type: 'loadFailed', message: 'Offline' }).state.selectedClassId).toBeNull()
+    })
+
+    it('resume reloads classes too', () => {
+      expect(run(home(), { type: 'resumed' }).effects).toContainEqual({ type: 'loadClasses' })
+    })
   })
 })

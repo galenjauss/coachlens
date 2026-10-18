@@ -1,6 +1,6 @@
 import { OsEventTypeList, type EvenHubEvent } from '@evenrealities/even_hub_sdk'
 import type { LensEvent } from './state'
-import type { ImuSample } from './tilt'
+import type { ImuSample } from './nod'
 
 // CLICK is 0 and protobuf omits zero values, so a tap arrives as an envelope with eventType undefined.
 // Default INSIDE the envelope check only: an event with no sysEvent must never read as a click.
@@ -10,7 +10,7 @@ const IGNORED_SYS = new Set<OsEventTypeList>([
   OsEventTypeList.IMU_DATA_REPORT, OsEventTypeList.FOREGROUND_EXIT_EVENT, OsEventTypeList.ABNORMAL_EXIT_EVENT, OsEventTypeList.SYSTEM_EXIT_EVENT,
 ])
 
-/** Maps one SDK event to a lens gesture. IMU samples go to the tilt detector via `imuSample`, never here. */
+/** Maps one SDK event to a lens gesture. IMU samples go to the nod detector via `imuSample`, never here. */
 export function toLensEvent(e: EvenHubEvent, now: number = Date.now()): LensEvent | null {
   const s = e.sysEvent?.imuData ? null : typeOf(e.sysEvent)
   const t = typeOf(e.textEvent)

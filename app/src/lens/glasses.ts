@@ -13,10 +13,25 @@ const layoutKey = (spec: PageSpec) => (spec.list ? `${spec.key}\u0000${spec.list
  * PageSpec → SDK calls, as few as possible over Bluetooth:
  * - first page: createStartUpPageContainer (once per launch);
  * - new layout key: one rebuildPageContainer;
- * - same key: textContainerUpgrade only for containers whose text changed (nothing if none did).
+ * - same key: textContainerUpgrade only for containers whose text changed (nothing if none did);
+ *   a `partial` container with a same-length change sends only the changed characters.
  * Calls are serialized and bursts coalesce to the latest page.
  */
 const RETRY_MS = 2000
+const ASCII = /^[\x20-\x7e]*$/
+
+/**
+ * The changed span when `next` has the same length as `prev` (both ASCII, so character offsets
+ * equal byte offsets). Null when a full upgrade is needed.
+ */
+export function changedSpan(prev: string, next: string): { offset: number; length: number; text: string } | null {
+  if (prev.length !== next.length || prev === next || !ASCII.test(prev) || !ASCII.test(next)) return null
+  let i = 0
+  while (prev[i] === next[i]) i++
+  let j = next.length - 1
+  while (prev[j] === next[j]) j--
+  return { offset: i, length: j - i + 1, text: next.slice(i, j + 1) }
+}
 
 export class Glasses {
   private key: string | null = null
@@ -29,7 +44,8 @@ export class Glasses {
   private pending: PageSpec | null = null
   private running: Promise<void> | null = null
 
-  constructor(private bridge: GlassesBridge) {}
+  /** `partial`: containers marked `partial` send same-length changes as partial upgrades. */
+  constructor(private bridge: GlassesBridge, private opts: { partial: boolean } = { partial: true }) {}
 
   /** Forget what the glasses show, so the next show() sends a full rebuild (e.g. after the app was backgrounded). */
   invalidate(): void {
@@ -43,7 +59,12 @@ export class Glasses {
     if (this.retry) { clearTimeout(this.retry); this.retry = null }
   }
 
-  show(spec: PageSpec): Promise<void> {
+  /**
+   * `background` (timer ticks): while a failure retry is pending, only remember the page; the retry
+   * sends it. This keeps per-second ticks from turning a Bluetooth hiccup into a rebuild storm.
+   */
+  show(spec: PageSpec, opts: { background?: boolean } = {}): Promise<void> {
+    if (opts.background && this.retry) { this.latest = spec; return Promise.resolve() }
     if (this.retry) { clearTimeout(this.retry); this.retry = null }
     this.latest = spec
     this.pending = spec
@@ -66,15 +87,14 @@ export class Glasses {
     this.running = null
   }
 
-  /** One retry slot: re-send the latest page once after RETRY_MS unless something newer was shown. */
+  /** One retry slot: re-send the latest page once after RETRY_MS (a foreground show cancels it). */
   private scheduleRetry(): void {
     if (this.retry) clearTimeout(this.retry)
-    if (this.disposed) return
-    const spec = this.latest
-    if (!spec) return
+    if (this.disposed || !this.latest) return
     this.retry = setTimeout(() => {
       this.retry = null
-      if (this.latest !== spec) return
+      const spec = this.latest
+      if (!spec) return
       this.pending = spec
       if (!this.running) this.running = this.drain(false)
     }, RETRY_MS)
@@ -112,8 +132,12 @@ export class Glasses {
 
   private async upgrade(spec: PageSpec): Promise<void> {
     for (const x of spec.texts) {
-      if (this.last.get(x.id) === x.content) continue
-      const ok = await this.bridge.textContainerUpgrade(new TextContainerUpgrade({ containerID: x.id, containerName: x.name, content: x.content }))
+      const prev = this.last.get(x.id)
+      if (prev === x.content) continue
+      const span = this.opts.partial && x.partial && prev !== undefined ? changedSpan(prev, x.content) : null
+      const ok = await this.bridge.textContainerUpgrade(new TextContainerUpgrade(span
+        ? { containerID: x.id, containerName: x.name, contentOffset: span.offset, contentLength: span.length, content: span.text }
+        : { containerID: x.id, containerName: x.name, content: x.content }))
       if (!ok) throw new Error(`textContainerUpgrade failed: ${x.name}`)
       this.last.set(x.id, x.content)
     }

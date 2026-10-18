@@ -1,5 +1,5 @@
 import { afterEach, describe, it, expect, vi } from 'vitest'
-import { Glasses, type GlassesBridge } from './glasses'
+import { Glasses, changedSpan, type GlassesBridge } from './glasses'
 import type { PageSpec } from './render'
 
 const text = (id: number, name: string, content: string, capture = false) => ({ id, name, x: 0, y: id * 40, w: 576, h: 40, border: false, capture, content })
@@ -13,7 +13,10 @@ function fakeBridge(): GlassesBridge & { calls: string[] } {
     calls,
     createStartUpPageContainer: vi.fn(async (c: { textObject?: { containerName?: string }[] }) => { calls.push(`create:${c.textObject?.map(t => t.containerName).join(',')}`); return 0 }),
     rebuildPageContainer: vi.fn(async (c: { textObject?: { containerName?: string }[]; listObject?: unknown[] }) => { calls.push(`rebuild:${c.textObject?.map(t => t.containerName).join(',')}${c.listObject?.length ? '+list' : ''}`); return true }),
-    textContainerUpgrade: vi.fn(async (c: { containerName?: string; content?: string }) => { calls.push(`upgrade:${c.containerName}=${c.content}`); return true }),
+    textContainerUpgrade: vi.fn(async (c: { containerName?: string; content?: string; contentOffset?: number; contentLength?: number }) => {
+      calls.push(c.contentOffset === undefined ? `upgrade:${c.containerName}=${c.content}` : `partial:${c.containerName}@${c.contentOffset}+${c.contentLength}=${c.content}`)
+      return true
+    }),
   } as unknown as GlassesBridge & { calls: string[] }
 }
 
@@ -112,6 +115,21 @@ describe('Glasses', () => {
       await vi.advanceTimersByTimeAsync(10_000)
       expect(b.calls).toHaveLength(2)
     })
+    it('background shows (ticks) during a pending retry only update the page the retry sends', async () => {
+      vi.useFakeTimers()
+      const b = fakeBridge()
+      const g = new Glasses(b)
+      await g.show(pageA('1'))
+      ;(b.textContainerUpgrade as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false)
+      await g.show(pageA('2'))
+      await g.show(pageA('3'), { background: true })
+      await g.show(pageA('4'), { background: true })
+      expect(b.calls).toEqual(['create:hdr,body'])
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(b.calls).toEqual(['create:hdr,body', 'rebuild:hdr,body'])
+      await g.show(pageA('4'))
+      expect(b.calls).toHaveLength(2) // the retry sent page 4
+    })
     it('a newer show cancels the pending retry', async () => {
       vi.useFakeTimers()
       const b = fakeBridge()
@@ -150,5 +168,54 @@ describe('Glasses', () => {
       await vi.advanceTimersByTimeAsync(5000)
       expect(b.calls).toEqual(['create:hdr,body'])
     } finally { vi.useRealTimers() }
+  })
+
+  describe('partial upgrades (per-second clock)', () => {
+    const timerPage = (time: string, partial = true): PageSpec => ({ key: 'peek', list: null, texts: [
+      text(1, 'drill', 'HOLDS', true), { ...text(2, 'timer', time), ...(partial ? { partial: true } : {}) },
+    ] })
+
+    it('changedSpan: only the differing characters of same-length ASCII text', () => {
+      expect(changedSpan('3:12 left', '3:11 left')).toEqual({ offset: 3, length: 1, text: '1' })
+      expect(changedSpan('3:00 left', '2:59 left')).toEqual({ offset: 0, length: 4, text: '2:59' })
+      expect(changedSpan('10:00 left', '9:59 left')).toBeNull()
+      expect(changedSpan('0:00 left', '0:00 left')).toBeNull()
+      expect(changedSpan('━─', '━━')).toBeNull()
+    })
+
+    it('sends only the clock characters with contentOffset/contentLength; other containers untouched', async () => {
+      const b = fakeBridge()
+      const g = new Glasses(b)
+      await g.show(timerPage('3:12 left'))
+      await g.show(timerPage('3:11 left'))
+      await g.show(timerPage('3:00 left'))
+      await g.show(timerPage('2:59 left'))
+      await g.show(timerPage('2:59 left'))
+      expect(b.calls).toEqual(['create:drill,timer', 'partial:timer@3+1=1', 'partial:timer@2+2=00', 'partial:timer@0+4=2:59'])
+    })
+
+    it('falls back to a full upgrade when the length changes, or when not marked partial / disabled', async () => {
+      const b = fakeBridge()
+      const g = new Glasses(b)
+      await g.show(timerPage('10:00 left'))
+      await g.show(timerPage('9:59 left'))
+      await g.show(timerPage('9:58 left', false))
+      const off = fakeBridge()
+      const g2 = new Glasses(off, { partial: false })
+      await g2.show(timerPage('3:12 left'))
+      await g2.show(timerPage('3:11 left'))
+      expect(b.calls).toEqual(['create:drill,timer', 'upgrade:timer=9:59 left', 'upgrade:timer=9:58 left'])
+      expect(off.calls).toEqual(['create:drill,timer', 'upgrade:timer=3:11 left'])
+    })
+
+    it('a failed partial upgrade forces a full rebuild next time', async () => {
+      const b = fakeBridge()
+      const g = new Glasses(b)
+      await g.show(timerPage('3:12 left'))
+      ;(b.textContainerUpgrade as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false)
+      await g.show(timerPage('3:11 left'))
+      await g.show(timerPage('3:10 left'))
+      expect(b.calls.at(-1)).toBe('rebuild:drill,timer')
+    })
   })
 })

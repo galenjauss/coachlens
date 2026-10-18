@@ -1,16 +1,32 @@
 import type { Coverage, Disambiguation, NextStudent, StartSessionResponse, Today, UtteranceResponse, WrapUp } from '@matside/shared'
+import type { UtteranceRun } from '../core/api'
 
 export type Screen = 'firstRun' | 'home' | 'attendance' | 'attendanceDone' | 'dark' | 'peek' | 'deck' | 'recording' | 'sending' | 'card' | 'disambiguation' | 'confirmEnd' | 'wrapup'
 export type Mode = 'note' | 'attendance'
+export type ClassOption = { id: string; name: string; modeLabel: string }
+
+/** The agent card: what the coach said (left) and live agent progress (right). `runs` null = not loaded yet. */
+export interface Card {
+  lines: string[]
+  transcript: string
+  utteranceId: string | null
+  runs: UtteranceRun[] | null
+  /** Polling ended (all expected agents reported, 30 s passed, or the endpoint is missing). */
+  runsFinal: boolean
+}
 
 export interface LensState {
   screen: Screen
   today: Today | null
+  /** Classes the coach can cycle through on home (swipe). */
+  classes: ClassOption[]
+  /** A class picked on the lens whose `today` is still loading; null once today matches. */
+  selectedClassId: string | null
   session: { id: string; startedAt: number } | null
   active: { drillId: string; startedAt: number } | null
   coverage: Coverage
   nextStudent: NextStudent | null
-  card: { lines: string[]; utteranceId: string | null } | null
+  card: Card | null
   disambiguation: Disambiguation | null
   wrapup: WrapUp | null
   pending: { mode: Mode; returnTo: Screen; viaLongPress: boolean } | null
@@ -27,21 +43,24 @@ export type LensEvent =
   | { type: 'resumed' }
   | { type: 'startRequested' }
   | { type: 'todayLoaded'; today: Today }
+  | { type: 'classesLoaded'; classes: ClassOption[] }
   | { type: 'loadFailed'; message: string }
   | { type: 'sessionStarted'; res: StartSessionResponse; resumed: boolean; now: number }
   | { type: 'utteranceResult'; res: UtteranceResponse }
   | { type: 'utteranceQueued' } | { type: 'utteranceEmpty' } | { type: 'micFailed' }
   | { type: 'coverageUpdated'; coverage: Coverage; nextStudent: NextStudent | null }
+  | { type: 'runsLoaded'; utteranceId: string; runs: UtteranceRun[] | null; final: boolean }
   | { type: 'wrapupLoaded'; wrapup: WrapUp }
-  | { type: 'cardTimeout' }
-  | { type: 'headTilt' }
+  | { type: 'nod' }
   | { type: 'timerEnded' }
-  | { type: 'hide' }
+  | { type: 'statusExpired' }
   | { type: 'actionFailed'; message: string }
 
 export type Effect =
   | { type: 'markFirstRunSeen' }
   | { type: 'loadToday' }
+  | { type: 'loadClasses' }
+  | { type: 'selectClass'; classId: string }
   | { type: 'startSession'; classId: string }
   | { type: 'startMic' }
   | { type: 'cancelMic' }
@@ -51,7 +70,7 @@ export type Effect =
   | { type: 'undo'; utteranceId: string }
   | { type: 'endSession'; sessionId: string }
   | { type: 'remind'; sessionId: string; studentIds: string[] }
-  | { type: 'scheduleCardTimeout'; ms: number }
-  | { type: 'scheduleHide'; ms: number }
+  | { type: 'pollRuns'; utteranceId: string }
+  | { type: 'expireStatus'; ms: number }
   | { type: 'flushOutbox' }
   | { type: 'exit' }

@@ -140,6 +140,21 @@ describe('api bad responses', () => {
   })
 })
 
+describe('api.utteranceRuns', () => {
+  const mk = (resp: Response, seen: string[] = []) => createApi('http://x', async () => null, ((url: string) => { seen.push(url); return Promise.resolve(resp) }) as unknown as typeof fetch)
+  it('parses the runs list from GET /v1/utterances/:id/runs', async () => {
+    const seen: string[] = []
+    const runs = [{ agent: 'router', summary: 'sorted', status: 'ok', createdAt: '2026-10-20T00:00:00Z' }]
+    await expect(mk(new Response(JSON.stringify(runs), { status: 200 }), seen).utteranceRuns('u 1')).resolves.toEqual(runs)
+    expect(seen).toEqual(['http://x/v1/utterances/u%201/runs'])
+  })
+  it('404 (endpoint not deployed yet) → null; other errors throw; bad shape → 502', async () => {
+    await expect(mk(new Response('{"error":"not_found"}', { status: 404 })).utteranceRuns('u')).resolves.toBeNull()
+    await expect(mk(new Response('{}', { status: 500 })).utteranceRuns('u')).rejects.toMatchObject({ status: 500 })
+    await expect(mk(new Response('[{"agent":1}]', { status: 200 })).utteranceRuns('u')).rejects.toMatchObject({ status: 502 })
+  })
+})
+
 describe('recorder', () => {
   it('resets recording when audioControl rejects, and start rejects', async () => {
     const r = new Recorder({ audioControl: async () => { throw new Error('bt down') } })
@@ -161,5 +176,15 @@ describe('recorder', () => {
     r.push(big)
     const wav = await r.stop()
     expect([...wav!.slice(44, 48)]).toEqual([1, 2, 3, 4])
+  })
+})
+
+describe('imu debug flag', () => {
+  it('?imu=1 turns it on, ?imu=0 off, otherwise the remembered value (never throws)', async () => {
+    const { isImuDebugOn } = await import('./imuDebug')
+    expect(isImuDebugOn('?imu=1')).toBe(true)
+    expect(isImuDebugOn('?imu=0')).toBe(false)
+    expect(isImuDebugOn('?imu=0&x=1')).toBe(false)
+    expect(() => isImuDebugOn('')).not.toThrow()
   })
 })

@@ -11,6 +11,9 @@ export class ApiError extends Error {
 export class NetworkError extends Error {}
 
 export type Api = ReturnType<typeof createApi>
+/** One agent run started by an utterance (GET /v1/utterances/:id/runs). Status kept loose: the server may add values. */
+export const UtteranceRun = z.object({ agent: z.string(), summary: z.string(), status: z.string(), createdAt: z.string() })
+export type UtteranceRun = z.infer<typeof UtteranceRun>
 export type UtterancePayload = { sessionId: string; drillId: string | null; mode: 'note' | 'attendance'; text: string | null; audio: Blob | null }
 
 export function createApi(baseUrl: string, getToken: () => Promise<string | null>, fetchImpl: typeof fetch = (...a) => fetch(...a)) {
@@ -51,6 +54,13 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
       if (p.text) f.set('text', p.text)
       if (p.audio) f.set('audio', p.audio, 'note.wav')
       return req('/v1/utterance', { method: 'POST', body: f }, UtteranceResponse)
+    },
+    /** Agent progress for one utterance; null when the endpoint (or utterance) is not there yet (404). */
+    utteranceRuns: async (utteranceId: string): Promise<UtteranceRun[] | null> => {
+      try { return await req(`/v1/utterances/${encodeURIComponent(utteranceId)}/runs`, {}, z.array(UtteranceRun)) } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return null
+        throw e
+      }
     },
     undo: (utteranceId: string) => post(`/v1/utterances/${utteranceId}/undo`, {}, z.object({ coverage: Coverage.nullable() })),
     assignNote: (noteId: string, studentId: string) => post(`/v1/notes/${noteId}/assign`, { studentId }, z.object({ coverage: Coverage.nullable(), nextStudent: NextStudent.nullable() })),

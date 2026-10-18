@@ -1,5 +1,5 @@
 import { waitForEvenAppBridge } from '@evenrealities/even_hub_sdk'
-import { API_URL, IMU_LOG, TILT } from './config'
+import { API_URL, IMU_LOG, IMU_PACE, NOD, PARTIAL_UPGRADES } from './config'
 import { createApi } from './core/api'
 import { Outbox } from './core/outbox'
 import { bridgeKV, browserKV, KEYS, type KV } from './core/storage'
@@ -16,7 +16,7 @@ async function runWithBridge(bridge: Bridge): Promise<void> {
   const kv = bridgeKV(bridge)
   const api = createApi(API_URL, () => kv.get(KEYS.token))
   mountPhone({ api, kv, hasGlasses: true })
-  await startLens({ bridge, api, kv, outbox: new Outbox(kv), tilt: TILT, logImu: IMU_LOG })
+  await startLens({ bridge, api, kv, outbox: new Outbox(kv), nod: NOD, imuPace: IMU_PACE, partialUpgrades: PARTIAL_UPGRADES, logImu: IMU_LOG })
 }
 
 async function boot(): Promise<void> {

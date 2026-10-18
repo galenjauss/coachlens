@@ -1,0 +1,44 @@
+import type { UtteranceRun } from '../core/api'
+
+/** Short lens labels for the agents an utterance can start. Unknown agents show their own name. */
+const LABELS: Record<string, string> = {
+  router: 'sorted', progress: 'logged', billing: 'billing', attendance: 'roll call',
+  add_drill: 'drill added', parent_email: 'email', planner: 'plan', report_card: 'report card',
+}
+const label = (agent: string) => LABELS[agent] ?? agent.replace(/_/g, ' ')
+
+export const RUNS_POLL_MS = 2000
+export const RUNS_MAX_MS = 30_000
+const MAX_LINES = 5
+
+/**
+ * The agents this utterance should end up with. The router always runs; the deferred ones are
+ * announced by the card lines ("parent note drafting", "next deck", "Planner").
+ */
+export function expectedAgents(cardLines: string[]): string[] {
+  const text = cardLines.join('\n').toLowerCase()
+  const out = ['router']
+  if (text.includes('parent note')) out.push('parent_email')
+  if (text.includes('planner') || text.includes('next deck')) out.push('planner')
+  return out
+}
+
+/** True once every expected agent has reported a run. */
+export function runsDone(runs: UtteranceRun[], cardLines: string[]): boolean {
+  const seen = new Set(runs.map(r => r.agent))
+  return expectedAgents(cardLines).every(a => seen.has(a))
+}
+
+/**
+ * Right column of the card: one line per agent (latest run wins), `✓` done, `✗` failed,
+ * `…` still expected while polling. Before the first poll: a working line. Without the
+ * endpoint: the server's card lines.
+ */
+export function progressLines(card: { lines: string[]; runs: UtteranceRun[] | null; runsFinal: boolean }): string[] {
+  if (card.runs === null) return card.runsFinal ? card.lines.slice(0, MAX_LINES) : ['… agents working']
+  const latest = new Map<string, UtteranceRun>()
+  for (const r of card.runs) latest.set(r.agent, r)
+  const lines = [...latest.values()].map(r => `${r.status === 'error' ? '✗' : '✓'} ${label(r.agent)}`)
+  if (!card.runsFinal) for (const a of expectedAgents(card.lines)) if (!latest.has(a)) lines.push(`… ${label(a)}`)
+  return lines.length ? lines.slice(0, MAX_LINES) : ['(no agent runs)']
+}

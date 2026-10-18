@@ -4,21 +4,29 @@ import { MAX_RECORD_MS, Recorder } from '../core/audio'
 import { bus } from '../core/bus'
 import type { FlushResult, Outbox, OutboxItem } from '../core/outbox'
 import { KEYS, type KV } from '../core/storage'
+import { isImuDebugOn } from '../core/imuDebug'
 import { CLASS_ID_KEY } from '../phone/classPref'
 import { fromB64, toB64 } from '../core/wav'
+import { RUNS_MAX_MS, RUNS_POLL_MS, runsDone } from './agentRuns'
 import { imuSample, toLensEvent } from './events'
 import { Glasses, type GlassesBridge } from './glasses'
+import { NodDetector, type NodConfig } from './nod'
 import { initialState, reduce } from './reducer'
 import { render } from './render'
 import type { Effect, LensEvent, LensState } from './state'
-import { HeadTiltDetector, type TiltConfig } from './tilt'
 
-/** While `peek` or `recording` is visible, repaint at most this often (minute text). Never while dark. */
-export const TICK_MS = 30_000
+/**
+ * While `peek` or `recording` is visible, re-render this often. Only changed containers are sent:
+ * per second that is the few clock characters (partial upgrade); the bar every 5 s. Never while dark.
+ */
+export const TICK_MS = 1000
 const TICKING = new Set<LensState['screen']>(['peek', 'recording'])
 
 export type LensBridge = GlassesBridge & Pick<EvenAppBridge, 'audioControl' | 'imuControl' | 'shutDownPageContainer' | 'onEvenHubEvent'>
-export interface LensDeps { bridge: LensBridge; api: Api; kv: KV; outbox: Outbox; tilt: TiltConfig; logImu?: boolean }
+export interface LensDeps {
+  bridge: LensBridge; api: Api; kv: KV; outbox: Outbox; nod: NodConfig
+  imuPace?: ImuReportPace; partialUpgrades?: boolean; logImu?: boolean
+}
 export interface LensHandle { dispatch(e: LensEvent): void; stop(): void }
 
 /** One replaceable timer: setting it clears the previous one. */
@@ -35,14 +43,17 @@ async function readFirstRunSeen(kv: KV): Promise<boolean> {
 }
 
 export async function startLens(d: LensDeps): Promise<LensHandle> {
-  const glasses = new Glasses(d.bridge)
+  const glasses = new Glasses(d.bridge, { partial: d.partialUpgrades ?? true })
   const recorder = new Recorder(d.bridge)
-  const detector = new HeadTiltDetector(d.tilt)
-  const timers = { hide: slot(), card: slot(), timerEnded: slot(), recordMax: slot() }
+  const detector = new NodDetector(d.nod)
+  const timers = { status: slot(), timerEnded: slot(), recordMax: slot() }
   let state: LensState = initialState(await readFirstRunSeen(d.kv))
   let imuOn = false
+  let imuDebug = isImuDebugOn()
+  let todaySeq = 0 // only the latest today request may land (swiping classes fires several)
+  let runsPoll: { utteranceId: string; stop(): void } | null = null
 
-  const paint = () => glasses.show(render(state, Date.now()))
+  const paint = (background = false) => glasses.show(render(state, Date.now()), { background })
 
   function dispatch(e: LensEvent): void {
     const prev = state
@@ -59,9 +70,11 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     const minutes = (st: LensState) => st.today?.deck.drills.find(x => x.id === st.active?.drillId)?.minutes
     if (state.active?.drillId !== prev.active?.drillId || state.active?.startedAt !== prev.active?.startedAt) armDrillTimer()
     else if (e.type === 'todayLoaded' && state.active && minutes(state) !== minutes(prev)) armDrillTimer()
-    if (e.type === 'sessionStarted' && state.session && !prev.session) void setImu(true)
-    if (e.type === 'wrapupLoaded') void setImu(false)
+    void syncImu()
   }
+
+  /** The IMU runs while a class is live (nod toggle) or while the phone readout is open (calibration). */
+  const syncImu = () => setImu(Boolean(state.session && !state.wrapup) || imuDebug)
 
   function armDrillTimer(): void {
     timers.timerEnded.clear()
@@ -76,7 +89,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     if (imuOn === on && !force) return
     imuOn = on
     try {
-      const ok = on ? await d.bridge.imuControl(true, ImuReportPace.P500) : await d.bridge.imuControl(false)
+      const ok = on ? await d.bridge.imuControl(true, d.imuPace ?? ImuReportPace.P100) : await d.bridge.imuControl(false)
       if (!ok) console.warn('[imu] imuControl returned false', on)
     } catch (err) {
       console.warn('[imu] imuControl failed (tap still works)', err)
@@ -124,12 +137,59 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     return flush(item.id)
   }
 
+  async function loadToday(): Promise<void> {
+    const seq = ++todaySeq
+    try {
+      const today = await d.api.today((await d.kv.get(CLASS_ID_KEY)) || undefined)
+      if (seq === todaySeq) dispatch({ type: 'todayLoaded', today })
+    } catch (e) {
+      if (seq === todaySeq) dispatch({ type: 'loadFailed', message: errText(e) })
+    }
+  }
+
+  /**
+   * Card right column: poll the utterance's agent runs every RUNS_POLL_MS until every expected agent
+   * reported, RUNS_MAX_MS passed, the endpoint is missing (404), or the card is gone.
+   */
+  function pollRuns(utteranceId: string): void {
+    runsPoll?.stop()
+    const startedAt = Date.now()
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let stopped = false
+    const poll: { utteranceId: string; stop(): void } = { utteranceId, stop() { stopped = true; if (timer) clearTimeout(timer) } }
+    runsPoll = poll
+    const finish = () => { poll.stop(); if (runsPoll === poll) runsPoll = null }
+    const tick = async () => {
+      timer = null
+      if (stopped) return
+      if (state.card?.utteranceId !== utteranceId) return finish()
+      let runs: Awaited<ReturnType<Api['utteranceRuns']>> | undefined
+      try { runs = await d.api.utteranceRuns(utteranceId) } catch (err) { console.warn('[runs] poll failed', errText(err)) }
+      if (stopped) return
+      const final = runs === null || (runs !== undefined && runsDone(runs, state.card?.lines ?? [])) || Date.now() - startedAt + RUNS_POLL_MS > RUNS_MAX_MS
+      if (runs !== undefined || final) dispatch({ type: 'runsLoaded', utteranceId, runs: runs ?? null, final })
+      if (final) return finish()
+      timer = setTimeout(() => { void tick() }, RUNS_POLL_MS)
+    }
+    void tick()
+  }
+
   async function run(eff: Effect): Promise<void> {
     switch (eff.type) {
       case 'markFirstRunSeen': return d.kv.set(KEYS.firstRunSeen, '1')
-      case 'loadToday':
-        try { dispatch({ type: 'todayLoaded', today: await d.api.today((await d.kv.get(CLASS_ID_KEY)) || undefined) }) } catch (e) { dispatch({ type: 'loadFailed', message: errText(e) }) }
+      case 'loadToday': return loadToday()
+      case 'loadClasses':
+        try {
+          const rows = await d.api.classes()
+          dispatch({ type: 'classesLoaded', classes: rows.map(r => ({ id: r.id, name: r.name, modeLabel: r.modeLabel })) })
+        } catch (e) { console.warn('[lens] classes unavailable', errText(e)) } // home still works with today's class
         return
+      case 'selectClass':
+        todaySeq += 1 // anything in flight is for the previous class
+        await d.kv.set(CLASS_ID_KEY, eff.classId)
+        bus.emit('classChanged', eff.classId) // the phone follows; our own listener reloads today
+        return
+      case 'pollRuns': return pollRuns(eff.utteranceId)
       case 'startSession': {
         const resumed = Boolean(state.today?.sessionId)
         try {
@@ -172,10 +232,10 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
         } catch (e) { dispatch({ type: 'actionFailed', message: errText(e) }) }
         return
       case 'remind': { await d.api.remind(eff.sessionId, eff.studentIds); return }
-      case 'scheduleCardTimeout': return timers.card.set(eff.ms, () => dispatch({ type: 'cardTimeout' }))
-      case 'scheduleHide': return timers.hide.set(eff.ms, () => dispatch({ type: 'hide' }))
+      case 'expireStatus': return timers.status.set(eff.ms, () => dispatch({ type: 'statusExpired' }))
       case 'flushOutbox': return flush(null)
       case 'exit':
+        imuDebug = false
         await setImu(false)
         await d.bridge.shutDownPageContainer(1)
         return
@@ -187,7 +247,9 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     const imu = imuSample(e)
     if (imu) {
       if (d.logImu) console.info('[imu]', imu.x, imu.y, imu.z)
-      if (detector.push(imu)) dispatch({ type: 'headTilt' })
+      const nod = detector.push(imu)
+      bus.emit('imuSample', { x: imu.x ?? 0, y: imu.y ?? 0, z: imu.z ?? 0, nod })
+      if (nod) dispatch({ type: 'nod' })
       return
     }
     const le = toLensEvent(e)
@@ -209,16 +271,19 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
   const offStart = bus.on('startClass', () => dispatch({ type: 'startRequested' }))
   const offClass = bus.on('classChanged', () => { void run({ type: 'loadToday' }) })
   const offDeck = bus.on('deckChanged', () => { void run({ type: 'loadToday' }) }) // phone edited/accepted a plan: the lens reloads it
-  const tick = setInterval(() => { if (TICKING.has(state.screen)) void paint() }, TICK_MS)
+  const offImuDebug = bus.on('imuDebug', on => { imuDebug = on; void syncImu() })
+  const tick = setInterval(() => { if (TICKING.has(state.screen)) void paint(true) }, TICK_MS)
 
   await paint() // never a black screen: the first page goes up immediately
-  if (state.screen !== 'firstRun') void run({ type: 'loadToday' })
+  if (state.screen !== 'firstRun') { void run({ type: 'loadToday' }); void run({ type: 'loadClasses' }) }
+  if (imuDebug) void syncImu()
   void run({ type: 'flushOutbox' })
 
   return {
     dispatch,
     stop() {
-      unsubscribe(); offPaired(); offStart(); offClass(); offDeck(); clearInterval(tick)
+      unsubscribe(); offPaired(); offStart(); offClass(); offDeck(); offImuDebug(); clearInterval(tick)
+      runsPoll?.stop()
       glasses.dispose()
       for (const t of Object.values(timers)) t.clear()
     },

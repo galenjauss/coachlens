@@ -1,11 +1,25 @@
-import type { TiltConfig } from './lens/tilt'
+import { ImuReportPace } from '@evenrealities/even_hub_sdk'
+import type { NodConfig } from './lens/nod'
 
 export const API_URL: string = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:8787'
 
 /**
- * Head-tilt peek. The IMU axis and sign are undocumented: calibrate on hardware (Task 20) by
- * running with VITE_IMU_LOG=1, noting `[imu] x y z` with the head level vs tilted down, then
- * set the axis and a threshold between the two (negative = "below").
+ * Nod to toggle the lens (experimental). The IMU axis and sign are undocumented: calibrate on
+ * hardware with the phone readout (open the app with `?imu=1`). Nod a few times, find the axis
+ * with the largest swing, and set `threshold` to about half that swing, signed in the direction
+ * the value moves when the head goes down (negative = it decreases).
  */
-export const TILT: TiltConfig = { axis: 'y', threshold: 0.5 }
+export const NOD: NodConfig = { axis: 'y', threshold: 0.3, windowMs: 600, cooldownMs: 1200 }
+/**
+ * IMU report pace while class runs (or the readout is open). SDK range P100…P1000; the SDK default is
+ * P100. The readout shows the real sample rate: a nod needs at least one sample inside 600 ms.
+ */
+export const IMU_PACE: ImuReportPace = ImuReportPace.P100
 export const IMU_LOG: boolean = import.meta.env.VITE_IMU_LOG === '1'
+/**
+ * Send per-second clock changes as partial upgrades (contentOffset/contentLength; `content` is the
+ * replacement substring, per the SDK reference). If the glasses garble the timer, open the app with
+ * `?partial=0`: same-length changes then go as full (still tiny) upgrades. The simulator ignores the
+ * offset, so there the clock shows only the changed digits; check on hardware.
+ */
+export const PARTIAL_UPGRADES: boolean = typeof location === 'undefined' || new URLSearchParams(location.search).get('partial') !== '0'

@@ -3,6 +3,7 @@ import { API_URL } from '../config'
 import { KEYS } from '../core/storage'
 import { Agents } from './Agents'
 import { DeckEditor } from './DeckEditor'
+import { ImuDebug } from './ImuDebug'
 import type { PhoneDeps } from './mount'
 import { Pairing } from './Pairing'
 import { Review } from './Review'
@@ -27,6 +28,7 @@ export function App({ api, kv }: PhoneDeps) {
   if (deckId) return <DeckEditor api={api} deckId={deckId} onClose={() => setDeckId(null)} />
   return (
     <>
+      <ImuDebug />
       {tab === 'today' && <Today api={api} kv={kv} onOpenDeck={setDeckId} />}
       {tab === 'agents' && <Agents api={api} />}
       {tab === 'review' && <Review api={api} />}
