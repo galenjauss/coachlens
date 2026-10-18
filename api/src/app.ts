@@ -1,9 +1,9 @@
 import { Hono, type Context } from 'hono'
 import { cors } from 'hono/cors'
 import { HTTPException } from 'hono/http-exception'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
-import { AgentTask, InsightsQuery, DeckPatch, ReplaceDeckRequest, VoicePlanRequest, SettingsPatch, ExtractRequest, MAX_ALIASES, MetricCreate, MAX_IMAGE_BASE64, MAX_ONBOARDING_TEXT, OnboardingCommit, RedraftRequest, StudentPatch, TranscribeForm, UtteranceForm } from '@matside/shared'
+import { AgentTask, InsightsQuery, DeckPatch, ReplaceDeckRequest, VoicePlanRequest, SettingsPatch, ExtractRequest, MAX_ALIASES, MetricCreate, MAX_IMAGE_BASE64, MAX_ONBOARDING_TEXT, OnboardingCommit, RedraftRequest, TranscribeForm, UtteranceForm } from '@matside/shared'
 import type { Deps } from './deps'
 import { attendance, billingFlags, drills, enrollments, instructors, insights as insightsTable, notes, sessions, students, classes, utterances } from './db/schema'
 import { runAs } from './http/context'
@@ -29,9 +29,10 @@ import { agentFeed, getStudentDetail, listStudents } from './services/students'
 import { replaceDeck, voicePlan, VoicePlanError } from './agents/planEdit'
 import { acceptDiff, alternativesFor, nextDeckFor, suggestDiff, undoDiff } from './agents/planner'
 import { applyDiff, totalMinutes } from './logic/deckDiff'
-import { addAlias, aliasKey } from './logic/names'
+import { addAlias } from './logic/names'
 import { draftParentEmail } from './agents/parentEmail'
 import { redraftOutbox } from './agents/redraft'
+import { ClassCreate, ClassLiveError, ClassUpdate, StudentCreate, StudentUpdate, createClass, createStudent, deleteClass, deleteStudent, noteCandidates, studentView, updateClass, updateStudent } from './services/roster'
 import { agentRunDetail, agentTaskRuns, agentsSummary, utteranceRuns } from './services/agents'
 import { localDate } from './logic/dates'
 import { computeCoverage, loadSessionContext, markPresent, nextStudentFor } from './services/context'
@@ -393,16 +394,45 @@ export function createApp(deps: Deps) {
     const id = c.req.param('id')
     return c.json(await guard(modeForStudent(db, id).then(m => buildBrief(db, id, m, deps.now(), deps.env.timeZone))))
   })
+  // ---- C3: roster maintenance (ownership checked by the /v1/students/:id middleware) ----
+  const ownAllClasses = async (c: Context<Vars>, ids: string[] | undefined) => {
+    for (const id of new Set(ids ?? [])) await need(ownsClass(db, me(c), id), 'class')
+  }
+  app.post('/v1/students', async c => {
+    const body = await json(c.req.raw, StudentCreate)
+    await ownAllClasses(c, body.classIds)
+    const year = Number(localDate(deps.now(), deps.env.timeZone).slice(0, 4))
+    return c.json(await createStudent(db, me(c), body, year), 201)
+  })
   app.patch('/v1/students/:id', async c => {
-    const patch = await json(c.req.raw, StudentPatch)
-    const set: Partial<typeof students.$inferInsert> = {}
-    if (patch.aliases) set.aliases = patch.aliases.filter((a, i) => patch.aliases!.findIndex(b => aliasKey(b) === aliasKey(a)) === i).slice(0, MAX_ALIASES)
-    if (patch.belt !== undefined) set.belt = patch.belt
-    if (patch.rankSince !== undefined) set.rankSince = patch.rankSince
-    const [row] = await db.update(students).set(set).where(eq(students.id, c.req.param('id'))).returning({ id: students.id, aliases: students.aliases, belt: students.belt, rankSince: students.rankSince })
-    if (!row) throw new HTTPException(404, { message: 'student not found' })
-    // Alias saves keep their original reply shape; belt / rankSince edits echo the new values.
-    return c.json({ id: row.id, aliases: row.aliases, ...(patch.belt !== undefined ? { belt: row.belt } : {}), ...(patch.rankSince !== undefined ? { rankSince: row.rankSince } : {}) })
+    const id = c.req.param('id')
+    const patch = await json(c.req.raw, StudentUpdate)
+    await ownAllClasses(c, patch.classIds)
+    await updateStudent(db, id, patch)
+    const view = (await studentView(db, id))!
+    // Roster edits echo the whole student; alias / belt / rankSince edits keep their original reply shape.
+    if (patch.name !== undefined || patch.nickname !== undefined || patch.classIds || patch.guardians) return c.json(view)
+    return c.json({ id: view.id, aliases: view.aliases, ...(patch.belt !== undefined ? { belt: view.belt } : {}), ...(patch.rankSince !== undefined ? { rankSince: view.rankSince } : {}) })
+  })
+  app.delete('/v1/students/:id', async c => {
+    await deleteStudent(db, c.req.param('id'))
+    return c.json({ ok: true })
+  })
+  app.get('/v1/notes/:id/candidates', async c => {
+    await need(ownsNote(db, me(c), c.req.param('id')), 'note')
+    const r = await noteCandidates(db, c.req.param('id'), () => ownedStudentIds(db, me(c)))
+    if (!r) throw new HTTPException(404, { message: 'note not found' })
+    return c.json(r)
+  })
+  app.post('/v1/classes', async c => c.json(await createClass(db, me(c), await json(c.req.raw, ClassCreate)), 201))
+  app.use('/v1/classes/:id', async (c, next) => { await need(ownsClass(db, me(c), c.req.param('id')!), 'class'); await next() })
+  app.patch('/v1/classes/:id', async c => c.json(await updateClass(db, c.req.param('id'), await json(c.req.raw, ClassUpdate))))
+  app.delete('/v1/classes/:id', async c => {
+    try { await deleteClass(db, c.req.param('id')) } catch (e) {
+      if (e instanceof ClassLiveError) throw new HTTPException(409, { message: 'class_live' })
+      throw e
+    }
+    return c.json({ ok: true })
   })
   app.post('/v1/students/:id/metrics', async c => {
     const id = c.req.param('id')
