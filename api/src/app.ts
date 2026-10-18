@@ -4,12 +4,13 @@ import { HTTPException } from 'hono/http-exception'
 import { and, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import { AgentTask, InsightsQuery, DeckPatch, ReplaceDeckRequest, VoicePlanRequest, SettingsPatch, ExtractRequest, MAX_ALIASES, MetricCreate, MAX_IMAGE_BASE64, MAX_ONBOARDING_TEXT, OnboardingCommit, RedraftRequest, TranscribeForm, UtteranceForm } from '@matside/shared'
-import type { Deps } from './deps'
+import { SttUnavailableError, type Deps } from './deps'
+import { getStatus } from './services/status'
 import { attendance, billingFlags, drills, enrollments, instructors, insights as insightsTable, notes, sessions, students, classes, utterances } from './db/schema'
 import { runAs } from './http/context'
 import { authenticate, instructorForCode, issueToken, revokeToken, rotatePairingCode } from './services/pairing'
 import {
-  classOwner, insightOwnedBy, ownedStudentIds, ownsAgentRun, ownsBilling, ownsClass, ownsDeck, ownsDiff, ownsDrill, ownsInsight,
+  insightOwnedBy, ownedStudentIds, ownsAgentRun, ownsBilling, ownsClass, ownsDeck, ownsDiff, ownsDrill, ownsInsight,
   ownsMetric, ownsNote, ownsOutbox, ownsSession, ownsStudent, ownsUtterance,
 } from './services/ownership'
 import { timingSafeEqual } from 'node:crypto'
@@ -121,6 +122,9 @@ export function createApp(deps: Deps) {
   app.post('/v1/pairing/rotate', async c => c.json({ code: await rotatePairingCode(db, me(c)) }))
 
 
+  /** Degraded-mode status: AI calls left today (Anthropic calls only) and whether speech-to-text is configured. */
+  app.get('/v1/status', async c => c.json(await getStatus(deps)))
+
   app.post('/v1/sessions', async c => {
     const { classId } = await json(c.req.raw, z.object({ classId: z.string().min(1) }))
     await need(ownsClass(db, me(c), classId), 'class')
@@ -184,7 +188,14 @@ export function createApp(deps: Deps) {
     }
     return { str, audio }
   }
-  const transcribe = async (audio: File, hints: string[]) => (await deps.stt.transcribe(new Uint8Array(await audio.arrayBuffer()), hints)).trim()
+  const transcribe = async (audio: File, hints: string[]) => {
+    try {
+      return (await deps.stt.transcribe(new Uint8Array(await audio.arrayBuffer()), hints)).trim()
+    } catch (e) {
+      if (e instanceof SttUnavailableError) throw new HTTPException(503, { message: 'stt_not_configured' })
+      throw e
+    }
+  }
 
   /** C1: the stable operation id, from the Idempotency-Key header or the multipart field `opId`. */
   const opKey = (c: Context<Vars>, str: (k: string) => string | null): string | null => {

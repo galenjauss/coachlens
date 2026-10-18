@@ -56,7 +56,7 @@ describe('agents v2 http', () => {
     const [p] = await db.select().from(students).where(eq(students.id, ss[0]!.id))
     expect(p!.aliases).toEqual(['Bree ah'])
     // the next utterance resolves the alias directly
-    expect((await say('Bree ah good kicks')).cardLines).toEqual(['√ Priya · kicks (2nd time)'])
+    expect((await say('Bree ah good kicks')).cardLines).toEqual(['√ Priya · praise · kicks']) // praise: never a count
     const patched = await app.request(`/v1/students/${ss[0]!.id}`, { method: 'PATCH', headers: h, body: JSON.stringify({ aliases: ['Preeya', 'preeya', 'Pree'] }) })
     expect(await patched.json()).toEqual({ id: ss[0]!.id, aliases: ['Preeya', 'Pree'] })
     expect((await app.request('/v1/students/nope', { method: 'PATCH', headers: h, body: JSON.stringify({ aliases: [] }) })).status).toBe(404)

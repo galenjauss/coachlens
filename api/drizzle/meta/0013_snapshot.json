@@ -1,5 +1,5 @@
 {
-  "id": "dde661ce-daa2-4981-992d-f1170485de1d",
+  "id": "5848b265-dee8-4986-8989-8ed2e2587753",
   "prevId": "3717dd9c-eea6-41c2-bc68-483e29cb0d1f",
   "version": "7",
   "dialect": "postgresql",
@@ -80,12 +80,6 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
-        },
-        "instructor_id": {
-          "name": "instructor_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -109,27 +103,6 @@
           "columns": [
             {
               "expression": "agent",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "agent_runs_instructor_created": {
-          "name": "agent_runs_instructor_created",
-          "columns": [
-            {
-              "expression": "instructor_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -172,93 +145,6 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.api_tokens": {
-      "name": "api_tokens",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "instructor_id": {
-          "name": "instructor_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "token_hash": {
-          "name": "token_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "revoked_at": {
-          "name": "revoked_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "api_tokens_hash": {
-          "name": "api_tokens_hash",
-          "columns": [
-            {
-              "expression": "token_hash",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "api_tokens_instructor": {
-          "name": "api_tokens_instructor",
-          "columns": [
-            {
-              "expression": "instructor_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -902,137 +788,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.instructor_curriculum": {
-      "name": "instructor_curriculum",
-      "schema": "",
-      "columns": {
-        "instructor_id": {
-          "name": "instructor_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "week_start": {
-          "name": "week_start",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "mode": {
-          "name": "mode",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "theme": {
-          "name": "theme",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "forms_due": {
-          "name": "forms_due",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "instructor_curriculum_instructor_id_week_start_mode_pk": {
-          "name": "instructor_curriculum_instructor_id_week_start_mode_pk",
-          "columns": [
-            "instructor_id",
-            "week_start",
-            "mode"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.instructor_settings": {
-      "name": "instructor_settings",
-      "schema": "",
-      "columns": {
-        "instructor_id": {
-          "name": "instructor_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "task": {
-          "name": "task",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "autonomy": {
-          "name": "autonomy",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "instructor_settings_instructor_id_task_pk": {
-          "name": "instructor_settings_instructor_id_task_pk",
-          "columns": [
-            "instructor_id",
-            "task"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.instructor_vocab": {
-      "name": "instructor_vocab",
-      "schema": "",
-      "columns": {
-        "instructor_id": {
-          "name": "instructor_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "term": {
-          "name": "term",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "instructor_vocab_instructor_id_term_pk": {
-          "name": "instructor_vocab_instructor_id_term_pk",
-          "columns": [
-            "instructor_id",
-            "term"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.instructors": {
       "name": "instructors",
       "schema": "",
@@ -1079,31 +834,9 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "pairing_code_hash": {
-          "name": "pairing_code_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         }
       },
-      "indexes": {
-        "instructors_pairing_code_hash": {
-          "name": "instructors_pairing_code_hash",
-          "columns": [
-            {
-              "expression": "pairing_code_hash",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -1276,6 +1009,19 @@
         },
         "urgent": {
           "name": "urgent",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "valence": {
+          "name": "valence",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "historical": {
+          "name": "historical",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
@@ -1704,31 +1450,9 @@
           "type": "date",
           "primaryKey": false,
           "notNull": false
-        },
-        "instructor_id": {
-          "name": "instructor_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         }
       },
-      "indexes": {
-        "students_instructor": {
-          "name": "students_instructor",
-          "columns": [
-            {
-              "expression": "instructor_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},

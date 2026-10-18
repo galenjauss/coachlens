@@ -77,12 +77,27 @@ Remaining apps (all judged Overlap = none from name/one-line description; not in
 - The G1 list (galfaroth/awesome-even-realities-g1) names only: EvenDemoApp, even_glasses (Python wrapper), g1_flutter_blue_plus, AugmentOS (listed "coming soon"). None involve teaching, coaching, students or notes about people. G2 compatibility not stated.
 - G1 community apps in the G2 repo's legacy section: Fahrplan (life assistant), Helix (live transcription), Everse (dashboard/navigation), RSS reader, G1 Extended. None relate to instruction. G2 compatibility unverified.
 
-## Defensible claim
-Strongest true statement:
+## Prior art we must acknowledge
+- **Lumilo (CMU; Holstein, McLaren and Aleven, AIED 2018).** Mixed-reality glasses worn by teachers that showed real-time, per-student status from an intelligent tutoring system; students in classes where teachers wore it learned more. The broad idea of "teacher-worn glasses that help the teacher attend to individual students" is therefore not new, and we do not claim it. https://www.cs.cmu.edu/~bmclaren/pubs/HolsteinMcLarenAleven-StudentLearningBenefitsMixedRealityTeacherAwarnessTool-AIED2018.pdf
+- **Even QuickNote.** Spoken notes captured on G2 and reviewed or edited on the phone. This covers the basic "speak a note on the glasses" capture.
+- **Even Conversate.** Prepared context, timely prompts on the lens and summaries afterwards. This covers the "context in the lens, follow-up afterwards" pattern.
 
-> "Of the ~220 community apps and projects we found for the Even G2 (plus Even Realities' own built-in features), none is built for instructors: we found no app that tracks a class roster, attributes spoken notes to individual students, takes attendance, drafts parent emails, plans lessons or flags billing. CoachLens is, to our knowledge, the first Even Hub app for coaches and teachers."
+Lumilo's signals came from software the students were using; CoachLens's observations come from the instructor's own speech, which is why it works on a mat or gym floor with no student devices. QuickNote and Conversate capture or support the wearer; they do not attach observations to a roster of other people or act on them.
 
-Caveats we should say aloud or keep in notes:
-- The official Even Hub store is not publicly listable, so say "that we found" / "to our knowledge", not "the only".
-- Honest partial overlaps: Even's QuickNote and Conversate record text/summaries; Cue (abhishekj720) stores per-person voiceprint notes; Cue (tntpsu) and SalesEye coach the wearer; even-workout/Hevy/Gym track the wearer's own training. Our difference: those capture or coach the wearer; CoachLens turns a spoken note about one student into agent actions (progress tracking, parent email draft, lesson/drill deck, attendance, billing flags) and shows feedback coverage in the lens.
-- Re-check the in-app Hub listing on a real phone before the final submission to confirm no instructor app was published.
+## Defensible claim (as narrowed after the Oct 18 audit, finding F21)
+What we defend is a **specific combination**, not a category:
+
+> "CoachLens turns teacher-authored, student-linked observations, spoken during a live class on G2, into instructor follow-up: a per-student record, recurring-issue tracking, attendance, the next class plan and family email drafts the instructor reviews."
+
+How to describe the survey:
+
+> "In our non-exhaustive survey of about 220 community G2 projects (plus Even's built-in features), we found none built for instructors that links spoken observations to individual students. We could not enumerate the official Even Hub store, which is not publicly browsable, and many community entries were judged from a name or one-line description."
+
+Do not say:
+- "0 of 220" or "zero apps for coaches" as if it proved absence. It is a discovery result from a partial list.
+- "The first teacher glasses" or "the first app for teachers" without qualification. Lumilo predates us, and the official store was not enumerated.
+- "Not a note-taker" without the qualifier: CoachLens does capture notes; the difference is that each note is tied to a student and drives follow-up.
+
+Caveats to keep in notes:
+- Honest partial overlaps: QuickNote and Conversate (capture and context); Cue (abhishekj720) stores per-person voiceprint notes; Cue (tntpsu) and SalesEye coach the wearer; even-workout/Hevy/Gym track the wearer's own training.
+- Re-check the in-app Hub listing on a real phone before quoting the survey again.

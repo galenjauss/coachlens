@@ -22,5 +22,11 @@
   {"t": "Who hasn't gotten feedback today?", "types": ["question"], "names": []},
   {"t": "How many are here?", "types": ["question"], "names": []},
   {"t": "Who's closest to testing for their next belt?", "types": ["question"], "names": []},
-  {"t": "What should I focus on next drill?", "types": ["question"], "names": []}
+  {"t": "What should I focus on next drill?", "types": ["question"], "names": []},
+  {"t": "Priya kept her guard up today", "types": ["feedback"], "names": ["Priya"], "tags": ["guard"], "valence": "positive", "observedWhen": "today"},
+  {"t": "Sam's guard is getting better, still drops it when he's tired though", "types": ["feedback"], "names": ["Sam"], "tags": ["guard"], "valence": "concern"},
+  {"t": "Ava's guard is way better than last month", "types": ["feedback"], "names": ["Ava"], "tags": ["guard"], "valence": "improving"},
+  {"t": "Last week Mia dropped her guard a lot in sparring", "types": ["feedback"], "names": ["Mia"], "tags": ["guard"], "valence": "concern", "observedWhen": "earlier"},
+  {"t": "Cal is talking in line-up again", "types": ["feedback"], "names": ["Cal"], "valence": "concern", "observedWhen": "today"},
+  {"t": "Who has excellent guard technique?", "types": ["question"], "names": []}
 ]

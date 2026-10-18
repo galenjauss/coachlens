@@ -8,7 +8,7 @@ import { safeDefer, withRun } from '../agents/runs'
 import { draftParentEmail, EMAIL_COOLDOWN_DAYS, inEmailCooldown } from '../agents/parentEmail'
 import { acceptDiff, autoAdjustNextDeck, markAutonomy, nextDeckFor, suggestDiff } from '../agents/planner'
 import { addDays, localDate } from '../logic/dates'
-import { getAutonomy } from './settings'
+import { getAutonomy, getRankReview } from './settings'
 import { loadSessionContext } from './context'
 import { loadFacts, rosterIds } from './insightFacts'
 
@@ -39,13 +39,28 @@ async function kvSet(deps: Deps, key: string, value: string) {
 }
 
 /**
- * Inserts drafts, skipping any whose dedupe key exists. Auto mode marks actionable rows auto_done (they run next);
- * a row whose action is 'none' stays 'new' even in auto mode, since there is nothing to run and it is just an FYI.
+ * Kinds renamed in the F09/F10 fix: a legacy row (still in a database) stands for its replacement in dedupe, so the
+ * old and new kind for the same student and week never both appear.
+ */
+const LEGACY_KIND: Partial<Record<string, string>> = { issue_improving: 'issue_resolved', issue_reassess: 'issue_resolved', rank_review: 'ready_to_test' }
+const legacyKey = (d: InsightDraft) => {
+  const old = LEGACY_KIND[d.kind]
+  return old ? `${old}${d.dedupeKey.slice(d.kind.length)}` : null
+}
+
+/** Actions auto mode may run alone. Resolving an issue always needs the instructor (F09); 'none' has nothing to run. */
+const autoRunnable = (a: InsightAction) => a.type !== 'none' && a.type !== 'resolve_issue'
+
+/**
+ * Inserts drafts, skipping any whose dedupe key exists. Auto mode marks auto-runnable rows auto_done (they run next);
+ * the rest stay 'new' even in auto mode: an FYI, or a resolution waiting for the instructor's accept.
  */
 async function insertDrafts(deps: Deps, drafts: InsightDraft[], sessionId: string | null, autonomy: Autonomy): Promise<Row[]> {
   const out: Row[] = []
   for (const d of drafts) {
-    const status = autonomy === 'auto' && d.action.type !== 'none' ? 'auto_done' as const : 'new' as const
+    const old = legacyKey(d)
+    if (old && (await deps.db.select({ id: insights.id }).from(insights).where(eq(insights.dedupeKey, old))).length) continue
+    const status = autonomy === 'auto' && autoRunnable(d.action) ? 'auto_done' as const : 'new' as const
     const [row] = await deps.db.insert(insights).values({ ...d, sessionId, status, createdAt: deps.now() })
       .onConflictDoNothing({ target: insights.dedupeKey }).returning()
     if (row) out.push(row)
@@ -95,7 +110,7 @@ export async function runInsights(deps: Deps, o: RunOptions): Promise<Row[]> {
   const rows = await logRun(deps, o.trigger, sessionId, autonomy, async () => {
     const today = o.today ?? localDate(deps.now(), deps.env.timeZone)
     const facts = await loadFacts(deps.db, o.classId ? await rosterIds(deps.db, o.classId) : undefined, { today, now: deps.now() })
-    return detectAll(facts, { today, now: deps.now(), sessionId }, o.only)
+    return detectAll(facts, { today, now: deps.now(), sessionId, rankReview: await getRankReview(deps.db) }, o.only)
   })
   if (o.deferActions) safeDefer(deps, 'insights_auto', runAutoActions(deps, rows))
   else await runAutoActions(deps, rows)
@@ -195,7 +210,6 @@ export async function listInsights(deps: Deps, q: { scope: 'all' | 'class'; clas
 const PURPOSE: Record<string, string> = {
   check_in: 'A friendly check-in about missed classes',
   welcome_back: 'Glad to see them back after missing a few',
-  ready_to_test: 'They look ready for their next rank test',
   praise: 'Celebrate a new personal best',
   positive: 'A positive update: the focus area has improved',
 }
@@ -242,13 +256,26 @@ async function planOutcome(deps: Deps, row: Row, a: Extract<InsightAction, { typ
   return { ok: true, outcome: auto ? 'Added to next plan' : 'Plan change ready for review' }
 }
 
+/**
+ * Legacy rows run as their replacements: issue_resolved as issue_improving (resolve on explicit accept, never an email
+ * home), ready_to_test as rank_review (a reminder: nothing drafted).
+ */
+function legacyAction(row: Row): InsightAction {
+  const a = row.action
+  if ((row.kind as string) === 'issue_resolved' && a.type === 'resolve_issue') return { ...a, notify: false }
+  if ((row.kind as string) === 'ready_to_test') return { type: 'none', label: null }
+  return a
+}
+
 /** Executes a row's action. `explicit`: the coach accepted it (vs. auto mode acting alone). */
 export async function executeAction(deps: Deps, row: Row, explicit: boolean): Promise<{ ok: boolean; outcome: string }> {
-  const a = row.action
+  const a = legacyAction(row)
   switch (a.type) {
     case 'draft_email': return emailOutcome(deps, row, a.studentId, a.purpose, explicit)
     case 'plan_focus': return planOutcome(deps, row, a, explicit)
     case 'resolve_issue': {
+      // Defensive: insertDrafts never auto-runs this, and resolution is the instructor's call.
+      if (!explicit) return { ok: false, outcome: 'Needs instructor confirmation' }
       const done = await deps.db.update(issues).set({ status: 'resolved' }).where(and(eq(issues.id, a.issueId), eq(issues.status, 'open'))).returning({ id: issues.id })
       const head = done.length ? 'Resolved' : 'Already resolved'
       if (!a.notify) return { ok: true, outcome: head }

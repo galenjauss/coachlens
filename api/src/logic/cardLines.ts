@@ -1,8 +1,12 @@
-import type { Autonomy, SkillTag, Urgency } from '@matside/shared'
+import type { Autonomy, SkillTag, Urgency, Valence } from '@matside/shared'
 import { clip as clipWords } from './text'
 
 export type CardAction =
-  | { kind: 'feedback'; name: string; tag: SkillTag | null; count: number; recurring: boolean; urgent?: boolean; deck?: Autonomy; mail?: Autonomy }
+  /**
+   * count = current concerns with this tag in the window (0 for praise). valence defaults to concern (older callers).
+   * historical: a past occurrence, not counted. improving: praise/improvement on an open issue with this tag.
+   */
+  | { kind: 'feedback'; name: string; tag: SkillTag | null; count: number; recurring: boolean; urgent?: boolean; deck?: Autonomy; mail?: Autonomy; valence?: Valence; historical?: boolean; improving?: boolean }
   | { kind: 'billing'; name: string; urgency: Urgency }
   | { kind: 'attendance'; present: number; absentNames: string[] }
   | { kind: 'marked'; name: string; status: 'present' | 'absent' }
@@ -19,6 +23,10 @@ export type CardAction =
   | { kind: 'saved_unsorted' }
   | { kind: 'rollcall_unclear'; names: string[] }
   | { kind: 'name_unclear'; name: string }
+  /** Nothing was saved or changed; `hint` is the recovery path. Never an empty card. */
+  | { kind: 'nothing_changed'; hint: string }
+  /** One intent was skipped by a Settings switch ("Billing flags off"); other intents may still have applied. */
+  | { kind: 'skipped'; what: string }
 
 const MAX_LINES = 4
 const MAX_CHARS = 38
@@ -28,9 +36,17 @@ const clip = (s: string) => (s.length > MAX_CHARS ? `${s.slice(0, MAX_CHARS - 1)
 function linesFor(a: CardAction): string[] {
   switch (a.kind) {
     case 'feedback': {
-      const head = `√ ${a.name}${a.tag ? ` · ${a.tag}` : ''}${a.count >= 2 ? ` (${ordinal(a.count)} time)` : ''}`
       const urgentLine = a.urgent && a.mail !== 'off'
       const urgent = urgentLine ? ['! urgent · parent note drafting'] : []
+      const tag = a.tag ? ` · ${a.tag}` : ''
+      const valence = a.valence ?? 'concern'
+      if (a.historical) return [`√ ${a.name}${tag} · earlier, not counted`, ...urgent]
+      if (valence === 'positive' || valence === 'improving') {
+        const word = valence === 'positive' ? 'praise' : 'improving'
+        return [`√ ${a.name} · ${word}${tag}`, ...urgent, ...(a.improving && a.tag ? [`→ open ${a.tag} issue: improving`] : [])]
+      }
+      if (valence === 'neutral') return [`√ ${a.name}${tag}`, ...urgent]
+      const head = `√ ${a.name}${tag}${a.count >= 2 ? ` (${ordinal(a.count)} time)` : ''}`
       const deck = a.deck === 'off' ? [] : a.deck === 'review' ? ['→ next deck change to review'] : ['→ added to next deck']
       if (a.recurring) return [head, ...urgent, ...(urgentLine ? [] : ['→ progress logged']), '→ added to report card', ...deck]
       return [head, ...urgent]
@@ -50,6 +66,8 @@ function linesFor(a: CardAction): string[] {
     case 'urgent_unassigned': return ['! urgent · pick student']
     case 'saved_unsorted': return ['● Saved · sorting failed, see Review']
     case 'name_unclear': return [`? Didn't catch "${a.name}" · say again`]
+    case 'nothing_changed': return ['● Nothing changed', a.hint]
+    case 'skipped': return [`● ${a.what} · not saved`]
     case 'rollcall_unclear': return [`Didn't catch: ${a.names.join(', ')}`, 'Say it again or use phone roster']
   }
 }

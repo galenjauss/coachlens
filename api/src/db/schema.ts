@@ -1,5 +1,5 @@
 import { pgTable, text, integer, real, timestamp, jsonb, primaryKey, uniqueIndex, index, boolean, date, doublePrecision } from 'drizzle-orm/pg-core'
-import type { ModeId, SkillTag, Urgency, DeckDiff, DrillDraft, ReportCardContent, AgentRunLinks, InsightAction, InsightKind, InsightStatus, InsightUrgency } from '@matside/shared'
+import type { ModeId, SkillTag, Urgency, Valence, DeckDiff, DrillDraft, ReportCardContent, AgentRunLinks, InsightAction, InsightKind, InsightStatus, InsightUrgency } from '@matside/shared'
 
 const id = () => text('id').primaryKey().$defaultFn(() => crypto.randomUUID())
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' })
@@ -92,6 +92,10 @@ export const notes = pgTable('notes', {
   heard: text('heard'), drillId: text('drill_id'), text: text('text').notNull(),
   tags: jsonb('tags').$type<SkillTag[]>().notNull().default([]), createdAt: createdAt(),
   urgent: boolean('urgent').notNull().default(false), // urgent feedback still waiting for a student pick
+  // What the observation means (concern | positive | improving | neutral); null on rows written before 0013 (inferred from text).
+  valence: text('valence').$type<Valence>(),
+  // The coach described a past occurrence ("last week…"): kept as a note, never counted as a new one.
+  historical: boolean('historical').notNull().default(false),
 })
 export const issues = pgTable('issues', {
   id: id(), studentId: text('student_id').notNull(), tag: text('tag').$type<SkillTag>().notNull(),

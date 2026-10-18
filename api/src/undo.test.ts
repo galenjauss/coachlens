@@ -10,6 +10,7 @@ type UndoBody = { ok: true; reversed: string[]; cancelled: string[]; notReversib
 const router = (t: string): unknown[] => {
   if (/Maya.*black/.test(t)) return [intent({ type: 'metric', studentNames: ['Maya'], content: t, metricKey: 'rank', metricValue: 'black' })]
   if (/Maria.*225/.test(t)) return [intent({ type: 'metric', studentNames: ['Maria'], content: t, metricKey: 'deadlift', metricValue: '225 lb', metricNum: 225, metricUnit: 'lb' })]
+  if (/^Tell Dee/.test(t)) return [intent({ type: 'parent_message', studentNames: ['Dee'], content: 'Dee was a great helper today' })]
   if (/Dee/.test(t)) return [intent({ studentNames: ['Dee'], content: 'Dee rolled her ankle, sat out', urgent: true })]
   if (/drill and Leo owes/.test(t)) return [
     intent({ type: 'add_drill', content: 'Shark tag', minutes: 4 }),
@@ -122,25 +123,26 @@ describe('C2 undo: audit reproductions', () => {
     await w.app.request('/v1/settings', { method: 'PATCH', headers: w.h, body: JSON.stringify({ autonomy: { parent_email: 'auto' } }) })
     const sid = await w.start('Kids · Tue')
     const hold = w.holdEmail()
-    const { utteranceId } = await (await w.utter(sid, 'Dee rolled her ankle')).json() as { utteranceId: string }
+    const { utteranceId } = await (await w.utter(sid, "Tell Dee's family she helped today")).json() as { utteranceId: string }
     await hold.reached
     await body(await w.undo(utteranceId))
     hold.release()
     await w.deps.flush()
     expect(w.deps.sent).toHaveLength(0)
-    expect((await w.db.select().from(outbox)).filter(o => o.trigger === 'urgent' && o.status !== 'cancelled')).toEqual([])
+    expect((await w.db.select().from(outbox)).filter(o => o.trigger === 'request' && o.status !== 'cancelled')).toEqual([])
   })
 
   it('an Auto-mode email already sent is reported as not reversible', async () => {
     const w = await demoWorld(router)
     await w.app.request('/v1/settings', { method: 'PATCH', headers: w.h, body: JSON.stringify({ autonomy: { parent_email: 'auto' } }) })
     const sid = await w.start('Kids · Tue')
-    const { utteranceId } = await (await w.utter(sid, 'Dee rolled her ankle')).json() as { utteranceId: string }
+    // Urgent notes always wait for review, so the auto-sent case is a requested note home.
+    const { utteranceId } = await (await w.utter(sid, "Tell Dee's family she helped today")).json() as { utteranceId: string }
     await w.deps.flush()
     expect(w.deps.sent).toHaveLength(1)
     const b = await body(await w.undo(utteranceId))
     expect(b.notReversible).toEqual(["Email already sent to Dee's family"])
-    expect(b.reversed).toEqual(expect.arrayContaining(['Removed Dee note']))
+    expect(b.cancelled).toEqual([])
     const [sent] = await w.db.select().from(outbox).where(eq(outbox.utteranceId, utteranceId))
     expect(sent!.status).toBe('sent')
   })

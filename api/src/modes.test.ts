@@ -22,7 +22,7 @@ async function seededApp(now?: Date, opts: { urgent?: boolean } = {}) {
     ...(now ? { now: () => now } : {}),
     llm: fakeLlm(a => {
       calls.push(a)
-      if (a.name === 'router') return { intents: [intent({ studentNames: ['Maria'], content: 'squat depth great, knees caving on the last set', skillTags: ['depth'], urgent: opts.urgent ?? false })] }
+      if (a.name === 'router') return { intents: [intent({ studentNames: ['Maria'], content: 'squat depth great, knees caving on the last set', skillTags: ['depth'], valence: 'concern', urgent: opts.urgent ?? false })] }
       if (a.name === 'parent_email') return { subject: 'Your squat depth', body: 'Hi Maria, you hit great depth today. We will keep working on keeping your knees out on the last set.' }
       if (a.name === 'planner.draft') return { drills: ['Bike', 'Back squat 5×5', 'RDL', 'Split squat', 'Plank', 'Sled push', 'Stretch'].map(ex) }
       if (a.name === 'planner.diff') return { added: [{ ...ex('Box squat to depth'), afterPosition: 2, reason: 'depth' }], changed: [], removed: [], rememberSuggestion: null }

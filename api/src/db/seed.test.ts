@@ -90,8 +90,8 @@ describe('seed', () => {
     const hits = detectAll(facts, { today: TODAY, now: NOW, sessionId: null })
     const name = (id: string | null) => facts.find(f => f.id === id)!.name.split(' ')[0]
     expect(hits.map(h => `${h.kind}:${name(h.studentId)}`).sort()).toEqual([
-      'attendance_decline:Jake', 'billing_repeat:Leonardo', 'grade_drop:Noah', 'issue_resolved:Priya',
-      'new_pr:Maria', 'no_feedback:Eli', 'ready_to_test:Gus',
+      'attendance_decline:Jake', 'billing_repeat:Leonardo', 'grade_drop:Noah', 'issue_reassess:Priya',
+      'new_pr:Maria', 'no_feedback:Eli', 'rank_review:Gus',
     ])
     expect(hits.find(h => h.kind === 'attendance_decline')!.title).toBe('Jake missed 3 of last 3 classes')
     expect(hits.find(h => h.kind === 'grade_drop')!.title).toBe("Noah's unit test down 12 pts")

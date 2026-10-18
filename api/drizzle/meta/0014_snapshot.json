@@ -1,6 +1,6 @@
 {
-  "id": "cab64db9-2153-497a-90ce-50d64e8d0f32",
-  "prevId": "dde661ce-daa2-4981-992d-f1170485de1d",
+  "id": "aa1ae666-2132-4221-bb85-24f9ce42039d",
+  "prevId": "5848b265-dee8-4986-8989-8ed2e2587753",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1462,6 +1462,19 @@
         },
         "urgent": {
           "name": "urgent",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "valence": {
+          "name": "valence",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "historical": {
+          "name": "historical",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,

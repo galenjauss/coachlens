@@ -9,6 +9,7 @@ import { getAutonomy } from '../services/settings'
 import { approveOutbox } from '../services/review'
 import { cancelIfUndone, isUtteranceUndone } from '../services/deferred'
 import { currentUtteranceId } from '../http/context'
+import { clip } from '../logic/text'
 
 const COACH: Record<ModeConfig['id'], string> = {
   martial_arts: "a kids' martial arts instructor",
@@ -33,6 +34,50 @@ export function parentEmailInstructions(mode: ModeConfig): string {
         '- Give exactly one fun at-home tip (under 5 minutes, safe, no equipment).',
       ]
   return [...head, '- No financial advice. No guilt or pressure.', `- ${mode.guardrails}`, '- Sign off as the coach name given.'].join('\n')
+}
+
+/**
+ * Urgent observations (injury, safety, serious behavior) get their own concise, factual note: no progress filler,
+ * no tips, no diagnosis, and a subject that names what happened.
+ */
+export function urgentEmailInstructions(mode: ModeConfig): string {
+  const reader = mode.recipient === 'client' ? `their ${mode.person} (address them directly in second person, "you")` : `a ${mode.person}'s parent`
+  return [
+    `You write a short, factual note from ${COACH[mode.id]} to ${reader} about something from today that they should hear now.`,
+    `- Subject: name the observation plainly with the first name, e.g. "Dee rolled her ankle in class today". No exclamation marks.`,
+    '- 40-100 words, plain text, calm and direct.',
+    "- State only what the coach observed and what was done in class, in the coach's words. Add no details.",
+    '- No diagnosis, no medical or treatment advice, no practice tips or exercises, no progress updates, praise or other news.',
+    '- Invite them to reply with any questions.',
+    `- ${mode.guardrails}`,
+    '- Sign off as the coach name given.',
+  ].join('\n')
+}
+
+const STOP = new Set(['the', 'and', 'but', 'for', 'her', 'his', 'him', 'she', 'he', 'they', 'them', 'their', 'was', 'were', 'is', 'are', 'had', 'has', 'have', 'with', 'out', 'off', 'on', 'in', 'at', 'to', 'of', 'a', 'an', 'it', 'its', 'that', 'this', 'from', 'into', 'during', 'little', 'bit', 'just', 'really', 'very', 'today', 'class', 'session', 'lesson', 'again', 'some', 'got', 'get'])
+
+/** The observation's content words (no stop words, no names), in order. */
+export function observationKeywords(content: string, firstName: string): string[] {
+  const name = firstName.toLowerCase()
+  const words = content.toLowerCase().replace(/[^a-z\s'-]/g, ' ').split(/\s+/).map(w => w.replace(/^['-]+|['-]+$/g, ''))
+  return [...new Set(words.filter(w => w.length >= 3 && !STOP.has(w) && w !== name))]
+}
+
+/** True when subject + body keep most (≥60%) of the observation's content words, matched by a 5-letter stem. */
+export function keepsFacts(content: string, firstName: string, subject: string, body: string): boolean {
+  const keys = observationKeywords(content, firstName)
+  if (!keys.length) return true
+  const text = `${subject}\n${body}`.toLowerCase()
+  const hit = keys.filter(k => new RegExp(`\\b${k.slice(0, 5).replace(/[^a-z]/g, '')}`).test(text)).length
+  return hit >= Math.ceil(keys.length * 0.6)
+}
+
+/** The plain factual note used when the model's urgent draft loses the observation. */
+export function urgentFallback(a: { firstName: string; readerName: string; toClient: boolean; content: string; coach: string }): { subject: string; body: string } {
+  const fact = a.content.trim().replace(/[.!?\s]+$/, '')
+  const subject = clip(`${a.firstName}: ${fact}`, 80)
+  const opener = a.toClient ? `A quick note from today's session: ${fact}.` : `A quick note from class today about ${a.firstName}: ${fact}.`
+  return { subject, body: [`Hi ${a.toClient ? a.firstName : a.readerName},`, '', opener, '', 'I wanted you to hear this today. Please reply if you have any questions.', '', a.coach].join('\n') }
 }
 
 export const EmailOut = z.object({ subject: z.string().min(3).max(80), body: z.string().min(40) })
@@ -102,23 +147,35 @@ export async function draftParentEmail(
     const who = toClient
       ? [`Client: ${firstName} (writing to them directly)`]
       : [`${mode.person === 'student' ? 'Student' : 'Person'}: ${firstName}${mode.id === 'martial_arts' ? ` (${s.belt} belt)` : ''}`, `Parent: ${g.name}`]
-    const prompt = [
-      `Coach: ${deps.env.instructorName}`, ...who, why,
-      `Open focus areas: ${open.map(o => o.tag).join(', ') || 'none'}`,
-      `Recent coach notes (newest first):`, ...recent.map(r => `- ${r.at.toISOString().slice(0, 10)} [${r.drill ?? 'class'}] ${r.text}`),
-    ].join('\n')
-    const email = await deps.llm.object({ name: 'parent_email', instructions: parentEmailInstructions(mode), prompt, schema: EmailOut })
+    const urgentFact = a.trigger.kind === 'urgent' ? a.trigger.content : null
+    const urgent = urgentFact !== null
+    // An urgent note carries only the observation: no progress history to blend into it.
+    const prompt = urgent
+      ? [`Coach: ${deps.env.instructorName}`, ...who, `URGENT · Observation (logged today): ${urgentFact}`].join('\n')
+      : [
+          `Coach: ${deps.env.instructorName}`, ...who, why,
+          `Open focus areas: ${open.map(o => o.tag).join(', ') || 'none'}`,
+          `Recent coach notes (newest first):`, ...recent.map(r => `- ${r.at.toISOString().slice(0, 10)} [${r.drill ?? 'class'}] ${r.text}`),
+        ].join('\n')
+    const drafted = await deps.llm.object({ name: 'parent_email', instructions: urgent ? urgentEmailInstructions(mode) : parentEmailInstructions(mode), prompt, schema: EmailOut })
+    // Fact preservation: an urgent draft that lost the observation's words is replaced by the plain template.
+    const factLost = urgentFact !== null && !keepsFacts(urgentFact, firstName!, drafted.subject, drafted.body)
+    const email = factLost && urgentFact !== null
+      ? urgentFallback({ firstName: firstName!, readerName: g.name, toClient, content: urgentFact, coach: deps.env.instructorName })
+      : drafted
     // C2 race guard: check before writing, write, then re-check (Undo sets the flag before cancelling drafts).
     if (await isUtteranceUndone(db, utteranceId)) return undone
     const [row] = await db.insert(outbox).values({ kind: 'parent_email', studentId: s.id, sessionId: a.sessionId, toEmail: g.email, subject: email.subject, body: email.body, trigger: a.trigger.kind, utteranceId }).returning()
     if (await cancelIfUndone(db, utteranceId, row!.id)) return undone
-    const sent = autonomy === 'auto' ? await approveOutbox(deps, row!.id) : null
+    // Urgent notes ALWAYS wait for the instructor's review, whatever the setting: the fact check catches dropped facts,
+    // not invented or inverted ones, so a person reads every urgent note before it leaves.
+    const sent = autonomy === 'auto' && !urgent ? await approveOutbox(deps, row!.id) : null
     const note = sent ? (sent.ok ? ' and sent' : ` (auto-send failed: ${sent.error}; left for review)`) : ''
     return {
       result: row!.id,
       summary: `Drafted ${a.trigger.kind === 'urgent' ? 'urgent ' : ''}note to ${g.name} (${firstName}): "${email.subject}"${note}`,
-      reason: autonomy === 'auto' ? `${why} · autonomy: auto` : why,
-      output: email, links: { outboxId: row!.id },
+      reason: [why, factLost ? 'fact check failed: model draft dropped the observation, used the plain template' : '', autonomy === 'auto' ? (urgent ? 'autonomy: auto, but urgent notes always wait for review' : 'autonomy: auto') : ''].filter(Boolean).join(' · '),
+      output: factLost ? { ...email, rejectedDraft: drafted } : email, links: { outboxId: row!.id },
     }
   })
 }

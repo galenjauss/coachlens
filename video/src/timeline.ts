@@ -256,7 +256,7 @@ export const LABELS: readonly { at: number; scene: number; label: string }[] = [
   { at: SECTIONS.sentence.from, scene: 3, label: 'AGENTS / ONE SENTENCE IN' },
   { at: SECTIONS.notes.from, scene: 4, label: 'NOTES / REAL CLASS' },
   { at: SECTIONS.notice.from, scene: 5, label: 'INSIGHTS / OPPORTUNISTIC' },
-  { at: SECTIONS.origin.from, scene: 6, label: 'ORIGINALITY / 0 OF 220+' },
+  { at: SECTIONS.origin.from, scene: 6, label: 'ORIGINALITY / 0 FOUND IN OUR SURVEY' },
   { at: SECTIONS.control.from, scene: 6, label: 'CONTROL / YOUR CALL' },
   { at: SECTIONS.finale.from, scene: 7, label: 'EVERY COACH / FLASH' },
   { at: SECTIONS.close.from, scene: 7, label: 'COACHLENS / EVEN G2' },

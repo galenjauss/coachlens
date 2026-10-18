@@ -28,7 +28,7 @@ export async function loadFacts(db: Db, givenIds: readonly string[] | undefined,
     db.select({ studentId: attendance.studentId, sessionId: attendance.sessionId, status: attendance.status, forDate: sessions.forDate, endedAt: sessions.endedAt })
       .from(attendance).innerJoin(sessions, eq(sessions.id, attendance.sessionId)).where(and(only(attendance.studentId), gte(sessions.forDate, addDays(b.today, -ATTENDANCE_LOOKBACK_DAYS))))
       .orderBy(asc(sessions.forDate), asc(sessions.startedAt)),
-    db.select({ studentId: notes.studentId, sessionId: notes.sessionId, tags: notes.tags, createdAt: notes.createdAt }).from(notes)
+    db.select({ studentId: notes.studentId, sessionId: notes.sessionId, tags: notes.tags, createdAt: notes.createdAt, valence: notes.valence, text: notes.text, historical: notes.historical }).from(notes)
       .where(and(isNotNull(notes.studentId), only(notes.studentId), gte(notes.createdAt, new Date(b.now.getTime() - NOTES_LOOKBACK_DAYS * 86_400_000)))).orderBy(asc(notes.createdAt)),
     db.select().from(issues).where(and(eq(issues.status, 'open'), only(issues.studentId))),
     db.select().from(studentMetrics).where(only(studentMetrics.studentId)).orderBy(asc(studentMetrics.recordedAt)),
@@ -48,7 +48,7 @@ export async function loadFacts(db: Db, givenIds: readonly string[] | undefined,
     classId: primary.get(s.id)?.classId ?? null,
     mode: primary.get(s.id)?.mode ?? 'martial_arts',
     attendance: (byAtt.get(s.id) ?? []).map(a => ({ sessionId: a.sessionId, forDate: a.forDate, status: a.status, ended: a.endedAt !== null })),
-    notes: (byNote.get(s.id) ?? []).map(n => ({ sessionId: n.sessionId, tags: n.tags, createdAt: n.createdAt })),
+    notes: (byNote.get(s.id) ?? []).map(n => ({ sessionId: n.sessionId, tags: n.tags, createdAt: n.createdAt, valence: n.valence, text: n.text, historical: n.historical })),
     openIssues: (byIssue.get(s.id) ?? []).map(i => ({ id: i.id, tag: i.tag, openedAt: i.openedAt })),
     metrics: (byMetric.get(s.id) ?? []).map(m => ({ key: m.key, value: m.value, num: m.num, unit: m.unit, recordedAt: m.recordedAt })),
     openBilling: (byBill.get(s.id) ?? []).map(b => ({ note: b.note, createdAt: b.createdAt })),

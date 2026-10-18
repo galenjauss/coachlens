@@ -1,6 +1,6 @@
 import { clampMinutes, clip, NAME_MAX } from '../logic/planNormalize'
 import { and, eq, gte, sql } from 'drizzle-orm'
-import { ANSWER_BRIEF_NAME, isRealDate, type Brief, type Disambiguation, type Intent, type UtteranceResponse } from '@matside/shared'
+import { ANSWER_BRIEF_NAME, isRealDate, type Brief, type Disambiguation, type Intent, type UtteranceResponse, type Valence } from '@matside/shared'
 import type { Deps } from '../deps'
 import { attendance, billingFlags, issues, notes, students, utterances } from '../db/schema'
 import { routeUtterance } from '../agents/router'
@@ -8,8 +8,10 @@ import { withRun } from '../agents/runs'
 import { draftParentEmail } from '../agents/parentEmail'
 import { acceptDiff, autoAdjustNextDeck, markAutonomy, nextDeckFor, suggestDiff } from '../agents/planner'
 import { resolveName } from '../logic/names'
-import { parseAttendance, type RollCall } from '../logic/attendance'
+import type { RollCall } from '../logic/attendance'
+import { detectCommand } from '../logic/commands'
 import { isRecurring, RECURRING_WINDOW_DAYS } from '../logic/recurring'
+import { countsAsConcern, effectiveValence, inferValence, isPositive } from '../logic/valence'
 import { buildCardLines, type CardAction } from '../logic/cardLines'
 import { getAutonomy } from './settings'
 import { buildBrief } from './brief'
@@ -24,6 +26,8 @@ import { deferOnce } from './deferred'
 import { addLiveDrill, openIssue, recordAttendanceBefore } from './ledger'
 
 const DAY = 86_400_000
+export const NOTHING_HINT_NOTE = 'Try a name + what you saw'
+export const NOTHING_HINT_ATTENDANCE = "Try 'everyone except …'"
 const first = (name: string) => name.split(' ')[0]!
 
 export async function handleUtterance(
@@ -39,10 +43,22 @@ export async function handleUtterance(
   let disambiguation: Disambiguation | null = null
   let brief: Brief | null = null
 
-  const parsed = input.mode === 'attendance' ? parseAttendance(input.transcript) : null
-  if (parsed) {
-    const rc = await applyRollCall(deps, ctx, utteranceId, parsed)
-    if (rc) actions.push(rc)
+  // Obvious commands first, in any capture mode and with no model call: a roll call, or a question the class data
+  // answers deterministically ("how many are here?", "who hasn't been noted yet?").
+  const command = detectCommand(input.transcript)
+  if (command) {
+    await withRun(deps, { agent: 'router', trigger: 'deterministic', sessionId: ctx.sessionId, utteranceId }, async () => ({
+      result: command.kind,
+      summary: `Recognized ${command.kind === 'rollcall' ? 'roll call' : 'a class question'} (no AI call)`,
+      reason: `deterministic ${command.kind === 'rollcall' ? 'roll-call phrasing' : 'question'} · capture mode: ${input.mode}`,
+    }))
+  }
+  if (command?.kind === 'rollcall') {
+    actions.push(await applyRollCall(deps, ctx, utteranceId, command.parsed))
+  } else if (command?.kind === 'question') {
+    const r = await applyQuestion(deps, ctx, utteranceId, input.transcript)
+    actions.push(...r.actions)
+    brief = r.brief ?? null
   } else {
     const intents = await routeUtterance(deps, { sessionId: ctx.sessionId, utteranceId, transcript: input.transcript, roster: ctx.roster, drillName: ctx.drill?.name ?? null, theme: ctx.theme, mode: ctx.mode })
     if (!intents) {
@@ -56,6 +72,11 @@ export async function handleUtterance(
       brief ??= r.brief ?? null
     }
   }
+  // Nothing saved or changed: say so, with the way out. Every intent skipped by Settings: say so, with the switches.
+  // A skip next to real changes keeps its own short line instead.
+  const skipped = actions.flatMap(a => (a.kind === 'skipped' ? [a.what] : []))
+  if (!actions.length && !brief && !disambiguation) actions.push({ kind: 'nothing_changed', hint: input.mode === 'attendance' ? NOTHING_HINT_ATTENDANCE : NOTHING_HINT_NOTE })
+  else if (skipped.length && skipped.length === actions.length && !brief && !disambiguation) actions.splice(0, actions.length, { kind: 'nothing_changed', hint: [...new Set(skipped)].join(' · ') })
   const { coverage, next } = await coverageAndNext(db, ctx, deps.now())
   const attendanceChanged = actions.some(a => a.kind === 'attendance' || a.kind === 'marked')
   return {
@@ -70,11 +91,11 @@ export async function handleUtterance(
   }
 }
 
-async function applyRollCall(deps: Deps, ctx: SessionContext, utteranceId: string, parsed: RollCall): Promise<CardAction | null> {
+async function applyRollCall(deps: Deps, ctx: SessionContext, utteranceId: string, parsed: RollCall): Promise<CardAction> {
   const run = { agent: 'attendance', trigger: 'roll_call', sessionId: ctx.sessionId, utteranceId }
   if (await getAutonomy(deps.db, 'attendance') === 'off') {
     await withRun(deps, run, async () => ({ result: false, summary: 'Roll call skipped (off)', reason: 'autonomy: off — voice attendance is turned off in Settings' }))
-    return null
+    return { kind: 'skipped', what: 'Voice attendance off' }
   }
   const named = new Map<string, string>()
   const unresolved: string[] = []
@@ -117,7 +138,7 @@ async function applyIntent(deps: Deps, ctx: SessionContext, utteranceId: string,
     case 'billing': return applyBilling(deps, ctx, utteranceId, intent)
     case 'metric': return applyMetric(deps, ctx, utteranceId, intent)
     case 'student_query': return applyStudentQuery(deps, ctx, utteranceId, intent)
-    case 'question': return applyQuestion(deps, ctx, utteranceId, intent)
+    case 'question': return applyQuestion(deps, ctx, utteranceId, intent.question?.trim() || intent.content.trim() || 'question')
     case 'attendance': return applyAttendanceIntent(deps, ctx, utteranceId, intent)
     case 'plan_request': {
       await deferOnce(deps, { utteranceId, kind: 'plan_request' }, async () => {
@@ -159,7 +180,10 @@ async function applyFeedback(deps: Deps, ctx: SessionContext, utteranceId: strin
   const { db } = deps
   const actions: CardAction[] = []
   let disambiguation: Disambiguation | null = null
-  const base = { sessionId: ctx.sessionId, utteranceId, drillId: ctx.drill?.id ?? null, text: intent.content, tags: intent.skillTags }
+  // The router labels meaning; an older/omitted label falls back to the text. A past occurrence is never a new one.
+  const valence = intent.valence ?? inferValence(intent.content)
+  const historical = intent.observedWhen === 'earlier'
+  const base = { sessionId: ctx.sessionId, utteranceId, drillId: ctx.drill?.id ?? null, text: intent.content, tags: intent.skillTags, valence, historical }
   // Urgent feedback we can't attach to a student keeps its urgency on the note and gets one loud line.
   const unresolvedBase = { ...base, urgent: intent.urgent }
   const unassigned = (): CardAction => (intent.urgent ? { kind: 'urgent_unassigned' } : { kind: 'unassigned' })
@@ -194,31 +218,51 @@ async function applyFeedback(deps: Deps, ctx: SessionContext, utteranceId: strin
     const [note] = await db.insert(notes).values({ ...base, studentId: s.id }).returning({ id: notes.id })
     await recordAttendanceBefore(db, utteranceId, ctx.sessionId, [s.id])
     await markPresent(db, ctx.sessionId, s.id, 'backstop')
-    const tag = intent.skillTags[0] ?? null
-    let count = 1
-    let recurring = false
-    if (tag) {
-      const since = new Date(deps.now().getTime() - RECURRING_WINDOW_DAYS * DAY)
-      const recent = await db.select({ tags: notes.tags }).from(notes).where(and(eq(notes.studentId, s.id), gte(notes.createdAt, since)))
-      count = recent.filter(r => r.tags.includes(tag)).length
-      const [open] = await db.select().from(issues).where(and(eq(issues.studentId, s.id), eq(issues.tag, tag), eq(issues.status, 'open')))
-      recurring = isRecurring(count, Boolean(open)) && progressOn
-      if (recurring) {
-        // v2: a recurring issue feeds the report card and the next plan; it no longer emails home.
-        await openIssue(db, utteranceId, { studentId: s.id, tag })
-        await deferOnce(deps, { utteranceId, kind: 'auto_adjust', subject: s.id }, () => autoAdjustNextDeck(deps, { classId: ctx.classId, afterDate: ctx.forDate, sessionId: ctx.sessionId, utteranceId, requestText: `Add a short${ctx.mode.recipient === 'parent' ? ', fun' : ''} ${ctx.mode.planItem} targeting ${tag} for ${s.name} [${s.id}] (recurring issue).` }))
-      }
-    }
+    const t = await trackTag(deps, ctx, utteranceId, s, intent.skillTags[0] ?? null, valence, historical, progressOn)
     if (intent.urgent) await deferOnce(deps, { utteranceId, kind: 'parent_email', subject: s.id }, () => draftParentEmail(deps, { studentId: s.id, sessionId: ctx.sessionId, utteranceId, trigger: { kind: 'urgent', content: intent.content } }))
-    const reason = recurring ? `${tag} ${count}× in ${RECURRING_WINDOW_DAYS} days → marked recurring, added to report card` : tag ? `${tag} note #${count} in ${RECURRING_WINDOW_DAYS} days` : 'feedback note'
+    const praise = isPositive(valence) && !historical
     await withRun(deps, { agent: 'progress', trigger: 'feedback', sessionId: ctx.sessionId, utteranceId, links: { noteId: note!.id, studentId: s.id } }, async () => ({
       result: true,
-      summary: `Logged "${intent.content.slice(0, 60)}" → ${first(s.name)}${ctx.drill ? ` · drill: ${ctx.drill.name}` : ''}`,
-      reason: [intent.urgent ? `urgent · ${reason}` : reason, progressOn ? '' : 'autonomy: off — recurring-issue tracking skipped'].filter(Boolean).join(' · '),
+      summary: `Logged ${praise ? (valence === 'improving' ? 'improvement ' : 'praise ') : ''}"${intent.content.slice(0, 60)}" → ${first(s.name)}${ctx.drill ? ` · drill: ${ctx.drill.name}` : ''}`,
+      reason: [intent.urgent ? `urgent · ${t.reason}` : t.reason, progressOn ? '' : 'autonomy: off — recurring-issue tracking skipped'].filter(Boolean).join(' · '),
     }))
-    actions.push({ kind: 'feedback', name: first(s.name), tag, count, recurring, urgent: intent.urgent, deck, mail })
+    actions.push({ kind: 'feedback', name: first(s.name), tag: t.tag, count: t.count, recurring: t.recurring, urgent: intent.urgent, deck, mail, valence, historical, improving: t.improving })
   }
   return { actions, disambiguation }
+}
+
+interface TagOutcome { tag: string | null; count: number; recurring: boolean; improving: boolean; reason: string }
+
+/**
+ * Recurring-issue bookkeeping for one new note. Only current concerns count (the new note included); three in the
+ * window with no open issue opens one and asks the planner for a targeted item. Praise or improvement on an open
+ * issue is recorded as "improving" evidence (the issue stays open: resolving it is the instructor's call).
+ */
+async function trackTag(deps: Deps, ctx: SessionContext, utteranceId: string, s: { id: string; name: string }, tag: string | null, valence: Valence, historical: boolean, progressOn: boolean): Promise<TagOutcome> {
+  const { db } = deps
+  const kind = historical ? 'past' : valence === 'improving' ? 'improving' : valence
+  if (!tag) return { tag, count: 0, recurring: false, improving: false, reason: historical ? 'past observation · not counted as a new occurrence' : `${kind} note` }
+  const since = new Date(deps.now().getTime() - RECURRING_WINDOW_DAYS * DAY)
+  const recent = await db.select({ tags: notes.tags, valence: notes.valence, text: notes.text, historical: notes.historical, createdAt: notes.createdAt })
+    .from(notes).where(and(eq(notes.studentId, s.id), gte(notes.createdAt, since)))
+  const withTag = recent.filter(r => r.tags.includes(tag))
+  const count = withTag.filter(countsAsConcern).length
+  const [open] = await db.select().from(issues).where(and(eq(issues.studentId, s.id), eq(issues.tag, tag), eq(issues.status, 'open')))
+  if (historical) return { tag, count, recurring: false, improving: false, reason: `past ${tag} observation (before today) · not counted as a new occurrence` }
+  if (isPositive(valence)) {
+    if (!open) return { tag, count, recurring: false, improving: false, reason: `${valence === 'positive' ? 'positive' : 'improving'} ${tag} observation · praise, not counted as a problem` }
+    const positives = withTag.filter(r => !r.historical && r.createdAt >= open.openedAt && isPositive(effectiveValence(r))).length
+    return { tag, count, recurring: false, improving: true, reason: `${valence === 'positive' ? 'positive' : 'improving'} ${tag} observation on the open ${tag} issue → improving (${positives} positive since it opened)` }
+  }
+  if (valence === 'neutral') return { tag, count, recurring: false, improving: false, reason: `neutral ${tag} observation · not counted` }
+  const recurring = isRecurring(count, Boolean(open)) && progressOn
+  if (recurring) {
+    // v2: a recurring issue feeds the report card and the next plan; it no longer emails home.
+    await openIssue(db, utteranceId, { studentId: s.id, tag })
+    await deferOnce(deps, { utteranceId, kind: 'auto_adjust', subject: s.id }, () => autoAdjustNextDeck(deps, { classId: ctx.classId, afterDate: ctx.forDate, sessionId: ctx.sessionId, utteranceId, requestText: `Add a short${ctx.mode.recipient === 'parent' ? ', fun' : ''} ${ctx.mode.planItem} targeting ${tag} for ${s.name} [${s.id}] (recurring issue).` }))
+  }
+  const reason = recurring ? `${tag} concern ${count}× in ${RECURRING_WINDOW_DAYS} days → marked recurring, added to report card` : `${tag} concern #${count} in ${RECURRING_WINDOW_DAYS} days`
+  return { tag, count, recurring, improving: false, reason }
 }
 
 async function applyBilling(deps: Deps, ctx: SessionContext, utteranceId: string, intent: Intent): Promise<Applied> {
@@ -228,7 +272,7 @@ async function applyBilling(deps: Deps, ctx: SessionContext, utteranceId: string
   const urgency = intent.urgency ?? 'med'
   if (await getAutonomy(deps.db, 'billing') === 'off') {
     await withRun(deps, { agent: 'billing', trigger: 'billing', sessionId: ctx.sessionId, utteranceId }, async () => ({ result: false, summary: 'Billing flag skipped (off)', reason: 'autonomy: off — billing flags are turned off in Settings' }))
-    return { actions: [], disambiguation: null }
+    return { actions: [{ kind: 'skipped', what: 'Billing flags off' }], disambiguation: null }
   }
   const [flag] = await deps.db.insert(billingFlags).values({ studentId: student?.id ?? null, utteranceId, urgency, note: intent.content, amount: intent.amount }).returning({ id: billingFlags.id })
   const links = { billingFlagId: flag!.id, ...(student ? { studentId: student.id } : {}) }
@@ -243,11 +287,11 @@ async function applyAttendanceIntent(deps: Deps, ctx: SessionContext, utteranceI
   const status = intent.attendanceStatus ?? 'present'
   if (await getAutonomy(deps.db, 'attendance') === 'off') {
     await withRun(deps, { agent: 'attendance', trigger: 'voice', sessionId: ctx.sessionId, utteranceId }, async () => ({ result: false, summary: 'Attendance update skipped (off)', reason: 'autonomy: off — voice attendance is turned off in Settings' }))
-    return { actions: [], disambiguation: null }
+    return { actions: [{ kind: 'skipped', what: 'Voice attendance off' }], disambiguation: null }
   }
   for (const heard of intent.studentNames) {
     const m = resolveName(heard, ctx.roster)
-    if (m.kind !== 'match') continue
+    if (m.kind !== 'match') { actions.push({ kind: 'name_unclear', name: heard }); continue }
     await withRun(deps, { agent: 'attendance', trigger: 'voice', sessionId: ctx.sessionId, utteranceId, links: { studentId: m.student.id } }, async () => {
       await recordAttendanceBefore(deps.db, utteranceId, ctx.sessionId, [m.student.id])
       await deps.db.insert(attendance).values({ sessionId: ctx.sessionId, studentId: m.student.id, status, source: 'voice' })
@@ -256,7 +300,7 @@ async function applyAttendanceIntent(deps: Deps, ctx: SessionContext, utteranceI
     })
     actions.push({ kind: 'marked', name: first(m.student.name), status })
   }
-  if (status === 'present' && actions.length) await detectOnAttendance(deps, ctx)
+  if (status === 'present' && actions.some(a => a.kind === 'marked')) await detectOnAttendance(deps, ctx)
   return { actions, disambiguation: null }
 }
 
@@ -311,8 +355,7 @@ async function applyStudentQuery(deps: Deps, ctx: SessionContext, utteranceId: s
 }
 
 /** "Who is forgetting to keep their guard up?": no writes; the answer rides the brief field (titled ANSWER on the lens). */
-async function applyQuestion(deps: Deps, ctx: SessionContext, utteranceId: string, intent: Intent): Promise<Applied> {
-  const question = (intent.question?.trim() || intent.content.trim() || 'question')
+async function applyQuestion(deps: Deps, ctx: SessionContext, utteranceId: string, question: string): Promise<Applied> {
   const lines = await answerQuestion(deps, { sessionId: ctx.sessionId, drillId: ctx.drill?.id ?? null, utteranceId, question })
   if (!lines) return { actions: [{ kind: 'answer_failed' }], disambiguation: null }
   return { actions: [{ kind: 'question', question }], disambiguation: null, brief: { name: ANSWER_BRIEF_NAME, lines } }
