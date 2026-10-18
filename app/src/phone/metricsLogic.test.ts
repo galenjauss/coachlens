@@ -38,6 +38,12 @@ describe('metricsLogic', () => {
     expect(signedDelta(g.delta!)).toBe('−18')
     expect(signedDelta(0)).toBe('±0')
   })
+  it('never compares readings in different units', () => {
+    const g = groupMetrics([m('2', 'squat', 120, '2026-10-08', 'kg'), m('1', 'squat', 100, '2026-10-01', 'lb')])[0]!
+    expect(g).toMatchObject({ delta: null, best: false, spark: '' })
+    const same = groupMetrics([m('2', 'squat', 120, '2026-10-08', 'LB'), m('1', 'squat', 100, '2026-10-01', 'lb')])[0]!
+    expect(same).toMatchObject({ delta: 20, best: true })
+  })
   it('validates the custom field form', () => {
     expect(parseCustomField({ key: ' ', value: 'x', num: '', unit: '' })).toEqual({ ok: false, error: 'Give the field a name.' })
     expect(parseCustomField({ key: 'k', value: '', num: '', unit: '' })).toEqual({ ok: false, error: 'Add a value or a number.' })

@@ -36,7 +36,9 @@ export function groupMetrics(metrics: readonly StudentMetric[]): MetricGroup[] {
   const by = new Map<string, StudentMetric[]>()
   for (const m of metrics) by.set(m.key, [...(by.get(m.key) ?? []), m])
   return [...by.entries()].map(([key, history]) => {
-    const nums = history.map(h => h.num).filter((n): n is number => n !== null).reverse() // oldest first
+    // Only readings in the latest unit are comparable (case-insensitive); mixed units never make a PR or delta.
+    const unit = (history[0]!.unit ?? '').trim().toLowerCase()
+    const nums = history.filter(h => h.num !== null && (h.unit ?? '').trim().toLowerCase() === unit).map(h => h.num as number).reverse() // oldest first
     const latestNum = history[0]!.num
     const prev = nums.length >= 2 ? nums[nums.length - 2]! : null
     const earlierBest = nums.length >= 2 ? Math.max(...nums.slice(0, -1)) : null

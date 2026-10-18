@@ -16,7 +16,7 @@ import { listReview, approveOutbox, skipOutbox, approveAllOutbox, handleBilling,
 import { getDeck, patchDeck } from './services/decks'
 import { runReportCards } from './agents/reportCard'
 import { buildBrief } from './services/brief'
-import { deleteMetric, recordMetric, toMetricView } from './services/metrics'
+import { applyRank, deleteMetric, recordMetric, toMetricView } from './services/metrics'
 import { isGradeMetric } from './logic/metrics'
 import { modeForStudent } from './services/context'
 import { agentFeed, getStudentDetail, listStudents } from './services/students'
@@ -324,10 +324,13 @@ export function createApp(deps: Deps) {
   app.post('/v1/students/:id/metrics', async c => {
     const id = c.req.param('id')
     const body = await json(c.req.raw, MetricCreate)
-    const mode = await modeForStudent(db, id)
     const [st] = await db.select({ id: students.id }).from(students).where(eq(students.id, id))
     if (!st) throw new HTTPException(404, { message: 'student not found' })
-    const { row } = await recordMetric(db, { studentId: id, key: body.key, value: body.value, num: body.num, unit: body.unit || null, source: 'phone' }, isGradeMetric(mode.id, body.unit || null))
+    const mode = await modeForStudent(db, id)
+    const unit = body.unit || null
+    const { row } = await recordMetric(db, { studentId: id, key: body.key, value: body.value, num: body.num, unit, source: 'phone' }, isGradeMetric(mode.id, unit))
+    // A rank reading takes the same path as the voice one: it moves the belt and, if changed, starts rank-since today.
+    if (row.key === 'rank') await applyRank(db, id, row.value, null, localDate(deps.now(), deps.env.timeZone))
     return c.json(toMetricView(row), 201)
   })
   app.delete('/v1/metrics/:id', async c => {

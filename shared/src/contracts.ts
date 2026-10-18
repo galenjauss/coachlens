@@ -14,7 +14,14 @@ export type Urgency = z.infer<typeof Urgency>
 export const IntentType = z.enum(['feedback', 'attendance', 'billing', 'plan_request', 'parent_message', 'add_drill', 'metric', 'student_query'])
 export type IntentType = z.infer<typeof IntentType>
 
-// Every field is required and nullable/array so it works with LLM structured output.
+// Core fields are required and nullable/array for LLM structured output; the metric* fields are nullish so older callers still parse.
+/** A real calendar date as YYYY-MM-DD (rejects 2026-02-31). */
+export function isRealDate(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false
+  const d = new Date(`${s}T00:00:00Z`)
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s
+}
+
 const intentShape = <T extends z.ZodType<string>>(tag: T) => z.object({
   type: IntentType,
   studentNames: z.array(z.string()),
@@ -267,7 +274,7 @@ export type Alternatives = z.infer<typeof Alternatives>
 export const StudentPatch = z.object({
   aliases: z.array(Alias).max(MAX_ALIASES).optional(),
   belt: z.string().trim().min(1).max(40).optional(),
-  rankSince: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  rankSince: z.string().refine(isRealDate, 'not a real date').nullable().optional(),
 }).refine(p => p.aliases !== undefined || p.belt !== undefined || p.rankSince !== undefined, 'nothing to change')
 export type StudentPatch = z.infer<typeof StudentPatch>
 

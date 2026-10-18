@@ -1,4 +1,4 @@
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { BRIEF_LINE_MAX, BRIEF_LINES_MAX, type Brief, type ModeConfig } from '@matside/shared'
 import type { Db } from '../db/client'
 import { attendance, issues, notes, sessions, students } from '../db/schema'
@@ -21,7 +21,7 @@ export async function buildBrief(db: Db, studentId: string, mode: ModeConfig, no
     db.select({ status: attendance.status }).from(attendance).innerJoin(sessions, eq(sessions.id, attendance.sessionId))
       .where(eq(attendance.studentId, studentId)).orderBy(desc(sessions.startedAt)).limit(6),
     db.select({ at: notes.createdAt, text: notes.text }).from(notes).where(eq(notes.studentId, studentId)).orderBy(desc(notes.createdAt)).limit(2),
-    db.select({ tag: issues.tag }).from(issues).where(eq(issues.studentId, studentId)),
+    db.select({ tag: issues.tag }).from(issues).where(and(eq(issues.studentId, studentId), eq(issues.status, 'open'))),
     listMetrics(db, studentId),
   ])
   const sessionCount = await db.select({ status: attendance.status }).from(attendance).where(eq(attendance.studentId, studentId)).then(r => r.filter(x => x.status === 'present').length)
@@ -36,9 +36,9 @@ export async function buildBrief(db: Db, studentId: string, mode: ModeConfig, no
   const latest = metrics.find(m => m.key !== 'rank')
   let metricLine: string[] = []
   if (latest) {
-    const earlier = metrics.filter(m => m.key === latest.key && m.num !== null && m.recordedAt < latest.recordedAt).sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime()).map(m => m.num as number)
+    const earlier = metrics.filter(m => m.key === latest.key && m.recordedAt < latest.recordedAt).sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime())
     const grade = isGradeMetric(mode.id, latest.unit)
-    const phrase = metricPhrase(latest.key, latest.value, latest.num, latest.unit, changeFor(grade, latest.num, earlier))
+    const phrase = metricPhrase(latest.key, latest.value, latest.num, latest.unit, changeFor(grade, latest.num, latest.unit, earlier))
     metricLine = [fit(mode.id === 'tutoring' && grade ? `Last ${phrase}` : phrase.charAt(0).toUpperCase() + phrase.slice(1))]
   }
 

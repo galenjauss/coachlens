@@ -31,10 +31,14 @@ const metricsOf = (db: Awaited<ReturnType<typeof world>>['db'], id: string) => d
 
 describe('pure metric logic', () => {
   it('detects PRs, grade deltas and time in rank', () => {
-    expect(changeFor(false, 225, [205, 215])).toEqual({ kind: 'pr', delta: 10 })
-    expect(changeFor(false, 215, [205, 215])).toBeNull()
-    expect(changeFor(false, 100, [])).toBeNull()
-    expect(changeFor(true, 88, [70, 82])).toEqual({ kind: 'delta', delta: 6 })
+    const r = (...ns: number[]) => ns.map(num => ({ num, unit: 'lb' }))
+    expect(changeFor(false, 225, 'lb', r(205, 215))).toEqual({ kind: 'pr', delta: 10 })
+    expect(changeFor(false, 215, 'lb', r(205, 215))).toBeNull()
+    expect(changeFor(false, 100, 'lb', [])).toBeNull()
+    expect(changeFor(true, 88, '%', [{ num: 70, unit: '%' }, { num: 82, unit: '%' }])).toEqual({ kind: 'delta', delta: 6 })
+    // mixed units are never compared; case is ignored
+    expect(changeFor(false, 100, 'kg', r(205))).toBeNull()
+    expect(changeFor(false, 230, 'LB', r(205))).toEqual({ kind: 'pr', delta: 25 })
     expect(timeInRank('2026-03-01', '2026-10-17')).toBe('8 mo')
     expect(timeInRank('2026-10-10', '2026-10-17')).toBe('7d')
     expect(timeInRank('2025-03-01', '2026-10-17')).toBe('1y 8mo')
@@ -114,6 +118,42 @@ describe('metric intent', () => {
   })
 })
 
+describe('review fixes', () => {
+  it('a string-only reading still gets a number, unit and PR', async () => {
+    const w = await world('personal_training')
+    await w.say(intent({ studentNames: ['Priya'], metricKey: 'deadlift', metricValue: '215 lb' }))
+    const r = await w.say(intent({ studentNames: ['Priya'], metricKey: 'deadlift', metricValue: '225 lb' }))
+    expect(r.cardLines).toEqual(['✓ Priya · deadlift 225 lb (PR +10)'])
+    expect((await metricsOf(w.db, w.ss[0]!.id)).map(x => [x.num, x.unit])).toEqual(expect.arrayContaining([[225, 'lb'], [215, 'lb']]))
+  })
+  it('a different unit is not a PR', async () => {
+    const w = await world('personal_training')
+    await w.say(intent({ studentNames: ['Priya'], metricKey: 'squat', metricNum: 100, metricUnit: 'lb' }))
+    const r = await w.say(intent({ studentNames: ['Priya'], metricKey: 'squat', metricNum: 120, metricUnit: 'kg' }))
+    expect(r.cardLines).toEqual(['✓ Priya · squat 120 kg'])
+  })
+  it('an unreal rank date is ignored, never half-applied', async () => {
+    const w = await world()
+    await w.say(intent({ studentNames: ['Leo'], metricKey: 'belt', metricValue: 'green', metricSince: '2026-02-31' }))
+    expect((await w.db.select().from(students).where(eq(students.id, w.ss[1]!.id)))[0]).toMatchObject({ belt: 'green', rankSince: '2026-10-19' })
+  })
+  it('student_query logs a progress run', async () => {
+    const w = await world()
+    await w.say(intent({ type: 'student_query', studentNames: ['Priya'] }))
+    const run = (await w.db.select().from(agentRuns).where(eq(agentRuns.trigger, 'student_query')))[0]!
+    expect(run).toMatchObject({ agent: 'progress', summary: 'Brief for Priya' })
+  })
+  it('POST rank through the phone moves the belt like voice; bad PATCH dates are 400', async () => {
+    const w = await world()
+    const app = createApp(makeDeps(w.db))
+    const { token } = (await (await app.request('/pair', { method: 'POST', body: JSON.stringify({ code: '4242' }), headers: { 'Content-Type': 'application/json' } })).json()) as { token: string }
+    const h = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+    await app.request(`/v1/students/${w.ss[0]!.id}/metrics`, { method: 'POST', headers: h, body: JSON.stringify({ key: 'Rank', value: 'blue' }) })
+    expect((await w.db.select().from(students).where(eq(students.id, w.ss[0]!.id)))[0]).toMatchObject({ belt: 'blue', rankSince: '2026-10-19' })
+    expect((await app.request(`/v1/students/${w.ss[0]!.id}`, { method: 'PATCH', headers: h, body: JSON.stringify({ rankSince: '2026-02-31' }) })).status).toBe(400)
+  })
+})
+
 describe('buildBrief', () => {
   async function briefWorld(mode: ModeId) {
     const w = await world(mode)
@@ -128,7 +168,7 @@ describe('buildBrief', () => {
       { studentId: priya.id, text: 'guard drops when tired on the jab combination again', tags: ['guard'], createdAt: new Date('2026-10-10T00:00:00Z') },
       { studentId: priya.id, text: 'great energy', tags: [], createdAt: new Date('2026-10-14T00:00:00Z') },
     ])
-    await w.db.insert(issues).values({ studentId: priya.id, tag: 'guard' })
+    await w.db.insert(issues).values([{ studentId: priya.id, tag: 'guard' }, { studentId: priya.id, tag: 'kicks', status: 'resolved' }])
     return w
   }
   const now = new Date('2026-10-20T00:30:00Z')

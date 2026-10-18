@@ -8,7 +8,8 @@ export const keyLabel = (key: string) => key.replace(/_/g, ' ')
 
 /** Canonical stored key: lower-case words joined by underscores ("Bench Press" -> "bench_press"). */
 export function normalizeKey(raw: string): string {
-  return raw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40)
+  const k = raw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40)
+  return k === 'belt' ? 'rank' : k
 }
 
 const trim = (n: number) => String(Math.round(n * 10) / 10)
@@ -29,7 +30,15 @@ export type Change = { kind: 'pr'; delta: number } | { kind: 'delta'; delta: num
  * Grades: the delta vs the last value. Everything else: a PR when it beats every earlier value.
  * The first reading is neither.
  */
-export function changeFor(isGrade: boolean, num: number | null, earlier: readonly number[]): Change {
+export interface Reading { num: number | null; unit: string | null }
+const sameUnit = (a: string | null, b: string | null) => (a ?? '').trim().toLowerCase() === (b ?? '').trim().toLowerCase()
+
+/** Earlier numeric readings in the same unit (case-insensitive), oldest first. Mixed units are never compared. */
+export const comparable = (unit: string | null, earlier: readonly Reading[]): number[] =>
+  earlier.filter(r => r.num !== null && sameUnit(r.unit, unit)).map(r => r.num as number)
+
+export function changeFor(isGrade: boolean, num: number | null, unit: string | null, earlierAll: readonly Reading[]): Change {
+  const earlier = comparable(unit, earlierAll)
   if (num === null || !earlier.length) return null
   if (isGrade) return { kind: 'delta', delta: num - earlier[earlier.length - 1]! }
   const best = Math.max(...earlier)
@@ -73,6 +82,13 @@ export function attendanceDots(statuses: readonly ('present' | 'absent')[]): { d
 export function metricPhrase(key: string, value: string, num: number | null, unit: string | null, change: Change): string {
   const c = changeText(change)
   return `${keyLabel(key)} ${measure(value, num, unit)}${c ? ` (${c})` : ''}`
+}
+
+/** "225 lb" -> { num: 225, unit: 'lb' }; "88%" -> { 88, '%' }; text with no leading number -> nulls. */
+export function parseReading(value: string): { num: number | null; unit: string | null } {
+  const m = /^\s*(-?\d+(?:\.\d+)?)\s*(%|[A-Za-z]+)?/.exec(value)
+  if (!m) return { num: null, unit: null }
+  return { num: Number(m[1]), unit: m[2] ?? null }
 }
 
 export const isGradeMetric = (modeId: string, unit: string | null) => unit === '%' || modeId === 'tutoring'

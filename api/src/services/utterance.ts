@@ -1,6 +1,6 @@
 import { clampMinutes, clip, NAME_MAX } from '../logic/planNormalize'
 import { and, eq, gte, sql } from 'drizzle-orm'
-import type { Brief, Disambiguation, Intent, UtteranceResponse } from '@matside/shared'
+import { isRealDate, type Brief, type Disambiguation, type Intent, type UtteranceResponse } from '@matside/shared'
 import type { Deps } from '../deps'
 import { attendance, billingFlags, drills, issues, notes, students, utterances } from '../db/schema'
 import { routeUtterance } from '../agents/router'
@@ -13,7 +13,7 @@ import { isRecurring, RECURRING_WINDOW_DAYS } from '../logic/recurring'
 import { buildCardLines, type CardAction } from '../logic/cardLines'
 import { getAutonomy } from './settings'
 import { buildBrief } from './brief'
-import { recordMetric } from './metrics'
+import { applyRank, recordMetric } from './metrics'
 import { isGradeMetric, metricPhrase, normalizeKey, shortDate } from '../logic/metrics'
 import { localDate } from '../logic/dates'
 import { coverageAndNext, loadSessionContext, markPresent, type SessionContext } from './context'
@@ -108,7 +108,7 @@ async function applyIntent(deps: Deps, ctx: SessionContext, utteranceId: string,
     case 'feedback': return applyFeedback(deps, ctx, utteranceId, intent)
     case 'billing': return applyBilling(deps, ctx, utteranceId, intent)
     case 'metric': return applyMetric(deps, ctx, utteranceId, intent)
-    case 'student_query': return applyStudentQuery(deps, ctx, intent)
+    case 'student_query': return applyStudentQuery(deps, ctx, utteranceId, intent)
     case 'attendance': return applyAttendanceIntent(deps, ctx, utteranceId, intent)
     case 'plan_request': {
       safeDefer(deps, 'plan_request', (async () => {
@@ -250,8 +250,6 @@ async function applyAttendanceIntent(deps: Deps, ctx: SessionContext, utteranceI
   return { actions, disambiguation: null }
 }
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
-
 /** A progress reading ("Maria hit 225 on deadlift"): saved as a metric row; a rank change also moves the belt and rank-since. */
 async function applyMetric(deps: Deps, ctx: SessionContext, utteranceId: string, intent: Intent): Promise<Applied> {
   const { db } = deps
@@ -268,23 +266,20 @@ async function applyMetric(deps: Deps, ctx: SessionContext, utteranceId: string,
     await db.insert(notes).values({ sessionId: ctx.sessionId, utteranceId, drillId: ctx.drill?.id ?? null, text: intent.content || value || 'progress reading' })
     return { actions: [{ kind: 'saved_unsorted' }], disambiguation: null }
   }
+  // An unreal date ('2026-02-31') is ignored up front, so a rank is never half-applied.
+  const since = intent.metricSince && isRealDate(intent.metricSince) ? intent.metricSince : null
   const actions: CardAction[] = []
   for (const heard of intent.studentNames) {
     const m = resolveName(heard, ctx.roster)
     if (m.kind !== 'match') { actions.push({ kind: 'name_unclear', name: heard }); continue }
     const s = m.student
     const text = await withRun(deps, { ...run, links: { studentId: s.id } }, async () => {
-      const { change } = await recordMetric(db, { studentId: s.id, key, value, num, unit, source: 'voice', utteranceId }, isGradeMetric(ctx.mode.id, unit))
-      let phrase = metricPhrase(key, value, num, unit, change)
+      const { row, change } = await recordMetric(db, { studentId: s.id, key, value, num, unit, source: 'voice', utteranceId }, isGradeMetric(ctx.mode.id, unit))
+      let phrase = metricPhrase(key, row.value, row.num, row.unit, change)
       let reason = change ? (change.kind === 'pr' ? 'new personal best' : 'grade change vs the last one') : 'recorded'
       if (key === 'rank') {
-        const since = intent.metricSince && DATE_RE.test(intent.metricSince) ? intent.metricSince : null
-        const [cur] = await db.select({ belt: students.belt }).from(students).where(eq(students.id, s.id))
-        const changed = cur?.belt.toLowerCase() !== value.toLowerCase()
-        const rankSince = since ?? (changed ? localDate(deps.now(), deps.env.timeZone) : null)
-        await db.update(students).set({ belt: value, ...(rankSince ? { rankSince } : {}) }).where(eq(students.id, s.id))
         phrase = since ? `rank ${value} (since ${shortDate(since)})` : `rank ${value}`
-        reason = since ? `rank set, since ${since}` : changed ? 'rank changed today' : 'rank confirmed'
+        reason = await applyRank(db, s.id, value, since, localDate(deps.now(), deps.env.timeZone))
       }
       return { result: phrase, summary: `${first(s.name)}: ${phrase}`, reason }
     })
@@ -294,10 +289,13 @@ async function applyMetric(deps: Deps, ctx: SessionContext, utteranceId: string,
 }
 
 /** "How's Priya doing?": no writes; the response carries the brief for the lens. */
-async function applyStudentQuery(deps: Deps, ctx: SessionContext, intent: Intent): Promise<Applied> {
+async function applyStudentQuery(deps: Deps, ctx: SessionContext, utteranceId: string, intent: Intent): Promise<Applied> {
   const heard = intent.studentNames[0]
   const m = heard ? resolveName(heard, ctx.roster) : { kind: 'none' as const }
   if (m.kind !== 'match') return { actions: [{ kind: 'name_unclear', name: heard ?? 'who' }], disambiguation: null }
-  const brief = await buildBrief(deps.db, m.student.id, ctx.mode, deps.now(), deps.env.timeZone)
+  const brief = await withRun(deps, { agent: 'progress', trigger: 'student_query', sessionId: ctx.sessionId, utteranceId, links: { studentId: m.student.id } }, async () => ({
+    result: await buildBrief(deps.db, m.student.id, ctx.mode, deps.now(), deps.env.timeZone), summary: `Brief for ${first(m.student.name)}`, reason: 'instructor asked about the student',
+  }))
+  if (!brief) return { actions: [{ kind: 'name_unclear', name: first(m.student.name) }], disambiguation: null }
   return { actions: [{ kind: 'student_query', name: first(m.student.name) }], disambiguation: null, brief }
 }
