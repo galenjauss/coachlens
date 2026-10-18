@@ -9,6 +9,7 @@ import {
   notes, outbox, sessions, students,
 } from './db/schema'
 import { runInsights } from './services/insights'
+import { inEmailCooldown } from './agents/parentEmail'
 
 const T0 = new Date('2026-10-20T00:30:00Z') // Mon 2026-10-19 5:30 PM PT
 const DAY = 86_400_000
@@ -218,7 +219,48 @@ describe('insights agent', () => {
     await runInsights(t.deps, { trigger: 'cron' })
     const ready = (await t.byKind('ready_to_test')).find(r => r.createdAt.getTime() === t.clock.now.getTime())!
     expect(ready).toMatchObject({ status: 'auto_done', outcome: 'Email drafted for review' })
-    expect((await t.db.select().from(outbox).where(eq(outbox.studentId, t.maria.id)))[0]!.trigger).toBe('insight')
+    expect((await t.db.select().from(outbox).where(eq(outbox.studentId, t.maria.id)))[0]!.trigger).toBe('insight_auto')
+    expect(await inEmailCooldown(t.deps, t.maria.id)).toBe(true) // auto insight emails count toward the cooldown
+  })
+
+  it('auto: an automatic insight email obeys the 30-day cooldown; a manual accept is exempt', async () => {
+    const t = await setup()
+    const recent = new Date(T0.getTime() - 5 * DAY)
+    await t.db.insert(outbox).values([t.jake, t.maria].map(s => ({ kind: 'parent_email' as const, studentId: s.id, toEmail: 'p@example.com', subject: 's', body: 'b', status: 'sent' as const, trigger: 'insight_auto', createdAt: recent })))
+    await t.setAutonomy({ insights: 'auto' })
+    await runInsights(t.deps, { trigger: 'cron' })
+    expect((await t.byKind('attendance_decline'))[0]).toMatchObject({ status: 'auto_done', outcome: 'Skipped: emailed in last 30 days' })
+    expect((await t.byKind('ready_to_test'))[0]!.outcome).toBe('Skipped: emailed in last 30 days')
+    expect(await t.db.select().from(outbox).where(eq(outbox.status, 'pending_review'))).toHaveLength(1) // only Leo's positive note
+    // manual accept of a review-mode insight still drafts despite the recent email
+    await t.setAutonomy({ insights: 'review' })
+    t.clock.now = new Date(T0.getTime() + 7 * DAY)
+    await runInsights(t.deps, { trigger: 'cron' })
+    const decline = (await t.byKind('attendance_decline')).find(r => r.status === 'new')!
+    expect(await (await t.post(`/v1/insights/${decline.id}/accept`)).json()).toEqual({ ok: true, outcome: 'Email drafted for review' })
+  })
+
+  it('auto: in class, an auto-handled "Jake\'s back" still shows as one high row with no button', async () => {
+    const t = await setup()
+    await t.setAutonomy({ insights: 'auto' })
+    const { sessionId } = await (await t.post('/v1/sessions', { classId: t.kids.id })).json() as { sessionId: string }
+    await t.post(`/v1/sessions/${sessionId}/attendance`, { presentIds: [t.jake.id, t.maria.id, t.leo.id] })
+    await t.deps.flush()
+    const live = (await t.get(`?sessionId=${sessionId}`)).body!
+    expect(live).toHaveLength(1)
+    expect(live[0]).toMatchObject({ kind: 'returning_student', urgency: 'high', status: 'auto_done', actionLabel: null, studentName: 'Jake Ross' })
+    expect((await t.get()).body!.map(i => i.kind)).not.toContain('returning_student') // outside class: new rows only
+  })
+
+  it('the 70% check is not used up while attendance has not been taken', async () => {
+    const t = await setup()
+    const { sessionId } = await (await t.post('/v1/sessions', { classId: t.kids.id })).json() as { sessionId: string }
+    t.clock.now = new Date(T0.getTime() + 3 * 60_000)
+    await t.get(`?sessionId=${sessionId}`)
+    expect(await t.insightRuns('live')).toHaveLength(0)
+    await t.post(`/v1/sessions/${sessionId}/attendance`, { presentIds: [t.maria.id] })
+    expect((await t.get(`?sessionId=${sessionId}`)).body!.map(i => i.title)).toContain('Maria: no note yet today')
+    expect(await t.insightRuns('live')).toHaveLength(1)
   })
 
   it('GET runs the detectors lazily at most every 10 minutes', async () => {

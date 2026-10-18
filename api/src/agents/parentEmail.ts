@@ -41,13 +41,14 @@ export const EMAIL_COOLDOWN_DAYS = 30
  * Since v2 nothing in the live pipeline drafts a 'recurring' email (recurring issues feed the report card);
  * the cooldown exists so any future automatic trigger added here is rate-limited by default.
  */
-const AUTO_TRIGGERS = ['recurring'] as const
+const AUTO_TRIGGERS = ['recurring', 'insight_auto'] as const
 
 export type EmailTrigger =
   | { kind: 'request'; content: string } // explicit "email Priya's mom that…": always drafts
   | { kind: 'urgent'; content: string } // injury / safety / serious behavior: always drafts
   | { kind: 'recurring'; tag: SkillTag } // automatic, non-urgent: subject to the cooldown
-  | { kind: 'insight'; content: string } // an accepted (or auto-run) insight: drafts like a request, autonomy applies
+  | { kind: 'insight'; content: string } // an insight the coach accepted: drafts like a request, autonomy applies
+  | { kind: 'insight_auto'; content: string } // an insight run by auto mode: automatic, so it counts toward (and obeys) the cooldown
 
 /** True when the student already got a non-urgent automatic email inside the cooldown window. */
 export async function inEmailCooldown(deps: Deps, studentId: string): Promise<boolean> {
@@ -68,7 +69,7 @@ export async function draftParentEmail(
     await withRun(deps, meta, async () => ({ result: null, summary: 'Parent email skipped (off)', reason: 'autonomy: off — parent emails are turned off in Settings' }))
     return null
   }
-  if (a.trigger.kind === 'recurring' && await inEmailCooldown(deps, a.studentId)) {
+  if ((a.trigger.kind === 'recurring' || a.trigger.kind === 'insight_auto') && await inEmailCooldown(deps, a.studentId)) {
     await withRun(deps, meta, async () => ({ result: null, summary: `Skipped auto note (one per ${EMAIL_COOLDOWN_DAYS} days)`, reason: 'email cooldown' }))
     return null
   }
@@ -89,7 +90,7 @@ export async function draftParentEmail(
       ? `Recurring focus area: ${mode.tagLabels[a.trigger.tag] ?? a.trigger.tag}`
       : a.trigger.kind === 'urgent'
         ? `URGENT — coach logged this today and ${reader} should hear it now (observation only, no diagnosis): ${a.trigger.content}`
-        : a.trigger.kind === 'insight'
+        : a.trigger.kind === 'insight' || a.trigger.kind === 'insight_auto'
           ? `Coach wants to reach out to ${reader} about this (keep it factual, no pressure): ${a.trigger.content}`
           : `Coach asked to tell ${reader}: ${a.trigger.content}`
     const who = toClient

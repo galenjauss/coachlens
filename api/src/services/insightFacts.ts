@@ -1,10 +1,16 @@
-import { and, asc, eq, inArray, isNotNull, type Column } from 'drizzle-orm'
+import { and, asc, eq, gte, inArray, isNotNull, type Column } from 'drizzle-orm'
 import type { Db } from '../db/client'
 import { attendance, billingFlags, classes, enrollments, issues, notes, sessions, studentMetrics, students } from '../db/schema'
 import type { StudentFacts } from '../agents/insights'
+import { addDays } from '../logic/dates'
 
-/** Loads what the insight detectors need, for the given students (everyone when omitted), in a handful of queries. */
-export async function loadFacts(db: Db, studentIds?: readonly string[]): Promise<StudentFacts[]> {
+/** How far back the detectors look: attendance covers both 4-week decline windows; notes cover the 21-day quiet check with room. */
+export const ATTENDANCE_LOOKBACK_DAYS = 56
+export const NOTES_LOOKBACK_DAYS = 60
+export interface FactBounds { today: string; now: Date }
+
+/** Loads what the insight detectors need, for the given students (everyone when omitted), in a handful of bounded queries. */
+export async function loadFacts(db: Db, studentIds: readonly string[] | undefined, b: FactBounds): Promise<StudentFacts[]> {
   if (studentIds && !studentIds.length) return []
   const ids = studentIds ? [...studentIds] : null
   const only = (col: Column) => (ids ? inArray(col, ids) : undefined)
@@ -13,10 +19,10 @@ export async function loadFacts(db: Db, studentIds?: readonly string[]): Promise
     db.select({ studentId: enrollments.studentId, classId: classes.id, mode: classes.mode }).from(enrollments)
       .innerJoin(classes, eq(classes.id, enrollments.classId)).where(only(enrollments.studentId)).orderBy(asc(classes.weekday), asc(classes.id)),
     db.select({ studentId: attendance.studentId, sessionId: attendance.sessionId, status: attendance.status, forDate: sessions.forDate, endedAt: sessions.endedAt })
-      .from(attendance).innerJoin(sessions, eq(sessions.id, attendance.sessionId)).where(only(attendance.studentId))
+      .from(attendance).innerJoin(sessions, eq(sessions.id, attendance.sessionId)).where(and(only(attendance.studentId), gte(sessions.forDate, addDays(b.today, -ATTENDANCE_LOOKBACK_DAYS))))
       .orderBy(asc(sessions.forDate), asc(sessions.startedAt)),
     db.select({ studentId: notes.studentId, sessionId: notes.sessionId, tags: notes.tags, createdAt: notes.createdAt }).from(notes)
-      .where(and(isNotNull(notes.studentId), only(notes.studentId))).orderBy(asc(notes.createdAt)),
+      .where(and(isNotNull(notes.studentId), only(notes.studentId), gte(notes.createdAt, new Date(b.now.getTime() - NOTES_LOOKBACK_DAYS * 86_400_000)))).orderBy(asc(notes.createdAt)),
     db.select().from(issues).where(and(eq(issues.status, 'open'), only(issues.studentId))),
     db.select().from(studentMetrics).where(only(studentMetrics.studentId)).orderBy(asc(studentMetrics.recordedAt)),
     db.select().from(billingFlags).where(and(eq(billingFlags.status, 'open'), isNotNull(billingFlags.studentId), only(billingFlags.studentId))).orderBy(asc(billingFlags.createdAt)),

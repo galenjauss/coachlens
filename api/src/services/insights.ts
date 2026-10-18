@@ -5,7 +5,7 @@ import type { Deps } from '../deps'
 import { classes, drills, insights, issues, kv, notes, outbox, sessions, students } from '../db/schema'
 import { detectAll, liveNoFeedback, runSummary, type InsightDraft } from '../agents/insights'
 import { safeDefer, withRun } from '../agents/runs'
-import { draftParentEmail } from '../agents/parentEmail'
+import { draftParentEmail, EMAIL_COOLDOWN_DAYS, inEmailCooldown } from '../agents/parentEmail'
 import { acceptDiff, autoAdjustNextDeck, markAutonomy, nextDeckFor, suggestDiff } from '../agents/planner'
 import { addDays, localDate } from '../logic/dates'
 import { getAutonomy } from './settings'
@@ -38,7 +38,10 @@ async function kvSet(deps: Deps, key: string, value: string) {
   await deps.db.insert(kv).values({ key, value, updatedAt: deps.now() }).onConflictDoUpdate({ target: kv.key, set: { value, updatedAt: deps.now() } })
 }
 
-/** Inserts drafts, skipping any whose dedupe key exists. Auto mode marks actionable rows auto_done (they run next). */
+/**
+ * Inserts drafts, skipping any whose dedupe key exists. Auto mode marks actionable rows auto_done (they run next);
+ * a row whose action is 'none' stays 'new' even in auto mode, since there is nothing to run and it is just an FYI.
+ */
 async function insertDrafts(deps: Deps, drafts: InsightDraft[], sessionId: string | null, autonomy: Autonomy): Promise<Row[]> {
   const out: Row[] = []
   for (const d of drafts) {
@@ -56,7 +59,10 @@ async function namesFor(deps: Deps, ids: (string | null)[]): Promise<Map<string,
   return new Map((await deps.db.select({ id: students.id, name: students.name }).from(students).where(inArray(students.id, uniq))).map(s => [s.id, s.name]))
 }
 
-/** Runs auto-mode actions for freshly inserted rows and records each outcome on its row. */
+/**
+ * Runs auto-mode actions for freshly inserted rows and records each outcome on its row. Best effort: the row is
+ * auto_done before its action runs, so a crash mid-action leaves it auto_done with no outcome (never retried).
+ */
 async function runAutoActions(deps: Deps, rows: Row[]) {
   for (const r of rows.filter(x => x.status === 'auto_done')) {
     const res = await executeAction(deps, r, false).catch(e => ({ ok: false, outcome: `Failed: ${e instanceof Error ? e.message : e}` }))
@@ -87,8 +93,9 @@ export async function runInsights(deps: Deps, o: RunOptions): Promise<Row[]> {
   if (full) await kvSet(deps, LAST_RUN_KEY, deps.now().toISOString())
   const sessionId = o.sessionId ?? null
   const rows = await logRun(deps, o.trigger, sessionId, autonomy, async () => {
-    const facts = await loadFacts(deps.db, o.classId ? await rosterIds(deps.db, o.classId) : undefined)
-    return detectAll(facts, { today: o.today ?? localDate(deps.now(), deps.env.timeZone), now: deps.now(), sessionId }, o.only)
+    const today = o.today ?? localDate(deps.now(), deps.env.timeZone)
+    const facts = await loadFacts(deps.db, o.classId ? await rosterIds(deps.db, o.classId) : undefined, { today, now: deps.now() })
+    return detectAll(facts, { today, now: deps.now(), sessionId }, o.only)
   })
   if (o.deferActions) safeDefer(deps, 'insights_auto', runAutoActions(deps, rows))
   else await runAutoActions(deps, rows)
@@ -116,17 +123,16 @@ export async function runLiveCheck(deps: Deps, session: typeof sessions.$inferSe
   const planned = (await deps.db.select({ minutes: drills.minutes }).from(drills).where(eq(drills.deckId, session.deckId))).reduce((t, d) => t + d.minutes, 0)
   const elapsed = (deps.now().getTime() - session.startedAt.getTime()) / ((planned || DEFAULT_CLASS_MINUTES) * 60_000)
   if (elapsed < 0.7) return
+  // No attendance yet: nothing to judge, and the one-shot check is kept for a later poll.
+  const ctx = await loadSessionContext(deps.db, session.id, null)
+  if (!ctx.attendanceTaken) return
+  const noted = await deps.db.selectDistinct({ id: notes.studentId }).from(notes).where(eq(notes.sessionId, session.id))
   await kvSet(deps, liveKey(session.id), deps.now().toISOString())
-  await logRun(deps, 'live', session.id, autonomy, async () => {
-    const ctx = await loadSessionContext(deps.db, session.id, null)
-    if (!ctx.attendanceTaken) return []
-    const noted = await deps.db.selectDistinct({ id: notes.studentId }).from(notes).where(eq(notes.sessionId, session.id))
-    return liveNoFeedback({
-      sessionId: session.id, today: session.forDate, elapsed,
-      present: ctx.roster.filter(r => ctx.presentIds.has(r.id)).map(r => ({ id: r.id, name: r.name, classId: ctx.classId, mode: ctx.mode.id })),
-      notedIds: new Set(noted.flatMap(n => (n.id ? [n.id] : []))),
-    })
-  })
+  await logRun(deps, 'live', session.id, autonomy, async () => liveNoFeedback({
+    sessionId: session.id, today: session.forDate, elapsed,
+    present: ctx.roster.filter(r => ctx.presentIds.has(r.id)).map(r => ({ id: r.id, name: r.name, classId: ctx.classId, mode: ctx.mode.id })),
+    notedIds: new Set(noted.flatMap(n => (n.id ? [n.id] : []))),
+  }))
 }
 
 export class InsightsError extends Error {
@@ -135,7 +141,9 @@ export class InsightsError extends Error {
 
 const toView = (r: Row, names: Map<string, string>): Insight => ({
   id: r.id, kind: r.kind, studentId: r.studentId, studentName: r.studentId ? names.get(r.studentId) ?? null : null, classId: r.classId,
-  title: r.title, detail: r.detail, urgency: r.urgency, status: r.status, createdAt: r.createdAt.toISOString(), actionLabel: r.action.label,
+  title: r.title, detail: r.detail, urgency: r.urgency, status: r.status, createdAt: r.createdAt.toISOString(),
+  // Only a pending row offers a button; an auto_done row (shown in class as a heads-up) has already acted.
+  actionLabel: r.status === 'new' ? r.action.label : null,
 })
 
 /**
@@ -154,9 +162,11 @@ export async function listInsights(deps: Deps, q: { scope: 'all' | 'class'; clas
   }
   if (q.scope === 'class' && !classId) throw new InsightsError('bad_request', 'classId required for scope=class')
   if (classId && !(await db.select({ id: classes.id }).from(classes).where(eq(classes.id, classId))).length) throw new InsightsError('not_found', 'class not found')
-  await maybeLazyRun(deps)
-  if (live) await runLiveCheck(deps, live)
-  const conds = [eq(insights.status, 'new')]
+  // Best effort: a failed detector pass never breaks the listing.
+  await maybeLazyRun(deps).catch(e => console.error('[insights:lazy]', e))
+  if (live) await runLiveCheck(deps, live).catch(e => console.error('[insights:live]', e))
+  // In class, auto-handled high items still show (as a heads-up, no button) so auto mode never hides "Jake's back".
+  const conds = [live ? inArray(insights.status, ['new', 'auto_done']) : eq(insights.status, 'new')]
   if (q.scope === 'class' || live) {
     const ids = await rosterIds(db, classId!)
     const cls = and(isNull(insights.studentId), eq(insights.classId, classId!))!
@@ -179,10 +189,15 @@ const PURPOSE: Record<string, string> = {
   positive: 'A positive update: the focus area has improved',
 }
 
-async function emailOutcome(deps: Deps, row: Row, studentId: string, purpose: string): Promise<{ ok: boolean; outcome: string; mail: 'off' | 'drafted' | 'sent' | 'failed' }> {
+type MailResult = 'off' | 'drafted' | 'sent' | 'failed' | 'skipped'
+/** explicit: the coach accepted (exempt from the cooldown). Auto: one automatic email per student per cooldown window. */
+async function emailOutcome(deps: Deps, row: Row, studentId: string, purpose: string, explicit: boolean): Promise<{ ok: boolean; outcome: string; mail: MailResult }> {
   const autonomy = await getAutonomy(deps.db, 'parent_email')
+  if (!explicit && autonomy !== 'off' && await inEmailCooldown(deps, studentId)) {
+    return { ok: true, outcome: `Skipped: emailed in last ${EMAIL_COOLDOWN_DAYS} days`, mail: 'skipped' }
+  }
   const content = `${PURPOSE[purpose] ?? purpose}. ${row.detail}`
-  const id = await draftParentEmail(deps, { studentId, sessionId: row.sessionId, trigger: { kind: 'insight', content } })
+  const id = await draftParentEmail(deps, { studentId, sessionId: row.sessionId, trigger: { kind: explicit ? 'insight' : 'insight_auto', content } })
   if (autonomy === 'off') return { ok: true, outcome: 'Parent emails are off in Settings', mail: 'off' }
   if (!id) return { ok: false, outcome: 'Email draft failed', mail: 'failed' }
   const [o] = await deps.db.select({ status: outbox.status }).from(outbox).where(eq(outbox.id, id))
@@ -220,14 +235,14 @@ async function planOutcome(deps: Deps, row: Row, a: Extract<InsightAction, { typ
 export async function executeAction(deps: Deps, row: Row, explicit: boolean): Promise<{ ok: boolean; outcome: string }> {
   const a = row.action
   switch (a.type) {
-    case 'draft_email': return emailOutcome(deps, row, a.studentId, a.purpose)
+    case 'draft_email': return emailOutcome(deps, row, a.studentId, a.purpose, explicit)
     case 'plan_focus': return planOutcome(deps, row, a, explicit)
     case 'resolve_issue': {
       const done = await deps.db.update(issues).set({ status: 'resolved' }).where(and(eq(issues.id, a.issueId), eq(issues.status, 'open'))).returning({ id: issues.id })
       const head = done.length ? 'Resolved' : 'Already resolved'
       if (!a.notify) return { ok: true, outcome: head }
-      const mail = await emailOutcome(deps, row, a.studentId, 'positive')
-      const tail = { off: 'emails are off', drafted: 'email drafted for review', sent: 'email sent', failed: 'email draft failed' }[mail.mail]
+      const mail = await emailOutcome(deps, row, a.studentId, 'positive', explicit)
+      const tail = { off: 'emails are off', drafted: 'email drafted for review', sent: 'email sent', failed: 'email draft failed', skipped: 'email skipped (sent recently)' }[mail.mail]
       return { ok: true, outcome: `${head} · ${tail}` }
     }
     case 'none': return { ok: true, outcome: 'Noted' }
