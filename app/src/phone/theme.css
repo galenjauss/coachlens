@@ -77,3 +77,23 @@ button.back { flex: none; background: none; color: var(--accent); padding: 0 8px
 .tabs button { position: relative; }
 .badge { position: absolute; top: 8px; margin-left: 4px; min-width: 18px; padding: 0 5px; border-radius: 99px; background: var(--accent); color: var(--ink-on-accent); font-size: 11px; font-weight: 700; line-height: 18px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Plan editor */
+.field-gap { display: block; margin-top: 10px; }
+.cue-field { position: relative; }
+.cue-field input { padding-right: 52px; }
+.cue-count { position: absolute; right: 10px; top: 50%; transform: translateY(-20%); font-size: 11px; pointer-events: none; }
+button.danger { background: var(--danger-bg); color: var(--danger); font-weight: 600; }
+.plan-item { padding: 8px 10px; }
+.plan-item.card { margin-bottom: 8px; }
+.reorder { display: flex; flex-direction: column; gap: 4px; flex: none; }
+.reorder button { flex: none; min-height: 36px; min-width: 44px; padding: 2px 8px; font-size: 12px; }
+button.plan-open { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; background: none; padding: 6px 4px; min-width: 0; overflow-wrap: anywhere; }
+button.plan-open:hover:not(:disabled) { background: var(--line); filter: none; }
+button.alt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; flex: none; text-align: left; margin-bottom: 8px; background: var(--bg); border: 1px solid var(--line); }
+button.alt:hover:not(:disabled) { border-color: var(--accent); filter: none; }
+.hint-left { margin: 8px 0 0; }
+.planner .chips { margin-bottom: 8px; }
+.ask input { margin-top: 0; }
+.ask button { flex: none; }
+label.remember input { width: auto; margin: 0; flex: none; }

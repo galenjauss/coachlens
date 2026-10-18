@@ -208,6 +208,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
   const offPaired = bus.on('paired', () => dispatch({ type: 'resumed' }))
   const offStart = bus.on('startClass', () => dispatch({ type: 'startRequested' }))
   const offClass = bus.on('classChanged', () => { void run({ type: 'loadToday' }) })
+  const offDeck = bus.on('deckChanged', () => { void run({ type: 'loadToday' }) }) // phone edited/accepted a plan: the lens reloads it
   const tick = setInterval(() => { if (TICKING.has(state.screen)) void paint() }, TICK_MS)
 
   await paint() // never a black screen: the first page goes up immediately
@@ -217,7 +218,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
   return {
     dispatch,
     stop() {
-      unsubscribe(); offPaired(); offStart(); offClass(); clearInterval(tick)
+      unsubscribe(); offPaired(); offStart(); offClass(); offDeck(); clearInterval(tick)
       glasses.dispose()
       for (const t of Object.values(timers)) t.clear()
     },

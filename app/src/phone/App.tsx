@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { API_URL } from '../config'
 import { KEYS } from '../core/storage'
 import { Agents } from './Agents'
+import { DeckEditor } from './DeckEditor'
 import type { PhoneDeps } from './mount'
 import { Pairing } from './Pairing'
 import { Review } from './Review'
@@ -23,6 +24,7 @@ export function App({ api, kv }: PhoneDeps) {
   const pending = queue?.length ?? 0
   if (paired === null) return null
   if (!paired) return <Pairing api={api} kv={kv} onPaired={() => setPaired(true)} />
+  if (deckId) return <DeckEditor api={api} deckId={deckId} onClose={() => setDeckId(null)} />
   return (
     <>
       {tab === 'today' && <Today api={api} kv={kv} onOpenDeck={setDeckId} />}
@@ -34,7 +36,6 @@ export function App({ api, kv }: PhoneDeps) {
           <button key={t} type="button" aria-current={tab === t ? 'page' : undefined} onClick={() => setTab(t)}>{t[0]!.toUpperCase() + t.slice(1)}{t === 'review' && pending > 0 && <><span className="badge" aria-hidden="true">{pending}</span><span className="sr-only"> ({pending} pending)</span></>}</button>
         ))}
       </nav>
-      {deckId && <div hidden>{deckId}</div>}
     </>
   )
 }

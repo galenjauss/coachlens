@@ -5,11 +5,11 @@ import { approveAllNotice, bulkEmailIds, outcomeFor, visibleEmailIds } from './r
 import { usePoll } from './usePoll'
 import { useAction } from './useAction'
 
-export function DiffList({ diff }: { diff: DeckDiff }) {
+export function DiffList({ diff, names }: { diff: DeckDiff; names?: Record<string, string> }) {
   const empty = !diff.removed.length && !diff.changed.length && !diff.added.length
   return (
     <ul className="difflist" aria-label="Proposed changes">
-      {diff.removed.map(r => <li key={r.drillId} className="drill"><s className="muted">{r.drillId.slice(0, 6)}…</s><span className="pill high">removed · {r.reason}</span></li>)}
+      {diff.removed.map(r => <li key={r.drillId} className="drill"><s className="muted">{names?.[r.drillId] ?? `${r.drillId.slice(0, 6)}…`}</s><span className="pill high">removed · {r.reason}</span></li>)}
       {diff.changed.map(c => <li key={c.drillId} className="drill"><span>{c.after.name} · {c.after.minutes}m</span><span className="pill warn">changed · {c.reason}</span></li>)}
       {diff.added.map((a, i) => <li key={i} className="drill"><span>{a.name} · {a.minutes}m</span><span className="pill ok">added · {a.reason}</span></li>)}
       {empty && <li className="muted">No changes proposed.</li>}
