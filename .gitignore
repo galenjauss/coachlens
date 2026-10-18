@@ -6,7 +6,5 @@ dist
 .superpowers/
 .vercel
 *.ehpk
-.env*
-
 api/api/
 api/public/

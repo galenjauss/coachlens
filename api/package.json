@@ -10,7 +10,7 @@
     "seed": "tsx src/db/seed-cli.ts",
     "eval": "tsx evals/run-router.ts",
     "dev": "tsx watch src/dev-server.ts",
-    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=api/index.mjs --packages=external --alias:@matside/shared=../shared/src/index.ts && mkdir -p public && echo ok > public/index.txt"
+    "build": "esbuild src/index.ts --bundle --minify --platform=node --format=esm --outfile=api/index.mjs --banner:js=\"import{createRequire as __cr}from'module';globalThis.require??=__cr(import.meta.url);\" --alias:@matside/shared=../shared/src/index.ts && mkdir -p public && echo ok > public/index.txt"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.82",

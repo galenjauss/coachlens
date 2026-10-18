@@ -1,6 +1,8 @@
 {
   "framework": null,
   "buildCommand": "npm run build",
+  "regions": ["iad1"],
+  "functions": { "api/index.mjs": { "maxDuration": 60 } },
   "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
   "crons": [
     { "path": "/jobs/plan", "schedule": "0 9 * * *" },

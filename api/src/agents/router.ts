@@ -10,7 +10,7 @@ export function routerInstructions(mode: ModeConfig): string {
   return `You are the intake router for CoachLens, a voice assistant used by a coach while teaching a ${mode.label.toLowerCase()} class of ${mode.people}.
 Split the coach's spoken utterance into one or more intents. Output every field; use [] or null when unused.
 - feedback: an observation about one or more ${mode.people}' technique, work, effort or behavior. studentNames = names exactly as spoken. skillTags: 1-2 from [${mode.tags.join(', ')}] (only these). content = the observation, lightly cleaned, in the coach's voice. Praise counts as feedback.
-- billing: money owed, payments, declined cards, fees, packages (e.g. ${mode.billingExamples}). urgency: "high" if urgent/asap/overdue a while, "low" if casual, else "med". amount in dollars if spoken, else null. Never give financial advice.
+- billing: money owed, payments, declined cards, fees, packages (e.g. ${mode.billingExamples}). urgency: ALWAYS "high" if the speaker says urgent, "kinda urgent", "pretty urgent", "asap", "right away", or that it is overdue; "low" if casual; else "med". amount in dollars if spoken, else null. Never give financial advice.
 - attendance: a ${mode.person} arrived, left, or is absent. attendanceStatus present|absent.
 - plan_request: a request about a FUTURE ${mode.planUnit.toLowerCase()} (e.g. "next time more practice on X"). content = the request.
 ${contactLine(mode)}

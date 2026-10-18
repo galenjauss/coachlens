@@ -31,4 +31,14 @@ describe('prodDeps env validation', () => {
     process.env.PAIRING_CODE = '12345'
     expect(() => prodDeps()).toThrow(/PAIRING_CODE/)
   })
+  it('treats empty AI_DAILY_CAP as the default', () => {
+    process.env.AI_DAILY_CAP = ''
+    expect(() => prodDeps()).not.toThrow()
+  })
+  for (const bad of ['abc', '0', '-5']) {
+    it(`rejects AI_DAILY_CAP=${bad}`, () => {
+      process.env.AI_DAILY_CAP = bad
+      expect(() => prodDeps()).toThrow(/AI_DAILY_CAP/)
+    })
+  }
 })
