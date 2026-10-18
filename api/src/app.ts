@@ -425,7 +425,12 @@ export function createApp(deps: Deps) {
   app.get('/v1/students', async c => c.json(await listStudents(db, me(c))))
   app.use('/v1/students/:id', async (c, next) => { await need(ownsStudent(db, me(c), c.req.param('id')!), 'student'); await next() })
   app.use('/v1/students/:id/*', async (c, next) => { await need(ownsStudent(db, me(c), c.req.param('id')!), 'student'); await next() })
-  app.get('/v1/students/:id', async c => c.json(await guard(getStudentDetail(deps, c.req.param('id')))))
+  app.get('/v1/students/:id', async c => {
+    const id = c.req.param('id')
+    const [detail, view] = await Promise.all([guard(getStudentDetail(deps, id)), studentView(db, id)])
+    // C3: the edit screen also needs the guardians and class memberships.
+    return c.json({ ...detail, nickname: view?.nickname ?? null, aliases: view?.aliases ?? [], guardians: view?.guardians ?? [], classIds: view?.classIds ?? [] })
+  })
   app.get('/v1/students/:id/brief', async c => {
     const id = c.req.param('id')
     return c.json(await guard(modeForStudent(db, id).then(m => buildBrief(db, id, m, deps.now(), deps.env.timeZone))))
@@ -456,8 +461,9 @@ export function createApp(deps: Deps) {
   })
   app.get('/v1/notes/:id/candidates', async c => {
     await need(ownsNote(db, me(c), c.req.param('id')), 'note')
-    const r = await noteCandidates(db, c.req.param('id'), () => ownedStudentIds(db, me(c)))
+    const r = await noteCandidates(db, c.req.param('id'))
     if (!r) throw new HTTPException(404, { message: 'note not found' })
+    if (r === 'no_class') throw new HTTPException(409, { message: 'no_class' })
     return c.json(r)
   })
   app.post('/v1/classes', async c => c.json(await createClass(db, me(c), await json(c.req.raw, ClassCreate)), 201))

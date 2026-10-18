@@ -12,7 +12,7 @@ import { aliasKey } from '../logic/names'
 /** C3 · roster and class maintenance. Every function assumes the route already checked ownership (C4). */
 
 const Name = z.string().trim().min(1).max(80)
-const Nickname = z.string().trim().min(1).max(40).nullable()
+const Nickname = z.string().trim().max(40).nullable().transform(v => v || null) // '' clears it
 const Guardian = z.object({ name: z.string().trim().min(1).max(80), email: z.string().trim().toLowerCase().email().max(200) })
 const ClassIds = z.array(z.string().min(1).max(64)).max(20)
 
@@ -34,7 +34,7 @@ export type StudentUpdate = z.infer<typeof StudentUpdate>
 const StartTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'HH:MM')
 const Weekday = z.number().int().min(0).max(6)
 export const ClassCreate = z.object({ name: Name, mode: ModeId, startTime: StartTime, weekday: Weekday })
-export const ClassUpdate = ClassCreate.partial().refine(p => Object.values(p).some(v => v !== undefined), 'nothing to change')
+export const ClassUpdate = ClassCreate.partial()
 
 export interface StudentView {
   id: string; name: string; nickname: string | null; belt: string; aliases: string[]; rankSince: string | null
@@ -120,7 +120,10 @@ export async function createClass(db: Db, instructorId: string, body: z.infer<ty
 }
 
 export async function updateClass(db: Db, id: string, body: z.infer<typeof ClassUpdate>): Promise<ClassView> {
-  const [row] = await db.update(classes).set(body).where(eq(classes.id, id)).returning()
+  const set = Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined))
+  const [row] = Object.keys(set).length
+    ? await db.update(classes).set(set).where(eq(classes.id, id)).returning()
+    : await db.select().from(classes).where(eq(classes.id, id))
   return classView(row!)
 }
 
@@ -140,20 +143,18 @@ export async function deleteClass(db: Db, id: string): Promise<void> {
   ])
 }
 
-/** C3 / F16: who a note can be assigned to: its own class's roster, with the class name and the capture time. */
-export async function noteCandidates(db: Db, noteId: string, ownedStudents: () => Promise<string[]>) {
+/**
+ * C3 / F16: who a note can be assigned to: its own class's roster, with the class name and the capture time.
+ * A note captured outside a class has no roster to offer: 'no_class' (the route answers 409).
+ */
+export async function noteCandidates(db: Db, noteId: string) {
   const [n] = await db.select({ sessionId: notes.sessionId, createdAt: notes.createdAt }).from(notes).where(eq(notes.id, noteId))
   if (!n) return null
-  const pick = { id: students.id, name: students.name, nickname: students.nickname, aliases: students.aliases }
-  if (!n.sessionId) {
-    // A note captured outside a class: the caller's whole roster (no class to narrow it to).
-    const ids = await ownedStudents()
-    const all = ids.length ? await db.select(pick).from(students).where(inArray(students.id, ids)).orderBy(asc(students.name)) : []
-    return { classId: null, className: null, capturedAt: n.createdAt.toISOString(), students: all }
-  }
+  if (!n.sessionId) return 'no_class' as const
   const [cls] = await db.select({ id: classes.id, name: classes.name }).from(sessions).innerJoin(classes, eq(classes.id, sessions.classId)).where(eq(sessions.id, n.sessionId))
-  if (!cls) return null
-  const roster = await db.select(pick).from(enrollments).innerJoin(students, eq(students.id, enrollments.studentId))
+  if (!cls) return 'no_class' as const
+  const roster = await db.select({ id: students.id, name: students.name, nickname: students.nickname, aliases: students.aliases })
+    .from(enrollments).innerJoin(students, eq(students.id, enrollments.studentId))
     .where(eq(enrollments.classId, cls.id)).orderBy(asc(students.name))
   return { classId: cls.id, className: cls.name, capturedAt: n.createdAt.toISOString(), students: roster }
 }

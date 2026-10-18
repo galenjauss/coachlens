@@ -8,11 +8,12 @@ import { draftDeck } from '../agents/planner'
 import { getDeck } from './decks'
 import { curriculumFor } from './context'
 
-export async function listClasses(db: Db, instructorId: string): Promise<ClassSummary[]> {
+/** The caller's classes; rows also carry the schedule (weekday 0 = Sunday, startTime "HH:MM") for class maintenance (C3). */
+export async function listClasses(db: Db, instructorId: string): Promise<(ClassSummary & { weekday: number; startTime: string })[]> {
   const rows = await db.select().from(classes).where(eq(classes.instructorId, instructorId)).orderBy(asc(classes.weekday), asc(classes.startTime), asc(classes.name))
   return rows.map(c => {
     const mode = modeConfig(c.mode) // unknown stored values fall back to martial_arts
-    return { id: c.id, name: c.name, mode: mode.id, modeLabel: mode.label }
+    return { id: c.id, name: c.name, mode: mode.id, modeLabel: mode.label, weekday: c.weekday, startTime: c.startTime }
   })
 }
 

@@ -48,7 +48,7 @@ describe('teaching modes over HTTP', () => {
     const list = (await r.json()) as { id: string; name: string; mode: string; modeLabel: string }[]
     expect(list).toHaveLength(4)
     expect(new Set(list.map(c => c.mode))).toEqual(new Set(['martial_arts', 'personal_training', 'tutoring']))
-    expect(list.find(c => c.id === w.classIds.pt)).toEqual({ id: w.classIds.pt, name: 'PT · Mon 6:00', mode: 'personal_training', modeLabel: 'Personal training' })
+    expect(list.find(c => c.id === w.classIds.pt)).toEqual({ id: w.classIds.pt, name: 'PT · Mon 6:00', mode: 'personal_training', modeLabel: 'Personal training', weekday: 1, startTime: '18:00' })
     expect(list.find(c => c.id === w.classIds.algebra)).toMatchObject({ name: 'Algebra · Wed 4:00', mode: 'tutoring', modeLabel: 'Tutoring' })
     expect(list.find(c => c.id === w.classIds.tue)).toMatchObject({ name: 'Kids · Tue', mode: 'martial_arts', modeLabel: 'Martial arts' })
     expect((await app.request('/v1/classes')).status).toBe(401)

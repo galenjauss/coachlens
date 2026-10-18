@@ -46,6 +46,15 @@ describe('C3 notes candidates (F16)', () => {
     expect((await w.req('POST', `/v1/notes/${w.A.looseNoteId}/assign`, { studentId: w.A.studentIds[1] })).status).toBe(200)
   })
 
+  it('a note captured outside a class has no roster to offer (409)', async () => {
+    const w = await world()
+    const [n] = await w.db.insert(notes).values({ studentId: null, heard: 'x', text: 'outside class', sessionId: null }).returning()
+    // Unowned orphan notes are invisible (404); an owned sessionless note (assigned) answers 409.
+    const [owned] = await w.db.insert(notes).values({ studentId: w.A.studentIds[0]!, text: 'outside class' }).returning()
+    expect((await w.req('GET', `/v1/notes/${owned!.id}/candidates`)).status).toBe(409)
+    expect((await w.req('GET', `/v1/notes/${n!.id}/candidates`)).status).toBe(404)
+  })
+
   it('is a 404 for another instructor note', async () => {
     const w = await world()
     expect((await w.req('GET', `/v1/notes/${w.B.looseNoteId}/candidates`)).status).toBe(404)
@@ -67,7 +76,9 @@ describe('C3 students (F23)', () => {
     expect(list.map(x => x.id)).toContain(s.id)
     const [row] = await w.db.select().from(students).where(eq(students.id, s.id))
     expect(row!.instructorId).toBe(w.A.instructorId)
-    expect((await w.req('GET', '/v1/students', undefined)).status).toBe(200)
+    const detail = await (await w.req('GET', `/v1/students/${s.id}`)).json() as { guardians: unknown[]; classIds: string[]; nickname: string }
+    expect(detail).toMatchObject({ nickname: 'Nini', guardians: [{ name: 'New family', email: 'new@example.test' }] })
+    expect(detail.classIds.sort()).toEqual([w.A.classId, w.otherClassId].sort())
   })
 
   it('validates the body and rejects another instructor class with 404', async () => {
@@ -131,7 +142,8 @@ describe('C3 classes (F23)', () => {
     expect(r.status).toBe(201)
     const c = await r.json() as { id: string }
     expect(c).toMatchObject({ name: 'Alpha Adults', mode: 'personal_training', startTime: '07:30', weekday: 6 })
-    expect((await (await w.req('GET', '/v1/classes')).json() as { id: string }[]).map(x => x.id)).toContain(c.id)
+    const rows = await (await w.req('GET', '/v1/classes')).json() as { id: string; weekday: number; startTime: string }[]
+    expect(rows.find(x => x.id === c.id)).toMatchObject({ weekday: 6, startTime: '07:30', mode: 'personal_training' })
     const p = await w.req('PATCH', `/v1/classes/${c.id}`, { name: 'Alpha Early Adults', startTime: '06:45' })
     expect(await p.json()).toMatchObject({ id: c.id, name: 'Alpha Early Adults', startTime: '06:45', weekday: 6, mode: 'personal_training' })
     expect((await w.req('POST', '/v1/classes', { name: 'Bad', mode: 'knitting', startTime: '07:30', weekday: 1 })).status).toBe(400)
