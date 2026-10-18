@@ -100,14 +100,30 @@ describe('lens reducer', () => {
     expect(r.effects).toContainEqual({ type: 'stopMicAndSend', mode: 'note', sessionId: 's1', drillId: 'd1' })
     r = run(r.state, note(['✓ Priya · guard (3rd time)']))
     expect(r.state.screen).toBe('card')
-    expect(r.state.card).toMatchObject({ transcript: 'Priya keep your guard up', utteranceId: 'u1', runs: null, runsFinal: false })
+    expect(r.state.card).toMatchObject({ transcript: 'Priya keep your guard up', utteranceId: 'u1', runs: null, runsFinal: false, page: 0 })
     expect(r.state.coverage.covered).toBe(1)
     expect(r.effects).toEqual([{ type: 'pollRuns', utteranceId: 'u1' }])
-    for (const e of [{ type: 'statusExpired' }, { type: 'swipeDown' }, { type: 'longPress' }, { type: 'nod' }] as const) {
+    for (const e of [{ type: 'statusExpired' }, { type: 'swipeDown' }, { type: 'swipeUp' }, { type: 'longPress' }, { type: 'nod' }] as const) {
       expect(reduce(r.state, e).state.screen).toBe('card')
     }
     r = run(r.state, { type: 'tap' })
     expect(r.state).toMatchObject({ screen: 'peek', card: null })
+  })
+
+  it('swipe pages through a long transcript on the card (clamped); a short one ignores swipes', () => {
+    const long = 'word '.repeat(120).trim()
+    let c = run(inPeek(), { type: 'tap' }, { type: 'tap' }, { ...note(['✓ x']), res: { ...note(['✓ x']).res, transcript: long } }).state
+    expect(c.card?.page).toBe(0)
+    c = run(c, { type: 'swipeUp' }).state
+    expect(c.card?.page).toBe(0)
+    c = run(c, { type: 'swipeDown' }, { type: 'swipeDown' }).state
+    expect(c.card?.page).toBe(2)
+    c = run(c, { type: 'swipeDown' }, { type: 'swipeDown' }).state
+    expect(c.card?.page).toBe(2) // 120 words → 3 pages
+    expect(run(c, { type: 'swipeUp' }).state.card?.page).toBe(1)
+    expect(c.screen).toBe('card')
+    const short = run(inPeek(), { type: 'tap' }, { type: 'tap' }, note(['✓ x'])).state
+    expect(reduce(short, { type: 'swipeDown' }).state).toBe(short)
   })
 
   it('runsLoaded updates only the matching card', () => {

@@ -13,6 +13,8 @@ export interface Card {
   runs: UtteranceRun[] | null
   /** Polling ended (all expected agents reported, 30 s passed, or the endpoint is missing). */
   runsFinal: boolean
+  /** Transcript page shown (swipe pages through a long transcript). */
+  page: number
 }
 
 export interface LensState {

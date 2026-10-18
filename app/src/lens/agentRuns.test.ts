@@ -28,7 +28,7 @@ describe('agent progress', () => {
   })
 
   it('before the first poll: working; endpoint missing: the server card lines', () => {
-    expect(progressLines({ lines: ['✓ a'], runs: null, runsFinal: false })).toEqual(['… agents working'])
+    expect(progressLines({ lines: ['✓ a'], runs: null, runsFinal: false })).toEqual(['… working'])
     expect(progressLines({ lines: ['✓ a', '→ b'], runs: null, runsFinal: true })).toEqual(['✓ a', '→ b'])
   })
 })

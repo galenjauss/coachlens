@@ -1,4 +1,5 @@
 import type { Effect, LensEvent, LensState, Mode, Screen } from './state'
+import { transcriptPages } from './text'
 
 /** How long a one-line status (e.g. "Saved · will sync") stays on the peek before the next-kid line returns. */
 export const STATUS_MS = 5000
@@ -78,7 +79,7 @@ function homeTap(s: LensState): R {
 function utteranceResult(s: LensState, e: Extract<LensEvent, { type: 'utteranceResult' }>): R {
   const base = { ...s, coverage: e.res.coverage, nextStudent: e.res.nextStudent, pending: null }
   if (s.pending?.mode === 'attendance') return done({ ...base, screen: 'attendanceDone', attendanceLines: e.res.cardLines })
-  const card = { lines: e.res.cardLines, transcript: e.res.transcript, utteranceId: e.res.utteranceId, runs: null, runsFinal: false }
+  const card = { lines: e.res.cardLines, transcript: e.res.transcript, utteranceId: e.res.utteranceId, runs: null, runsFinal: false, page: 0 }
   const poll: Effect[] = card.utteranceId ? [{ type: 'pollRuns', utteranceId: card.utteranceId }] : []
   if (e.res.disambiguation) return done({ ...base, screen: 'disambiguation', disambiguation: e.res.disambiguation, card }, ...poll)
   if (!card.lines.length && !card.transcript) return peek(base)
@@ -177,6 +178,12 @@ export function reduce(s: LensState, e: LensEvent): R {
       // The card stays until tapped away; double-tap undoes.
       if (e.type === 'doubleTap' && s.card?.utteranceId) return peek({ ...s, card: null }, 'Undone', { type: 'undo', utteranceId: s.card.utteranceId })
       if (e.type === 'tap' || e.type === 'doubleTap') return peek({ ...s, card: null })
+      if ((e.type === 'swipeDown' || e.type === 'swipeUp') && s.card) {
+        // Swipe pages through a transcript longer than one page.
+        const last = transcriptPages(s.card.transcript).length - 1
+        const page = Math.max(0, Math.min(last, s.card.page + (e.type === 'swipeDown' ? 1 : -1)))
+        return page === s.card.page ? done(s) : done({ ...s, card: { ...s.card, page } })
+      }
       return done(s)
     case 'disambiguation': {
       if (e.type === 'listSelect' && s.disambiguation) {

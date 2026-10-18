@@ -16,10 +16,3 @@ export const NOD: NodConfig = { enabled: true, axis: 'y', threshold: 0.3, window
  */
 export const IMU_PACE: ImuReportPace = ImuReportPace.P100
 export const IMU_LOG: boolean = import.meta.env.VITE_IMU_LOG === '1'
-/**
- * Opt-in (`?partial=1`): send per-second clock changes as partial upgrades (contentOffset/contentLength,
- * `content` = the replacement substring per the SDK reference). Off by default because the simulator
- * ignores the offset (it showed only the changed digits) and hardware behaviour is unverified. The
- * default full upgrade of the ~10-char timer container is already tiny.
- */
-export const PARTIAL_UPGRADES: boolean = typeof location !== 'undefined' && new URLSearchParams(location.search).get('partial') === '1'

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { Today } from '@matside/shared'
 import { render, minutesLeft, bar, clock, wrap } from './render'
+import { SAID_COLS, transcriptPages } from './text'
 import { initialState } from './reducer'
 import type { LensState, Screen } from './state'
 
@@ -35,15 +36,19 @@ describe('minutesLeft', () => {
     expect(clock(4, 0, 1000)).toBe('3:59 left')
     expect(clock(4, 0, 228_500)).toBe('0:12 left')
     expect(clock(4, 0, 240_000)).toBe('0:00 left')
-    expect(clock(4, 0, 240_999)).toBe('+0:00 over')
+    expect(clock(4, 0, 240_999)).toBe('0:00 left')
+    expect(clock(4, 0, 241_000)).toBe('+0:01 over')
+    expect(clock(3, 0, 999)).toBe('3:00 left')
+    expect(clock(3, 0, 1000)).toBe('2:59 left')
     expect(clock(4, 0, 305_000)).toBe('+1:05 over')
     expect(clock(12, 0, 0)).toBe('12:00 left')
     expect(/^[\x20-\x7e]+$/.test(clock(4, 0, 305_000))).toBe(true)
   })
-  it('wrap breaks on words into at most n lines, with an ellipsis when cut', () => {
+  it('wrap breaks on words; nothing is dropped unless a line cap is given', () => {
     expect(wrap('Priya keep your guard up', 20, 3)).toEqual(['Priya keep your', 'guard up'])
     expect(wrap('one two three four five six seven eight nine ten eleven twelve thirteen', 12, 3)).toEqual(['one two', 'three four', 'five six…'])
-    expect(wrap('supercalifragilisticexpialidocious', 10, 3)).toEqual(['supercali…'])
+    expect(wrap('one two three four five six seven eight nine ten eleven twelve thirteen', 12).join(' ')).toBe('one two three four five six seven eight nine ten eleven twelve thirteen')
+    expect(wrap('supercalifragilisticexpialidocious', 10)).toEqual(['supercalif', 'ragilistic', 'expialidoc', 'ious'])
     expect(wrap('', 10, 3)).toEqual([])
   })
   it('bar fills proportionally and clamps', () => {
@@ -67,8 +72,7 @@ describe('render', () => {
     expect(p.texts.find(t => t.name === 'hdrL')?.content).toBe('STANCES · Kids · Tue')
     expect(p.texts.find(t => t.name === 'hdrR')?.content).toBe('Feedback 3/12')
     expect(p.texts.find(t => t.name === 'drill')?.content).toBe('HORSE STANCE HOLDS')
-    expect(p.texts.find(t => t.name === 'timer')).toMatchObject({ content: '2:41 left', partial: true, capture: false })
-    expect(p.texts.filter(t => t.partial).map(t => t.name)).toEqual(['timer'])
+    expect(p.texts.find(t => t.name === 'timer')).toMatchObject({ content: '2:41 left', capture: false })
     const box = p.texts.find(t => t.name === 'box')!
     expect(box).toMatchObject({ border: true, capture: true })
     expect(box.content).toContain('━')
@@ -93,21 +97,59 @@ describe('render', () => {
     expect(p.texts.find(t => t.name === 'timer')?.content).toBe('')
     expect(p.texts.find(t => t.name === 'drill')?.content).toBe('No drill running')
   })
-  it('agent card: result header, said (left, capture) wrapped to 3 lines, agent progress (right)', () => {
-    const card = { lines: ['✓ Priya · guard (3rd time)', '→ added to report card'], transcript: 'Priya keep your guard up when you throw the round kick and reset your stance after', utteranceId: 'u', runs: null, runsFinal: false }
-    let p = render({ ...s, screen: 'card', card }, 0)
+  const longSaid = 'Priya keep your guard up when you throw the round kick, reset your stance after every kick, and Jake needs to work on his horse stance because his knees keep collapsing inward during holds today'
+  const mkCard = (transcript: string, page = 0) => ({ lines: ['✓ Priya · guard (3rd time)', '→ added to report card'], transcript, utteranceId: 'u', runs: null, runsFinal: false, page })
+
+  it('agent card: main result header, wide transcript column (capture), narrow ASCII agent column', () => {
+    let p = render({ ...s, screen: 'card', card: mkCard('Priya keep your guard up') }, 0)
     expect(p.key).toBe('card')
-    expect(p.texts.find(t => t.name === 'hdr')?.content).toBe('✓ Priya · guard (3rd time) · → added to…')
+    expect(p.texts.find(t => t.name === 'hdr')?.content).toBe('✓ Priya · guard (3rd time)')
     const said = p.texts.find(t => t.name === 'said')!
-    expect(said).toMatchObject({ capture: true })
-    expect(said.content.split('\n')).toHaveLength(4) // label + 3 lines
-    expect(said.content.endsWith('…')).toBe(true)
-    expect(p.texts.find(t => t.name === 'agents')?.content).toBe('… agents working')
+    expect(said).toMatchObject({ capture: true, content: '"Priya keep your guard up"' })
+    const agents = p.texts.find(t => t.name === 'agents')!
+    expect(said.w / 576).toBeGreaterThan(0.65)
+    expect(agents.w).toBeLessThan(200)
+    expect(agents.content).toBe('… working')
     const runs = [{ agent: 'router', summary: '', status: 'ok', createdAt: '' }, { agent: 'progress', summary: '', status: 'ok', createdAt: '' }]
-    p = render({ ...s, screen: 'card', card: { ...card, runs } }, 0)
+    p = render({ ...s, screen: 'card', card: { ...mkCard('x'), runs } }, 0)
     expect(p.texts.find(t => t.name === 'agents')?.content).toBe('ok sorted\nok logged')
     expect(p.texts.find(t => t.name === 'foot')?.content).toContain('2×: undo')
   })
+
+  it('a ~200-char transcript is shown WHOLE: wrapped to ≤6 lines per page, paged when longer, nothing cut', () => {
+    expect(longSaid.length).toBeGreaterThan(190)
+    const said = (transcript: string, page: number) => render({ ...s, screen: 'card', card: mkCard(transcript, page) }, 0).texts.find(t => t.name === 'said')!.content
+    const all = (transcript: string) => {
+      const pages = transcriptPages(transcript)
+      return pages.map((_, i) => said(transcript, i).split('\n'))
+    }
+    const p = all(longSaid)
+    for (const page of p) { expect(page.length).toBeLessThanOrEqual(6); for (const l of page) expect(l.length).toBeLessThanOrEqual(SAID_COLS) }
+    expect(p.flat().join(' ')).toBe(`"${longSaid}"`)
+    expect(p.flat().join('')).not.toContain('…')
+    const longer = `${longSaid}. Also Mia was great at the front kick drill so tell her mom she earned a stripe and remind Ben to bring his sparring gear on Thursday`
+    const q = all(longer)
+    expect(q.length).toBe(2)
+    expect(q[0]).toHaveLength(6)
+    expect(q.flat().join(' ')).toBe(`"${longer}"`)
+    expect(render({ ...s, screen: 'card', card: mkCard(longer, 1) }, 0).texts.find(t => t.name === 'foot')?.content).toBe('page 2/2 · swipe · tap: close · 2×: undo')
+    expect(said(longer, 9)).toBe(said(longer, 1)) // clamped
+  })
+
+  it('no clipping: long cue, next line, roll-call result and missed list wrap instead of being cut', () => {
+    const long = { ...s, nextStudent: { id: 'p', name: 'Priyanka Venkataraman', reason: 'guard drops on the rear hand' },
+      today: { ...today, deck: { ...today.deck, drills: [{ ...drill, cues: ['keep the rear heel light', 'hands high'] }] } } } as LensState
+    const p = render(long, 0)
+    expect(p.texts.find(t => t.name === 'next')?.content.replace(/\n/g, ' ')).toBe('> Next feedback: Priyanka Venkataraman (guard drops on the rear hand)')
+    expect(p.texts.find(t => t.name === 'box')?.content.replace(/\n/g, ' ')).toContain('cue: keep the rear heel light · hands high')
+    const wrap2 = { sessionId: 's', minutes: 45, drillsRun: 5, coverage: { covered: 4, present: 12 }, agentActions: 4, pendingReview: 2,
+      missed: ['Alexander', 'Benjamin', 'Charlotte', 'Dominique', 'Evangeline', 'Francesca', 'Gabriella'].map((name, i) => ({ id: `${i}`, name })) }
+    const body = render({ ...s, screen: 'wrapup', wrapup: wrap2 }, 0).texts.find(t => t.name === 'body')!.content
+    expect(body.replace(/\n/g, ' ')).toContain('missed: Alexander, Benjamin, Charlotte, Dominique, Evangeline, Francesca, Gabriella')
+    const att = render({ ...s, screen: 'attendanceDone', attendanceLines: ['11 present', 'absent: Jake Thompson, Mia Rodriguez-Lopez'] }, 0)
+    expect(att.texts.find(t => t.name === 'body')?.content.replace(/\n/g, ' ')).toContain('absent: Jake Thompson, Mia Rodriguez-Lopez')
+  })
+
   it('attendance shows the enrolled count and both phrasings', () => {
     const roster = [{ id: 'a', name: 'Ava', nickname: null, belt: 'white' }, { id: 'b', name: 'Ben', nickname: null, belt: 'white' }]
     const body = render({ ...s, screen: 'attendance', today: { ...today, roster } }, 0).texts.find(t => t.name === 'body')!.content
@@ -126,15 +168,14 @@ describe('render', () => {
     expect(p.texts.find(t => t.name === 'body')?.content).toBe('PT · Sam\nPersonal training\n\nLoading class…')
     expect(render({ ...s, screen: 'home' }, 0).texts.find(t => t.name === 'foot')?.content).toBe('2×: exit')
   })
-  it('recording panel: drill + time header, listening body, next-feedback footer', () => {
+  it('recording panel: drill + time header, listening body with the (wrapping) next-feedback line', () => {
     const p = render({ ...s, screen: 'recording', pending: { mode: 'note', returnTo: 'dark', viaLongPress: false } }, 79_000)
     expect(p.texts.find(t => t.name === 'hdr')?.content).toBe('HORSE STANCE HOLDS · 3m left')
-    expect(p.texts.find(t => t.name === 'body')?.content).toBe('● Listening… tap to send')
-    expect(p.texts.find(t => t.name === 'foot')?.content).toBe('> Next feedback: Priya (guard)')
+    expect(p.texts.find(t => t.name === 'body')?.content).toBe('● Listening… tap to send\n\n> Next feedback: Priya (guard)')
   })
   it('long-press recording says release to send', () => {
     const p = render({ ...s, screen: 'recording', pending: { mode: 'note', returnTo: 'dark', viaLongPress: true } }, 0)
-    expect(p.texts.find(t => t.name === 'body')?.content).toBe('● Listening… release to send')
+    expect(p.texts.find(t => t.name === 'body')?.content.split('\n')[0]).toBe('● Listening… release to send')
   })
   it('deck uses a capturing list with ≤64-char items and the planUnit header', () => {
     const p = render({ ...s, screen: 'deck' }, 0)
@@ -165,7 +206,7 @@ describe('render', () => {
     const p = render({ ...s, screen: 'home', starting: true }, 0)
     expect(p.texts.find(t => t.name === 'body')?.content).toContain('Starting')
   })
-  it('peek truncates a long header and a long cue to one line', () => {
+  it('peek clips only the one-line header; a long cue wraps to at most two lines', () => {
     const long = {
       ...s,
       today: { ...today, theme: 'Advanced competition sparring footwork', className: 'Adult black belt · Saturday morning',
@@ -175,9 +216,10 @@ describe('render', () => {
     const hdrL = p.texts.find(t => t.name === 'hdrL')!.content
     expect(hdrL.length).toBeLessThanOrEqual(28)
     expect(hdrL.endsWith('…')).toBe(true)
-    const cue = p.texts.find(t => t.name === 'box')!.content.split('\n').find(l => l.startsWith('cue:'))!
-    expect(cue.length).toBeLessThanOrEqual(40)
-    expect(cue.endsWith('…')).toBe(true)
+    const cue = p.texts.find(t => t.name === 'box')!.content.split('\n').slice(1)
+    expect(cue).toHaveLength(2)
+    expect(cue[0]!.startsWith('cue:')).toBe(true)
+    for (const l of cue) expect(l.length).toBeLessThanOrEqual(40)
     expect(render(s, 0).texts.find(t => t.name === 'hdrL')!.content).toBe('STANCES · Kids · Tue')
   })
 
@@ -186,7 +228,7 @@ describe('render', () => {
     const wrapup = { sessionId: 's', minutes: 45, drillsRun: 5, coverage: { covered: 10, present: 12 }, missed: [{ id: 'j', name: 'Jake' }], agentActions: 4, pendingReview: 2 }
     for (const screen of ALL) {
       for (const st of [s, { ...initialState(true), screen }]) {
-        const p = render({ ...st, screen, card: { lines: ['✓ x'], transcript: 't', utteranceId: 'u', runs: null, runsFinal: false }, disambiguation: dis, wrapup } as LensState, 0)
+        const p = render({ ...st, screen, card: { lines: ['✓ x'], transcript: 't', utteranceId: 'u', runs: null, runsFinal: false, page: 0 }, disambiguation: dis, wrapup } as LensState, 0)
         expect(p.texts.length).toBeLessThanOrEqual(8)
         expect(p.texts.filter(t => t.capture).length + (p.list ? 1 : 0)).toBe(1)
         for (const t of p.texts) expect(t.name.length).toBeLessThanOrEqual(16)

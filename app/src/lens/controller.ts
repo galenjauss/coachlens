@@ -17,7 +17,7 @@ import type { Effect, LensEvent, LensState } from './state'
 
 /**
  * While `peek` or `recording` is visible, re-render this often. Only changed containers are sent:
- * per second that is the few clock characters (partial upgrade); the bar every 5 s. Never while dark.
+ * per second that is the small clock container (~10 chars); the bar every 5 s. Never while dark.
  */
 export const TICK_MS = 1000
 const TICK_SLACK_MS = 20
@@ -26,7 +26,7 @@ const TICKING = new Set<LensState['screen']>(['peek', 'recording'])
 export type LensBridge = GlassesBridge & Pick<EvenAppBridge, 'audioControl' | 'imuControl' | 'shutDownPageContainer' | 'onEvenHubEvent'>
 export interface LensDeps {
   bridge: LensBridge; api: Api; kv: KV; outbox: Outbox; nod: NodConfig
-  imuPace?: ImuReportPace; partialUpgrades?: boolean; logImu?: boolean
+  imuPace?: ImuReportPace; logImu?: boolean
 }
 export interface LensHandle { dispatch(e: LensEvent): void; stop(): void }
 
@@ -44,7 +44,7 @@ async function readFirstRunSeen(kv: KV): Promise<boolean> {
 }
 
 export async function startLens(d: LensDeps): Promise<LensHandle> {
-  const glasses = new Glasses(d.bridge, { partial: d.partialUpgrades ?? false })
+  const glasses = new Glasses(d.bridge)
   const recorder = new Recorder(d.bridge)
   const detector = new NodDetector(d.nod)
   const timers = { status: slot(), timerEnded: slot(), recordMax: slot() }

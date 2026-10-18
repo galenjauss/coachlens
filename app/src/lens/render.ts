@@ -1,8 +1,10 @@
 import { progressLines } from './agentRuns'
+import { clip, transcriptPages, wrap } from './text'
+
+export { clip, wrap } from './text'
 import type { LensState } from './state'
 
-/** `partial`: same-length changes may be sent as a partial upgrade (contentOffset/contentLength). Keep such content ASCII. */
-export type TextSpec = { id: number; name: string; x: number; y: number; w: number; h: number; border: boolean; capture: boolean; content: string; partial?: boolean }
+export type TextSpec = { id: number; name: string; x: number; y: number; w: number; h: number; border: boolean; capture: boolean; content: string }
 export type ListSpec = { id: number; name: string; x: number; y: number; w: number; h: number; items: string[] }
 /** `key` names the container LAYOUT: same key → only changed texts are upgraded; new key → one rebuild. */
 export type PageSpec = { key: string; texts: TextSpec[]; list: ListSpec | null }
@@ -12,8 +14,8 @@ const H = 288
 const MAX_ITEMS = 20
 const MAX_ITEM_CHARS = 64
 
-const t = (id: number, name: string, x: number, y: number, w: number, h: number, content: string, o: { border?: boolean; capture?: boolean; partial?: boolean } = {}): TextSpec =>
-  ({ id, name, x, y, w, h, content, border: o.border ?? false, capture: o.capture ?? false, ...(o.partial ? { partial: true } : {}) })
+const t = (id: number, name: string, x: number, y: number, w: number, h: number, content: string, o: { border?: boolean; capture?: boolean } = {}): TextSpec =>
+  ({ id, name, x, y, w, h, content, border: o.border ?? false, capture: o.capture ?? false })
 
 /** Whole-minute time text, so the lens changes at most once a minute: '3m left' | '<1m left' | '+2m over'. */
 export function minutesLeft(minutes: number, startedAt: number, now: number): string {
@@ -22,11 +24,14 @@ export function minutesLeft(minutes: number, startedAt: number, now: number): st
   return `+${Math.ceil(-leftMs / 60_000)}m over`
 }
 
-/** Per-second drill clock, ASCII only (partial upgrades): '3:12 left' | '0:00 left' | '+1:05 over'. */
+/**
+ * Per-second countdown from the drill start: 3:00 left → 2:59 left → … → 0:00 left → +0:01 over.
+ * Each whole second elapsed since `startedAt` takes one second off; the full line is re-sent.
+ */
 export function clock(minutes: number, startedAt: number, now: number): string {
-  const leftMs = minutes * 60_000 - (now - startedAt)
+  const remaining = minutes * 60 - Math.floor(Math.max(0, now - startedAt) / 1000)
   const fmt = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`
-  return leftMs >= 0 ? `${fmt(Math.ceil(leftMs / 1000))} left` : `+${fmt(Math.floor(-leftMs / 1000))} over`
+  return remaining >= 0 ? `${fmt(remaining)} left` : `+${fmt(-remaining)} over`
 }
 
 /** The progress bar only moves every BAR_STEP_MS, so it is re-sent at most that often. */
@@ -38,30 +43,8 @@ export function bar(fraction: number, width = 24): string {
 }
 
 const HDR_MAX = 28
-const CUE_MAX = 40
 const LINE_MAX = 40
-const SAID_COLS = 20
-const SAID_LINES = 3
-/** One line, at most `n` chars, ending in an ellipsis when cut. */
-export const clip = (text: string, n: number): string => (text.length <= n ? text : `${text.slice(0, n - 1).trimEnd()}…`)
-
-/** Word-wrap into at most `maxLines` lines of `cols` chars; ends in an ellipsis when text was cut. */
-export function wrap(text: string, cols: number, maxLines: number): string[] {
-  const words = text.trim().split(/\s+/).filter(Boolean)
-  const lines: string[] = []
-  let i = 0
-  while (i < words.length && lines.length < maxLines) {
-    let line = clip(words[i]!, cols)
-    i++
-    while (i < words.length && line.length + 1 + words[i]!.length <= cols) { line += ` ${words[i]}`; i++ }
-    lines.push(line)
-  }
-  if (i < words.length && lines.length) {
-    const last = lines[lines.length - 1]!
-    lines[lines.length - 1] = last.length < cols ? `${last}…` : `${last.slice(0, cols - 1).trimEnd()}…`
-  }
-  return lines
-}
+const DRILL_MAX = 28
 
 const dots = (covered: number, present: number) => {
   const c = Math.min(covered, 14)
@@ -118,8 +101,9 @@ function home(s: LensState): PageSpec {
 }
 
 /**
- * Peek: the class-time rest screen. The clock has its own small ASCII container so the per-second
- * update is a partial upgrade of a few characters; the bar sits in the box and moves every 5 s.
+ * Peek: the class-time rest screen. The clock has its own small container, so the per-second update
+ * re-sends only ~10 characters; the bar sits in the box and moves every 5 s. Cue and next line wrap
+ * (two lines each) instead of being cut.
  */
 function peek(s: LensState, now: number): PageSpec {
   const c = context(s, now)
@@ -128,28 +112,33 @@ function peek(s: LensState, now: number): PageSpec {
   const elapsed = a ? now - a.startedAt : 0
   const barFrac = (elapsed - (((elapsed % BAR_STEP_MS) + BAR_STEP_MS) % BAR_STEP_MS)) / total
   const box = a
-    ? [bar(barFrac), a.drill.cues.length ? clip(`cue: ${a.drill.cues.join(' · ')}`, CUE_MAX) : ''].join('\n')
+    ? [bar(barFrac), ...(a.drill.cues.length ? wrap(`cue: ${a.drill.cues.join(' · ')}`, LINE_MAX, 2) : [])].join('\n')
     : '> Swipe to pick one'
   return { key: 'peek', list: null, texts: [
     t(1, 'hdrL', 0, 0, 380, 40, clip(`${(s.today?.theme ?? '').toUpperCase()} · ${s.today?.className ?? ''}`, HDR_MAX)),
     t(2, 'hdrR', 384, 0, 192, 40, c.cov),
-    t(3, 'drill', 0, 44, 396, 40, a ? clip(a.drill.name.toUpperCase(), 26) : 'No drill running'),
-    t(4, 'timer', 400, 44, 176, 40, a ? clock(a.drill.minutes, a.startedAt, now) : '', { partial: true }),
-    t(5, 'box', 0, 88, W, 88, box, { border: true, capture: true }),
-    t(6, 'next', 0, 184, W, 40, s.status ?? c.nextLine),
+    t(3, 'drill', 0, 44, 396, 40, a ? clip(a.drill.name.toUpperCase(), DRILL_MAX) : 'No drill running'),
+    t(4, 'timer', 400, 44, 176, 40, a ? clock(a.drill.minutes, a.startedAt, now) : ''),
+    t(5, 'box', 0, 88, W, 100, box, { border: true, capture: true }),
+    t(6, 'next', 0, 192, W, 92, wrap(s.status ?? c.nextLine, LINE_MAX, 2).join('\n')),
   ] }
 }
 
-/** Agent card: result header, what was said (left), live agent progress (right), footer. */
+/**
+ * Agent card: main result (header), the WHOLE transcript (wide left column, 6 lines per page, swipe
+ * pages through it), live agent progress (narrow right column, short ASCII lines), footer.
+ */
 function card(s: LensState, now: number): PageSpec {
   const c = context(s, now)
   const cd = s.card
-  const said = cd?.transcript ? wrap(`"${cd.transcript}"`, SAID_COLS, SAID_LINES).join('\n') : '(no transcript)'
+  const pages = transcriptPages(cd?.transcript ?? '')
+  const page = Math.min(cd?.page ?? 0, pages.length - 1)
+  const foot = pages.length > 1 ? `page ${page + 1}/${pages.length} · swipe · tap: close · 2×: undo` : `${c.cov} · tap: close · 2×: undo`
   return { key: 'card', list: null, texts: [
-    t(1, 'hdr', 0, 0, W, 40, clip((cd?.lines ?? []).join(' · ') || c.drillHeader, LINE_MAX)),
-    t(2, 'said', 0, 44, 300, 196, `You said:\n${said}`, { border: true, capture: true }),
-    t(3, 'agents', 304, 44, 272, 196, cd ? progressLines(cd).join('\n') : ''),
-    t(4, 'foot', 0, 246, W, 40, `${c.cov} · tap: close · 2×: undo`),
+    t(1, 'hdr', 0, 0, W, 40, clip(cd?.lines[0] ?? c.drillHeader, LINE_MAX)),
+    t(2, 'said', 0, 44, 392, 200, pages[page]!.join('\n'), { border: true, capture: true }),
+    t(3, 'agents', 396, 44, 180, 200, cd ? progressLines(cd).join('\n') : ''),
+    t(4, 'foot', 0, 248, W, 40, foot),
   ] }
 }
 
@@ -162,9 +151,9 @@ function attendance(s: LensState): PageSpec {
 function wrapup(s: LensState): PageSpec {
   const w = s.wrapup
   if (!w) return panel('CLASS DONE', 'Wrapping up…', '2×: back')
-  const missed = w.missed.map(m => m.name).join(', ') || 'nobody!'
+  const missed = wrap(`missed: ${w.missed.map(m => m.name).join(', ') || 'nobody!'}`, LINE_MAX, 4).join('\n')
   return panel(`CLASS DONE · ${w.minutes} min · ${w.drillsRun} drills`,
-    `Feedback ${w.coverage.covered}/${w.coverage.present} ${dots(w.coverage.covered, w.coverage.present)}\nmissed: ${missed}\n${w.agentActions} agent actions · ${w.pendingReview} to review`,
+    `Feedback ${w.coverage.covered}/${w.coverage.present} ${dots(w.coverage.covered, w.coverage.present)}\n${missed}\n${w.agentActions} agent actions · ${w.pendingReview} to review`,
     w.missed.length ? '> Tap: missed kids first next class' : '> Tap to finish')
 }
 
@@ -180,7 +169,9 @@ export function render(s: LensState, now: number): PageSpec {
     case 'attendanceDone': {
       const drills = s.today?.deck.drills ?? []
       const mins = drills.reduce((n, d) => n + d.minutes, 0)
-      return panel(s.attendanceLines.join(' · '), `${s.today?.planUnit ?? 'Deck'} ready · ${drills.length} · ${mins} min\n${s.today?.focus[0]?.label ?? ''}\n\n> Tap to start the first one`, '')
+      const roll = s.attendanceLines.flatMap(l => wrap(l, LINE_MAX)).slice(0, 3)
+      return panel('ROLL CALL DONE', [...roll, `${s.today?.planUnit ?? 'Deck'} ready · ${drills.length} · ${mins} min`, '', '> Tap to start the first one'].join('\n'),
+        clip(s.today?.focus[0]?.label ?? '', LINE_MAX))
     }
     case 'deck': {
       const c = context(s, now)
@@ -190,13 +181,13 @@ export function render(s: LensState, now: number): PageSpec {
     }
     case 'recording': {
       const c = context(s, now)
-      return panel(c.drillHeader, `● Listening… ${s.pending?.viaLongPress ? 'release' : 'tap'} to send`, c.nextLine)
+      return panel(clip(c.drillHeader, LINE_MAX), [`● Listening… ${s.pending?.viaLongPress ? 'release' : 'tap'} to send`, '', ...wrap(c.nextLine, LINE_MAX, 2)].join('\n'), '')
     }
-    case 'sending': return panel(context(s, now).drillHeader, '● Sending to agents…', '')
+    case 'sending': return panel(clip(context(s, now).drillHeader, LINE_MAX), '● Sending to agents…', '')
     case 'card': return card(s, now)
     case 'disambiguation': {
       const d = s.disambiguation
-      return listPage('dis', d ? `Heard "${d.heard}" · who?` : 'Who?', d ? d.options.map(o => o.name) : [])
+      return listPage('dis', clip(d ? `Heard "${d.heard}" · who?` : 'Who?', LINE_MAX), d ? d.options.map(o => o.name) : [])
     }
     case 'confirmEnd': return panel(context(s, now).cov, 'End class?\n\n> Tap to confirm\nAny other gesture cancels', '')
   }

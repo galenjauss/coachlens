@@ -13,26 +13,10 @@ const layoutKey = (spec: PageSpec) => (spec.list ? `${spec.key}\u0000${spec.list
  * PageSpec → SDK calls, as few as possible over Bluetooth:
  * - first page: createStartUpPageContainer (once per launch);
  * - new layout key: one rebuildPageContainer;
- * - same key: textContainerUpgrade only for containers whose text changed (nothing if none did);
- *   a `partial` container with a same-length change sends only the changed characters.
+ * - same key: textContainerUpgrade (full text) only for containers whose text changed (nothing if none did).
  * Calls are serialized and bursts coalesce to the latest page.
  */
 const RETRY_MS = 2000
-const ASCII = /^[\x20-\x7e]*$/
-
-/**
- * The changed span when `next` has the same length as `prev` (both ASCII, so character offsets
- * equal byte offsets). Null when a full upgrade is needed.
- */
-export function changedSpan(prev: string, next: string): { offset: number; length: number; text: string } | null {
-  if (prev.length !== next.length || prev === next || !ASCII.test(prev) || !ASCII.test(next)) return null
-  let i = 0
-  while (prev[i] === next[i]) i++
-  let j = next.length - 1
-  while (prev[j] === next[j]) j--
-  return { offset: i, length: j - i + 1, text: next.slice(i, j + 1) }
-}
-
 export class Glasses {
   private key: string | null = null
   private latest: PageSpec | null = null
@@ -44,8 +28,7 @@ export class Glasses {
   private pending: PageSpec | null = null
   private running: Promise<void> | null = null
 
-  /** `partial` (opt-in): containers marked `partial` send same-length changes as partial upgrades. */
-  constructor(private bridge: GlassesBridge, private opts: { partial: boolean } = { partial: false }) {}
+  constructor(private bridge: GlassesBridge) {}
 
   /** Forget what the glasses show, so the next show() sends a full rebuild (e.g. after the app was backgrounded). */
   invalidate(): void {
@@ -132,12 +115,10 @@ export class Glasses {
 
   private async upgrade(spec: PageSpec): Promise<void> {
     for (const x of spec.texts) {
-      const prev = this.last.get(x.id)
-      if (prev === x.content) continue
-      const span = this.opts.partial && x.partial && prev !== undefined ? changedSpan(prev, x.content) : null
-      const ok = await this.bridge.textContainerUpgrade(new TextContainerUpgrade(span
-        ? { containerID: x.id, containerName: x.name, contentOffset: span.offset, contentLength: span.length, content: span.text }
-        : { containerID: x.id, containerName: x.name, content: x.content }))
+      if (this.last.get(x.id) === x.content) continue
+      // Always the full text: on G2 hardware a contentOffset/contentLength upgrade replaced the whole
+      // container text with the substring (the clock showed "1", "2", …), so partial updates are not used.
+      const ok = await this.bridge.textContainerUpgrade(new TextContainerUpgrade({ containerID: x.id, containerName: x.name, content: x.content }))
       if (!ok) throw new Error(`textContainerUpgrade failed: ${x.name}`)
       this.last.set(x.id, x.content)
     }

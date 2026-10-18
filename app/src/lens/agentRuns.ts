@@ -1,11 +1,11 @@
 import type { UtteranceRun } from '../core/api'
 
-/** Short lens labels for the agents an utterance can start. Unknown agents show their own name. */
+/** Short lens labels (≤ 9 chars: the right column is narrow) for the agents an utterance can start. */
 const LABELS: Record<string, string> = {
   router: 'sorted', progress: 'logged', billing: 'billing', attendance: 'roll call',
-  add_drill: 'drill added', parent_email: 'email', planner: 'plan', report_card: 'report card',
+  add_drill: 'drill', parent_email: 'email', planner: 'plan', report_card: 'report',
 }
-const label = (agent: string) => LABELS[agent] ?? agent.replace(/_/g, ' ')
+const label = (agent: string) => LABELS[agent] ?? agent.replace(/_/g, ' ').slice(0, 9)
 
 export const RUNS_POLL_MS = 2000
 export const RUNS_MAX_MS = 30_000
@@ -38,7 +38,7 @@ export function runsDone(runs: UtteranceRun[], cardLines: string[]): boolean {
  * server's card lines.
  */
 export function progressLines(card: { lines: string[]; runs: UtteranceRun[] | null; runsFinal: boolean }): string[] {
-  if (card.runs === null) return card.runsFinal ? card.lines.slice(0, MAX_LINES) : ['… agents working']
+  if (card.runs === null) return card.runsFinal ? card.lines.slice(0, MAX_LINES) : ['… working']
   const latest = new Map<string, UtteranceRun>()
   for (const r of card.runs) latest.set(r.agent, r)
   const lines = [...latest.values()].map(r => `${r.status === 'error' ? 'x' : 'ok'} ${label(r.agent)}`)

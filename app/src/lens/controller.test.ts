@@ -65,11 +65,11 @@ describe('lens controller', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-20T17:00:00Z')) })
   afterEach(() => { lens?.stop(); lens = null; vi.useRealTimers() })
 
-  async function boot(api = fakeApi(), firstRunSeen = true, opts: { nod?: typeof NOD; partialUpgrades?: boolean } = {}) {
+  async function boot(api = fakeApi(), firstRunSeen = true, opts: { nod?: typeof NOD } = {}) {
     const kv = memoryKV()
     if (firstRunSeen) await kv.set(KEYS.firstRunSeen, '1')
     const b = fakeBridge()
-    lens = await startLens({ bridge: b.bridge, api, kv, outbox: new Outbox(kv), nod: opts.nod ?? NOD, partialUpgrades: opts.partialUpgrades })
+    lens = await startLens({ bridge: b.bridge, api, kv, outbox: new Outbox(kv), nod: opts.nod ?? NOD })
     await flush()
     return { ...b, kv, api }
   }
@@ -218,11 +218,17 @@ describe('lens controller', () => {
     expect(b.sent.length).toBe(m)
   })
 
-  it('per-second clock with ?partial=1: partial upgrades of only the time characters', async () => {
-    const b = await toDrill(fakeApi(), { partialUpgrades: true })
+  it('a 3-minute drill counts down 3:00 → 2:59 → 2:58 → 2:57 → 2:56 … 0:00 → +0:01 over (full-line upgrades)', async () => {
+    const t3 = { ...today, deck: { ...today.deck, drills: today.deck.drills.map(x => (x.id === 'd1' ? { ...x, minutes: 3 } : x)) } }
+    const b = await toDrill(fakeApi({ today: vi.fn(async () => t3) }))
+    expect(b.sent.join('\n')).toContain('3:00 left')
     const n = b.sent.length
-    await vi.advanceTimersByTimeAsync(3100)
-    expect(b.sent.slice(n)).toEqual(['partial:timer@0+4=1:59', 'partial:timer@3+1=8', 'partial:timer@3+1=7'])
+    await vi.advanceTimersByTimeAsync(4 * TICK_MS + 100)
+    expect(b.sent.slice(n)).toEqual(['upgrade:timer=2:59 left', 'upgrade:timer=2:58 left', 'upgrade:timer=2:57 left', 'upgrade:timer=2:56 left'])
+    await vi.advanceTimersByTimeAsync(175 * TICK_MS + 100) // now 179.2 s in (0:01 left shown)
+    const m = b.sent.length
+    await vi.advanceTimersByTimeAsync(2 * TICK_MS + 100)
+    expect(b.sent.slice(m).filter(x => x.startsWith('upgrade:timer='))).toEqual(['upgrade:timer=0:00 left', 'upgrade:timer=+0:01 over'])
   })
 
   it('ticks land on whole seconds of the drill even when it started mid-second', async () => {
@@ -323,14 +329,14 @@ describe('lens controller', () => {
     it('stays up (no timeout) with transcript left and agent progress right, polled every 2 s', async () => {
       const utteranceRuns = vi.fn().mockResolvedValueOnce([r('router')]).mockResolvedValue([r('router'), r('progress')])
       const b = await toCard(utteranceRuns)
-      expect(b.sent.join('\n')).toContain('You said:')
+      expect(b.sent.join('\n')).toContain('"Priya keep your guard up"')
       expect(b.sent.join('\n')).toContain('ok sorted\n.. email')
       await vi.advanceTimersByTimeAsync(RUNS_POLL_MS)
       expect(b.sent.at(-1)).toBe('upgrade:agents=ok sorted\nok logged\n.. email')
       expect(utteranceRuns).toHaveBeenCalledTimes(2)
       await vi.advanceTimersByTimeAsync(60_000)
       expect(b.sent.some(x => x.startsWith('rebuild:STANCES'))).toBe(true) // (from before the card)
-      expect(b.sent.filter(x => x.startsWith('rebuild:')).at(-1)).toMatch(/You said/) // still the card
+      expect(b.sent.filter(x => x.startsWith('rebuild:')).at(-1)).toMatch(/Priya keep your guard up/) // still the card
     })
 
     it('stops polling after 30 s', async () => {
