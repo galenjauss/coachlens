@@ -25,6 +25,8 @@ export type CardAction =
   | { kind: 'name_unclear'; name: string }
   /** Nothing was saved or changed; `hint` is the recovery path. Never an empty card. */
   | { kind: 'nothing_changed'; hint: string }
+  /** One intent was skipped by a Settings switch ("Billing flags off"); other intents may still have applied. */
+  | { kind: 'skipped'; what: string }
 
 const MAX_LINES = 4
 const MAX_CHARS = 38
@@ -65,6 +67,7 @@ function linesFor(a: CardAction): string[] {
     case 'saved_unsorted': return ['● Saved · sorting failed, see Review']
     case 'name_unclear': return [`? Didn't catch "${a.name}" · say again`]
     case 'nothing_changed': return ['● Nothing changed', a.hint]
+    case 'skipped': return [`● ${a.what} · not saved`]
     case 'rollcall_unclear': return [`Didn't catch: ${a.names.join(', ')}`, 'Say it again or use phone roster']
   }
 }

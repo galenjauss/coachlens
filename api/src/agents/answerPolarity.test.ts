@@ -76,10 +76,28 @@ describe('F01: class answers respect the question polarity', () => {
     expect(fastAnswer(await facts(w), 'who is struggling with their guard?')!.lines.join(' ')).toContain('Ben')
   })
 
-  it('no positive evidence reads as such; a question of unclear polarity goes to the model', async () => {
-    const f = await facts(await world())
+  it('no positive evidence reads as such; a question that takes no side shows both kinds, labelled, without the model', async () => {
+    const w = await world()
+    const f = await facts(w)
     expect(fastAnswer(f, 'who has great footwork?')!.lines).toEqual(['No positive footwork notes in 21 days'])
-    expect(fastAnswer(f, 'who has guard notes?')).toBeNull()
+    const both = fastAnswer(f, 'who has guard notes?')!
+    expect(both.detail).toBe('tag guard (both)')
+    expect(both.lines.join(' ')).toMatch(/^Guard notes: Ava \(2 concern, 1 praise\), Priya \(3 concern\)/)
+    expect(both.lines.join(' ')).toContain('Leo (1 praise)')
+    const calls: string[] = []
+    const q = 'Who has guard notes?'
+    const llm = fakeLlm(({ name }) => { calls.push(name); if (name === 'router') return { intents: [{ ...base, type: 'question', content: q, question: q }] }; throw new Error(name) })
+    await handleUtterance(makeDeps(w.db, { llm }), { sessionId: w.sessionId, drillId: w.drillId, mode: 'note', transcript: q })
+    expect(calls).toEqual(['router']) // no answer-model call
+  })
+
+  it('review fix: "keeps … up" and a negated problem ask for strengths, never the guard-droppers', async () => {
+    const f = await facts(await world())
+    for (const q of ['Who keeps their guard up?', 'Who never drops their guard?', "Who doesn't drop their hands?"]) {
+      const a = fastAnswer(f, q)!
+      expect(a.lines, q).toEqual(['Good guard: Ava (1), Leo (1), Sam (1)'])
+    }
+    expect(fastAnswer(f, 'Who keeps dropping their guard?')!.lines[0]).toMatch(/^Guard: Priya \(3\)/)
   })
 
   it('classifies polarity', () => {
@@ -90,5 +108,10 @@ describe('F01: class answers respect the question polarity', () => {
     expect(questionPolarity("who isn't doing well on guard")).toBe('concern')
     expect(questionPolarity('who needs work on depth?')).toBe('concern')
     expect(questionPolarity('who has guard notes?')).toBe('unclear')
+    expect(questionPolarity('Who keeps their guard up?')).toBe('positive')
+    expect(questionPolarity('Who never drops their guard?')).toBe('positive')
+    expect(questionPolarity('who is forgetting to keep their guard up?')).toBe('concern')
+    expect(questionPolarity("who isn't keeping their guard up?")).toBe('concern')
+    expect(questionPolarity('who keeps talking in line-up?')).toBe('concern')
   })
 })

@@ -459,23 +459,24 @@ export const InsightsQuery = z.object({
 })
 export type InsightsQuery = z.input<typeof InsightsQuery>
 
-// ---- Degraded-mode status (F20) ----
+// ---- Degraded-mode status (F20 / C5) ----
 /**
- * GET /v1/status. `ai` counts Anthropic model calls only (failed calls included) against the daily cap; it is not a
- * token, transcription, email or hosting budget. dailyCap null = no cap configured.
+ * GET /v1/status (C5). aiCallsToday counts Anthropic model calls only (failed calls included) against aiDailyCap
+ * (null = no cap configured); it is not a token, transcription, email or hosting budget. mailMode is the parent-email
+ * setting (urgent notes always wait for review whatever it says). degraded = AI budget reached or no STT key.
  */
 export const DegradedReason = z.enum(['ai_budget_reached', 'speech_to_text_unconfigured'])
 export type DegradedReason = z.infer<typeof DegradedReason>
 export const StatusResponse = z.object({
-  ai: z.object({
-    counts: z.literal('anthropic_calls'),
-    day: z.string(),
-    dailyCap: z.number().int().nullable(),
-    usedToday: z.number().int(),
-    remainingToday: z.number().int().nullable(),
-    exhausted: z.boolean(),
-  }),
-  stt: z.object({ configured: z.boolean() }),
-  degraded: z.array(DegradedReason),
+  aiCallsToday: z.number().int(),
+  aiDailyCap: z.number().int().nullable(),
+  sttConfigured: z.boolean(),
+  mailMode: z.enum(['review', 'auto', 'off']),
+  degraded: z.boolean(),
+  // Extra detail beyond C5.
+  degradedReasons: z.array(DegradedReason),
+  aiCallsRemaining: z.number().int().nullable(),
+  aiCallsCounted: z.literal('anthropic'),
+  day: z.string(),
 })
 export type StatusResponse = z.infer<typeof StatusResponse>

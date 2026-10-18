@@ -158,12 +158,14 @@ export async function draftParentEmail(
       ? urgentFallback({ firstName: firstName!, readerName: g.name, toClient, content: urgentFact, coach: deps.env.instructorName })
       : drafted
     const [row] = await db.insert(outbox).values({ kind: 'parent_email', studentId: s.id, sessionId: a.sessionId, toEmail: g.email, subject: email.subject, body: email.body, trigger: a.trigger.kind }).returning()
-    const sent = autonomy === 'auto' ? await approveOutbox(deps, row!.id) : null
+    // Urgent notes ALWAYS wait for the instructor's review, whatever the setting: the fact check catches dropped facts,
+    // not invented or inverted ones, so a person reads every urgent note before it leaves.
+    const sent = autonomy === 'auto' && !urgent ? await approveOutbox(deps, row!.id) : null
     const note = sent ? (sent.ok ? ' and sent' : ` (auto-send failed: ${sent.error}; left for review)`) : ''
     return {
       result: row!.id,
       summary: `Drafted ${a.trigger.kind === 'urgent' ? 'urgent ' : ''}note to ${g.name} (${firstName}): "${email.subject}"${note}`,
-      reason: [why, factLost ? 'fact check failed: model draft dropped the observation, used the plain template' : '', autonomy === 'auto' ? 'autonomy: auto' : ''].filter(Boolean).join(' · '),
+      reason: [why, factLost ? 'fact check failed: model draft dropped the observation, used the plain template' : '', autonomy === 'auto' ? (urgent ? 'autonomy: auto, but urgent notes always wait for review' : 'autonomy: auto') : ''].filter(Boolean).join(' · '),
       output: factLost ? { ...email, rejectedDraft: drafted } : email, links: { outboxId: row!.id },
     }
   })

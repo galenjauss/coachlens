@@ -86,13 +86,26 @@ export type Polarity = 'positive' | 'concern' | 'unclear'
 export interface Support { name: string; count: number; notes: string[] }
 export interface FastAnswer { path: AnswerPath; detail: string; lines: string[]; support: Support[] }
 
-// Negation or a problem word makes it a concern question even next to a praise word ("who isn't doing well").
-const CONCERN_Q = /\b(forget\w*|forgot|struggl\w*|trouble|drop\w*|weak\w*|bad|poor\w*|sloppy|needs? (?:work|help)|working on|issues?|problems?|careless|keeps?|lazy|low|not|\w+n['\u2019]t|never|miss\w*|lacking|cutting|rushing|wrong|behind)\b/
+const PROBLEM_Q = "(?:drop\\w*|forget\\w*|forgot|miss\\w*|rush\\w*|los(?:e|es|t|ing)|slip\\w*|mistakes?)"
+/** "who never drops their guard", "who doesn't forget to chamber": a negated problem asks for strengths. */
+const NEGATED_PROBLEM_Q = new RegExp(`\\b(?:never|not|no longer|doesn['\u2019]?t|don['\u2019]?t|didn['\u2019]?t|without|no)\\s+(?:\\w+\\s+)?${PROBLEM_Q}`)
+/** "who keeps their guard up": holding something up asks for strengths... */
+const HELD_UP_Q = /\b(?:keep\w*|kept)\s+(?:\w+\s+){0,2}up\b/
+/** ...unless it is negated or forgotten ("who is forgetting to keep their guard up", "who isn't keeping it up"). */
+const NOT_HELD_Q = /(?:\bnot|\bnever|n['\u2019]t|\bforget\w*|\bforgot|\bfail\w*|\bstop\w*)\s+(?:\w+\s+){0,2}(?:keep\w*|kept)\b/
+// A problem word, or a negation next to a praise word ("who isn't doing well"), makes it a concern question.
+const CONCERN_Q = new RegExp(`\\b(${PROBLEM_Q}|struggl\\w*|trouble|weak\\w*|bad|poor\\w*|sloppy|needs? (?:work|help)|working on|issues?|problems?|careless|lazy|low|not|\\w+n['\u2019]t|never|lacking|cutting|wrong|behind|talk\\w*)\\b`)
 const POSITIVE_Q = /\b(excellent|great|good|best|strong\w*|solid|nice|nail\w*|improv\w*|better|well|clean|sharp|impressive|top|awesome|proud|stand(?:s|ing)? out)\b/
 
-/** Whether a "who…" question asks for problems, for strengths, or is unclear (then the model answers). */
+/**
+ * Whether a "who…" question asks for problems, for strengths, or neither (then both kinds of evidence are shown).
+ * Order matters: a forgotten/negated "keep … up" is a concern, a negated problem or "keep … up" is a strength,
+ * then plain problem words, then praise words.
+ */
 export function questionPolarity(question: string): Polarity {
   const q = question.toLowerCase()
+  if (NOT_HELD_Q.test(q)) return 'concern'
+  if (NEGATED_PROBLEM_Q.test(q) || HELD_UP_Q.test(q)) return 'positive'
   if (CONCERN_Q.test(q)) return 'concern'
   if (POSITIVE_Q.test(q)) return 'positive'
   return 'unclear'
@@ -134,10 +147,20 @@ function attendanceAnswer(f: ClassFacts): FastAnswer {
   return { path: 'attendance', detail: 'attendance', lines: absent.length ? [head, ...packList('Absent', absent, ANSWER_LINES - 1)] : [head], support: [] }
 }
 
-/** A tag question answered from the evidence that matches its polarity: concerns for problems, praise for strengths. */
-function tagAnswer(f: ClassFacts, tag: string, polarity: Exclude<Polarity, 'unclear'>): FastAnswer {
+/**
+ * A tag question answered from the evidence that matches its polarity: concerns for problems, praise for strengths,
+ * and both (labelled) when the question takes no side ("who has guard notes?").
+ */
+function tagAnswer(f: ClassFacts, tag: string, polarity: Polarity): FastAnswer {
   const label = tag.charAt(0).toUpperCase() + tag.slice(1)
   const stat = (s: ClassFacts['students'][number]) => s.tagStats[tag]
+  if (polarity === 'unclear') {
+    const hits = f.students.map(s => ({ s, c: stat(s)?.concern ?? 0, p: stat(s)?.positive ?? 0 })).filter(x => x.c + x.p > 0)
+      .sort((a, b) => b.c + b.p - (a.c + a.p) || a.s.first.localeCompare(b.s.first))
+    const item = (x: (typeof hits)[number]) => `${x.s.first} (${[x.c ? `${x.c} concern` : '', x.p ? `${x.p} praise` : ''].filter(Boolean).join(', ')})`
+    const lines = hits.length ? packList(`${label} notes`, hits.map(item)) : [clip(`No ${tag} notes in ${DIGEST_WINDOW_DAYS} days`, LINE)]
+    return { path: 'tag', detail: `tag ${tag} (both)`, lines, support: hits.map(x => ({ name: x.s.first, count: x.c + x.p, notes: [...(stat(x.s)?.concernNotes ?? []), ...(stat(x.s)?.positiveNotes ?? [])].slice(0, 3) })) }
+  }
   if (polarity === 'positive') {
     const hits = f.students.map(s => ({ s, n: stat(s)?.positive ?? 0 })).filter(x => x.n > 0)
       .sort((a, b) => b.n - a.n || a.s.first.localeCompare(b.s.first))
@@ -160,8 +183,7 @@ export function fastAnswer(f: ClassFacts, question: string): FastAnswer | null {
   if (kind === 'attendance') return attendanceAnswer(f)
   const tag = matchTag(f.mode, question)
   if (!tag) return null
-  const polarity = questionPolarity(question)
-  return polarity === 'unclear' ? null : tagAnswer(f, tag, polarity)
+  return tagAnswer(f, tag, questionPolarity(question))
 }
 
 export function answerInstructions(mode: ModeConfig): string {

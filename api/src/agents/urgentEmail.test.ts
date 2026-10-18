@@ -58,6 +58,21 @@ describe('F17: urgent parent note', () => {
     expect(items[0]!.kind === 'parent_email' && items[0]!.urgent).toBe(true) // urgent sorts first
   })
 
+  it('review fix: urgent notes always wait for review, even with parent emails on auto; routine ones still auto-send', async () => {
+    const w = await world()
+    const { agentSettings } = await import('../db/schema')
+    await w.db.insert(agentSettings).values({ task: 'parent_email', autonomy: 'auto' })
+    const deps = makeDeps(w.db, { llm: fakeLlm(() => ({ subject: 'Dee rolled her ankle in class today', body: 'Hi Sam, Dee rolled her ankle a little and sat out the last drill. Please reply with any questions. Coach Galen' })) })
+    const id = await draftParentEmail(deps, { studentId: w.dee.id, sessionId: null, trigger: { kind: 'urgent', content: ANKLE } })
+    expect((await w.db.select().from(outbox).where(eq(outbox.id, id!)))[0]!.status).toBe('pending_review')
+    expect(deps.sent).toEqual([])
+    const [run] = await w.db.select().from(agentRuns).where(eq(agentRuns.agent, 'parent_email'))
+    expect(run!.reason).toContain('urgent notes always wait for review')
+    const routine = await draftParentEmail(deps, { studentId: w.dee.id, sessionId: null, trigger: { kind: 'request', content: 'belt test is Friday' } })
+    expect((await w.db.select().from(outbox).where(eq(outbox.id, routine!)))[0]!.status).toBe('sent')
+    expect(deps.sent).toHaveLength(1)
+  })
+
   it('fact guard: a draft that drops the observation is replaced by the plain factual template', async () => {
     const w = await world()
     const deps = makeDeps(w.db, { llm: fakeLlm(() => ({ subject: 'Great roundhouse progress!', body: 'Hi Sam! Dee has been doing amazing work on her roundhouse kicks lately. Try practicing balance at home for five minutes!' })) })

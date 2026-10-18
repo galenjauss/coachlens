@@ -197,6 +197,22 @@ describe('insights agent', () => {
     expect(await t.db.select().from(outbox).where(eq(outbox.studentId, t.leo.id))).toEqual([]) // no praise email
   })
 
+  it('review fix: a legacy issue_resolved / ready_to_test row stands for its replacement in dedupe and accept', async () => {
+    const t = await setup()
+    const week = '2026-W43'
+    const [oldIssue] = await t.db.insert(insights).values({ kind: 'issue_resolved' as 'issue_reassess', studentId: t.leo.id, classId: t.kids.id, title: "Leo's guard looks resolved", detail: 'old', urgency: 'low',
+      action: { type: 'resolve_issue', issueId: t.issue.id, studentId: t.leo.id, notify: true, label: 'Resolve + praise' }, dedupeKey: `issue_resolved:${t.leo.id}:${week}` }).returning()
+    const [oldReady] = await t.db.insert(insights).values({ kind: 'ready_to_test' as 'rank_review', studentId: t.maria.id, classId: t.kids.id, title: 'Maria may be ready to test', detail: 'old', urgency: 'low',
+      action: { type: 'draft_email', studentId: t.maria.id, purpose: 'ready_to_test', label: 'Draft testing email' }, dedupeKey: `ready_to_test:${t.maria.id}:${week}` }).returning()
+    await runInsights(t.deps, { trigger: 'cron' })
+    expect(await t.byKind('issue_reassess')).toEqual([]) // the legacy row already covers this issue this week
+    expect(await t.byKind('rank_review')).toEqual([])
+    expect(await (await t.post(`/v1/insights/${oldIssue!.id}/accept`)).json()).toEqual({ ok: true, outcome: 'Resolved' })
+    expect((await t.db.select().from(issues).where(eq(issues.id, t.issue.id)))[0]!.status).toBe('resolved')
+    expect(await (await t.post(`/v1/insights/${oldReady!.id}/accept`)).json()).toEqual({ ok: true, outcome: 'Noted' })
+    expect(await t.db.select().from(outbox)).toEqual([]) // no praise or testing email
+  })
+
   it('F10: rank review shows its evidence, drafts nothing, and follows the school\'s thresholds from Settings', async () => {
     const t = await setup()
     const settings = await (await t.app.request('/v1/settings', { headers: t.h })).json() as { rankReview: unknown }

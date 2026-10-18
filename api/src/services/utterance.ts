@@ -45,7 +45,7 @@ export async function handleUtterance(
   if (command) {
     await withRun(deps, { agent: 'router', trigger: 'deterministic', sessionId: ctx.sessionId, utteranceId }, async () => ({
       result: command.kind,
-      summary: `Recognized "${input.transcript.slice(0, 60)}" as ${command.kind === 'rollcall' ? 'roll call' : 'a class question'} (no AI call)`,
+      summary: `Recognized ${command.kind === 'rollcall' ? 'roll call' : 'a class question'} (no AI call)`,
       reason: `deterministic ${command.kind === 'rollcall' ? 'roll-call phrasing' : 'question'} · capture mode: ${input.mode}`,
     }))
   }
@@ -68,8 +68,11 @@ export async function handleUtterance(
       brief ??= r.brief ?? null
     }
   }
-  // Nothing saved or changed (no intents, or every intent skipped): say so, with the way out.
+  // Nothing saved or changed: say so, with the way out. Every intent skipped by Settings: say so, with the switches.
+  // A skip next to real changes keeps its own short line instead.
+  const skipped = actions.flatMap(a => (a.kind === 'skipped' ? [a.what] : []))
   if (!actions.length && !brief && !disambiguation) actions.push({ kind: 'nothing_changed', hint: input.mode === 'attendance' ? NOTHING_HINT_ATTENDANCE : NOTHING_HINT_NOTE })
+  else if (skipped.length && skipped.length === actions.length && !brief && !disambiguation) actions.splice(0, actions.length, { kind: 'nothing_changed', hint: [...new Set(skipped)].join(' · ') })
   const { coverage, next } = await coverageAndNext(db, ctx, deps.now())
   const attendanceChanged = actions.some(a => a.kind === 'attendance' || a.kind === 'marked')
   return {
@@ -88,7 +91,7 @@ async function applyRollCall(deps: Deps, ctx: SessionContext, utteranceId: strin
   const run = { agent: 'attendance', trigger: 'roll_call', sessionId: ctx.sessionId, utteranceId }
   if (await getAutonomy(deps.db, 'attendance') === 'off') {
     await withRun(deps, run, async () => ({ result: false, summary: 'Roll call skipped (off)', reason: 'autonomy: off — voice attendance is turned off in Settings' }))
-    return { kind: 'nothing_changed', hint: 'Voice attendance is off' }
+    return { kind: 'skipped', what: 'Voice attendance off' }
   }
   const named = new Map<string, string>()
   const unresolved: string[] = []
@@ -265,7 +268,7 @@ async function applyBilling(deps: Deps, ctx: SessionContext, utteranceId: string
   const urgency = intent.urgency ?? 'med'
   if (await getAutonomy(deps.db, 'billing') === 'off') {
     await withRun(deps, { agent: 'billing', trigger: 'billing', sessionId: ctx.sessionId, utteranceId }, async () => ({ result: false, summary: 'Billing flag skipped (off)', reason: 'autonomy: off — billing flags are turned off in Settings' }))
-    return { actions: [{ kind: 'nothing_changed', hint: 'Billing flags are off' }], disambiguation: null }
+    return { actions: [{ kind: 'skipped', what: 'Billing flags off' }], disambiguation: null }
   }
   const [flag] = await deps.db.insert(billingFlags).values({ studentId: student?.id ?? null, utteranceId, urgency, note: intent.content, amount: intent.amount }).returning({ id: billingFlags.id })
   const links = { billingFlagId: flag!.id, ...(student ? { studentId: student.id } : {}) }
@@ -280,7 +283,7 @@ async function applyAttendanceIntent(deps: Deps, ctx: SessionContext, utteranceI
   const status = intent.attendanceStatus ?? 'present'
   if (await getAutonomy(deps.db, 'attendance') === 'off') {
     await withRun(deps, { agent: 'attendance', trigger: 'voice', sessionId: ctx.sessionId, utteranceId }, async () => ({ result: false, summary: 'Attendance update skipped (off)', reason: 'autonomy: off — voice attendance is turned off in Settings' }))
-    return { actions: [{ kind: 'nothing_changed', hint: 'Voice attendance is off' }], disambiguation: null }
+    return { actions: [{ kind: 'skipped', what: 'Voice attendance off' }], disambiguation: null }
   }
   for (const heard of intent.studentNames) {
     const m = resolveName(heard, ctx.roster)

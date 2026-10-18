@@ -7,7 +7,7 @@ import { makeTestDb, makeDeps, fakeLlm } from '../test/helpers'
 import { handleUtterance } from './utterance'
 import { createApp } from '../app'
 import { resetRateLimits } from '../http/rateLimit'
-import { agentRuns, attendance, classes, curriculum, decks, drills, enrollments, instructors, llmUsage, notes, sessions, students } from '../db/schema'
+import { agentRuns, agentSettings, attendance, classes, curriculum, decks, drills, enrollments, instructors, llmUsage, notes, sessions, students } from '../db/schema'
 import { detectCommand } from '../logic/commands'
 
 const intent = (o: Record<string, unknown>) => ({ type: 'feedback', studentNames: [], content: '', skillTags: [], urgency: null, amount: null, minutes: null, attendanceStatus: null, urgent: false, ...o })
@@ -43,7 +43,7 @@ describe('F04: roll call is recognized in any capture mode', () => {
     expect(await w.db.select().from(notes)).toEqual([]) // not misfiled as a note
     const runs = await w.db.select().from(agentRuns).where(eq(agentRuns.utteranceId, r.utteranceId))
     expect(runs.find(x => x.agent === 'router')).toMatchObject({ trigger: 'deterministic', status: 'ok' })
-    expect(runs.find(x => x.agent === 'router')!.summary).toContain('roll call (no AI call)')
+    expect(runs.find(x => x.agent === 'router')!.summary).toBe('Recognized roll call (no AI call)') // no transcript text
   })
 
   it('"present: …" and "all here" also work from note mode', async () => {
@@ -82,14 +82,23 @@ describe('F04: nothing changed is said out loud', () => {
     expect(r.cardLines).toEqual(['? Didn\'t catch "Zed" · say again'])
   })
 
+  it('review fix: a skipped intent next to a real change gets its own short line, not "Nothing changed"', async () => {
+    const w = await world()
+    await w.db.insert(agentSettings).values({ task: 'billing', autonomy: 'off' })
+    const llm = fakeLlm(() => ({ intents: [intent({ studentNames: ['Leo'], content: 'great focus', skillTags: ['focus'], valence: 'positive' }), intent({ type: 'billing', studentNames: ['Jake'], content: 'owes for gear', urgency: 'low' })] }))
+    const r = await handleUtterance(makeDeps(w.db, { llm }), { sessionId: w.sessionId, drillId: null, mode: 'note', transcript: 'Leo great focus, Jake owes for gear' })
+    expect(r.cardLines).toEqual(['√ Leo · praise · focus', '● Billing flags off · not saved'])
+    const only = await handleUtterance(makeDeps(w.db, { llm: fakeLlm(() => ({ intents: [intent({ type: 'billing', studentNames: ['Jake'], content: 'owes', urgency: 'low' })] })) }), { sessionId: w.sessionId, drillId: null, mode: 'note', transcript: 'Jake owes' })
+    expect(only.cardLines).toEqual(['● Nothing changed', 'Billing flags off'])
+  })
+
   it('voice attendance turned off reads as nothing changed, with the reason', async () => {
     const w = await world()
     const { llm } = noModel()
     const deps = makeDeps(w.db, { llm })
-    const { agentSettings } = await import('../db/schema')
     await w.db.insert(agentSettings).values({ task: 'attendance', autonomy: 'off' })
     const r = await handleUtterance(deps, { sessionId: w.sessionId, drillId: null, mode: 'note', transcript: 'everyone except Jake' })
-    expect(r.cardLines).toEqual(['● Nothing changed', 'Voice attendance is off'])
+    expect(r.cardLines).toEqual(['● Nothing changed', 'Voice attendance off'])
   })
 })
 
@@ -143,14 +152,13 @@ describe('F20: /v1/status exposes degraded mode honestly', () => {
     expect(r.status).toBe(200)
     const body = StatusResponse.parse(await r.json())
     expect(body).toEqual({
-      ai: { counts: 'anthropic_calls', day: '2026-10-19', dailyCap: 10, usedToday: 3, remainingToday: 7, exhausted: false },
-      stt: { configured: false },
-      degraded: ['speech_to_text_unconfigured'],
+      aiCallsToday: 3, aiDailyCap: 10, sttConfigured: false, mailMode: 'review', degraded: true,
+      degradedReasons: ['speech_to_text_unconfigured'], aiCallsRemaining: 7, aiCallsCounted: 'anthropic', day: '2026-10-19',
     })
     await db.update(llmUsage).set({ calls: 12 })
+    await db.insert(agentSettings).values({ task: 'parent_email', autonomy: 'auto' })
     const after = StatusResponse.parse(await (await app.request('/v1/status', { headers: { Authorization: `Bearer ${token}` } })).json())
-    expect(after.ai).toMatchObject({ usedToday: 12, remainingToday: 0, exhausted: true })
-    expect(after.degraded).toEqual(['ai_budget_reached', 'speech_to_text_unconfigured'])
+    expect(after).toMatchObject({ aiCallsToday: 12, aiCallsRemaining: 0, mailMode: 'auto', degraded: true, degradedReasons: ['ai_budget_reached', 'speech_to_text_unconfigured'] })
   })
 
   it('no cap configured reads as uncapped, not as unlimited budget', async () => {
@@ -159,8 +167,6 @@ describe('F20: /v1/status exposes degraded mode honestly', () => {
     const app = createApp(makeDeps(db))
     const { token } = await (await app.request('/pair', { method: 'POST', body: JSON.stringify({ code: '4242' }), headers: { 'Content-Type': 'application/json' } })).json() as { token: string }
     const body = StatusResponse.parse(await (await app.request('/v1/status', { headers: { Authorization: `Bearer ${token}` } })).json())
-    expect(body.ai).toEqual({ counts: 'anthropic_calls', day: '2026-10-19', dailyCap: null, usedToday: 0, remainingToday: null, exhausted: false })
-    expect(body.stt.configured).toBe(true)
-    expect(body.degraded).toEqual([])
+    expect(body).toMatchObject({ aiCallsToday: 0, aiDailyCap: null, aiCallsRemaining: null, sttConfigured: true, mailMode: 'review', degraded: false, degradedReasons: [] })
   })
 })

@@ -1,3 +1,4 @@
+import type { Valence } from '@matside/shared'
 import type { Db } from './client'
 import * as t from './schema'
 import { addDays, nextDateForWeekday } from '../logic/dates'
@@ -40,11 +41,14 @@ export async function recordAttendance(db: Db, sessions: PastSession[], roster: 
   return ordered
 }
 
-/** One untagged note in a given session (`ago` sessions back in the merged order), 10 minutes into class. */
-export async function sessionNotes(db: Db, ordered: PastSession[], items: readonly { studentId: string; ago: number; text: string }[]) {
+/**
+ * One untagged note in a given session (`ago` sessions back in the merged order), 10 minutes into class. The seeded
+ * in-session notes are all praise, so valence defaults to positive (labelled, never inferred from the text).
+ */
+export async function sessionNotes(db: Db, ordered: PastSession[], items: readonly { studentId: string; ago: number; text: string; valence?: Valence }[]) {
   const rows = items.map(n => {
     const s = ordered[ordered.length - 1 - n.ago]!
-    return { sessionId: s.id, studentId: n.studentId, text: n.text, createdAt: new Date(s.startedAt.getTime() + 10 * 60_000) }
+    return { sessionId: s.id, studentId: n.studentId, text: n.text, valence: n.valence ?? 'positive' as const, createdAt: new Date(s.startedAt.getTime() + 10 * 60_000) }
   })
   if (rows.length) await db.insert(t.notes).values(rows)
 }

@@ -8,6 +8,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "seed": "tsx src/db/seed-cli.ts",
+    "backfill:valence": "tsx src/db/backfill-valence-cli.ts",
     "eval": "tsx evals/run-router.ts",
     "dev": "tsx watch src/dev-server.ts",
     "build": "esbuild src/index.ts --bundle --minify --platform=node --format=esm --outfile=api/index.mjs --banner:js=\"import{createRequire as __cr}from'module';globalThis.require??=__cr(import.meta.url);\" --alias:@matside/shared=../shared/src/index.ts && mkdir -p public && echo ok > public/index.txt"

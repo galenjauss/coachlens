@@ -6,6 +6,7 @@ import { handleUtterance } from './utterance'
 import { agentRuns, classes, curriculum, decks, deckDiffs, drills, enrollments, guardians, issues, notes, sessions, students } from '../db/schema'
 import { inferValence, countsAsConcern, effectiveValence } from '../logic/valence'
 import { buildCardLines } from '../logic/cardLines'
+import { backfillValence } from '../db/backfillValence'
 
 const intent = (o: Record<string, unknown>) => ({ type: 'feedback', studentNames: [], content: '', skillTags: [], urgency: null, amount: null, minutes: null, attendanceStatus: null, urgent: false, ...o })
 
@@ -148,6 +149,25 @@ describe('F01: valence helpers and card lines', () => {
     expect(inferValence('Kicks getting higher')).toBe('improving')
     expect(inferValence('guard drops on the jab again, great energy though')).toBe('concern')
     expect(inferValence('Worked on kata 2')).toBe('neutral')
+  })
+  it('review fix: the audit\'s own phrasing; ties go to concern; "kept" alone is not praise; negated problems are praise', () => {
+    for (const t of ['Kept dropping her guard', 'Kept forgetting to chamber', 'Dropped guard, great energy', 'Leo hit his head on the mat']) expect(inferValence(t), t).toBe('concern')
+    for (const t of ['Kept her guard up, never dropped it once', 'Guard up all class, no drops', 'Hit every target cleanly', "Didn't forget a single step"]) expect(inferValence(t), t).toBe('positive')
+    expect(inferValence('Kept going')).toBe('neutral')
+  })
+  it('backfill labels legacy rows once with the heuristic and is idempotent', async () => {
+    const w = await world()
+    const legacy = await w.db.insert(notes).values([
+      { studentId: w.leo.id, text: 'Kept dropping his guard', tags: ['guard'] },
+      { studentId: w.leo.id, text: 'Guard up all class, no drops', tags: ['guard'] },
+      { studentId: w.leo.id, text: 'Worked on kata 2', tags: [] },
+    ]).returning({ id: notes.id })
+    expect(await backfillValence(w.db)).toEqual({ updated: 3, byValence: { concern: 1, positive: 1, neutral: 1 } })
+    const rows = await w.db.select().from(notes).where(eq(notes.studentId, w.leo.id))
+    expect(new Map(rows.map(r => [r.id, r.valence]))).toEqual(new Map([[legacy[0]!.id, 'concern'], [legacy[1]!.id, 'positive'], [legacy[2]!.id, 'neutral']]))
+    // labelled rows (Priya's) are untouched, and a second run changes nothing
+    expect((await w.db.select().from(notes).where(eq(notes.studentId, w.priya.id))).map(r => r.valence)).toEqual(['concern', 'concern'])
+    expect(await backfillValence(w.db)).toEqual({ updated: 0, byValence: {} })
   })
   it('stored valence wins over the text; historical rows never count', () => {
     expect(effectiveValence({ valence: 'positive', text: 'guard drops' })).toBe('positive')
