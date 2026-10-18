@@ -1,4 +1,4 @@
-type Events = { paired: void; startClass: void; sessionChanged: string | null }
+type Events = { paired: void; startClass: void; sessionChanged: string | null; classChanged: string | null }
 type Handler<T> = (p: T) => void
 const handlers: { [K in keyof Events]?: Handler<Events[K]>[] } = {}
 export const bus = {

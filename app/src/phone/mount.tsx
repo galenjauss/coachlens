@@ -1,3 +1,4 @@
+import './theme.css'
 import { createRoot } from 'react-dom/client'
 import type { Api } from '../core/api'
 import type { KV } from '../core/storage'

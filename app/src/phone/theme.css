@@ -1,0 +1,49 @@
+:root {
+  --bg: #232323; --card: #2f2f2f; --line: #3a3a3a; --text: #e5e5e5; --muted: #a3a3a3;
+  --accent: #3dff7a; --danger: #ffb4b4; --danger-bg: #5a2a2a; --warn: #e8d36a; --radius: 12px;
+  --ink-on-accent: #0b0b0b; --dur: 150ms;
+}
+* { box-sizing: border-box; }
+html { color-scheme: dark; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 -apple-system, system-ui, sans-serif; overflow-x: hidden; }
+.screen { padding: 20px 16px 88px; max-width: 560px; margin: 0 auto; }
+h1 { font-size: 28px; line-height: 1.1; letter-spacing: -.02em; margin: 0 0 2px; color: #fff; }
+.sub { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+.card { background: var(--card); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px; border: 1px solid transparent; }
+.card.tappable { cursor: pointer; transition: border-color var(--dur), transform .1s; }
+.card.tappable:hover { border-color: var(--line); }
+.card.tappable:active { transform: scale(.99); }
+.card.tappable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.label { color: var(--muted); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 4px; }
+.dot::before { content: '●'; color: var(--accent); margin-right: 6px; }
+.row { display: flex; align-items: center; gap: 8px; }
+.grow { flex: 1; min-width: 0; }
+.muted { color: var(--muted); font-size: 13px; }
+.hint { text-align: center; margin: 12px 0 0; }
+.pill { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 99px; background: var(--line); margin-right: 6px; }
+.pill.high { background: var(--danger-bg); color: var(--danger); }
+.btns { display: flex; gap: 8px; margin-top: 10px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+button { font: inherit; border: 0; border-radius: 10px; padding: 10px 12px; min-height: 44px; background: var(--line); color: var(--text); flex: 1; cursor: pointer; transition: transform .1s, filter var(--dur), background var(--dur); }
+button:hover { filter: brightness(1.2); }
+button:active { transform: scale(.97); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.primary, button[aria-pressed='true'] { background: var(--accent); color: var(--ink-on-accent); font-weight: 600; }
+button:disabled { opacity: .5; cursor: default; }
+input, textarea { font: inherit; width: 100%; background: var(--line); color: var(--text); border: 2px solid transparent; border-radius: 8px; padding: 10px; }
+input:focus-visible, textarea:focus-visible { outline: none; border-color: var(--accent); }
+.feed { border-left: 2px solid var(--accent); padding-left: 10px; margin-bottom: 14px; }
+.feed.error { border-color: var(--danger); }
+.tabs { position: fixed; bottom: 0; left: 0; right: 0; height: 64px; background: #1a1a1a; display: flex; padding-bottom: env(safe-area-inset-bottom); border-top: 1px solid var(--line); }
+.tabs button { background: none; color: #a0a0a0; border-radius: 0; font-size: 12px; min-height: 0; }
+.tabs button[aria-current='page'] { color: var(--accent); box-shadow: inset 0 2px 0 var(--accent); }
+.drill { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.error { color: var(--danger); }
+.picker { display: flex; gap: 6px; overflow-x: auto; margin: 0 -16px 14px; padding: 0 16px 2px; scrollbar-width: none; }
+.picker button { flex: 0 0 auto; border-radius: 99px; font-size: 13px; padding: 6px 12px; min-height: 36px; white-space: nowrap; }
+.mode { display: inline-block; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 99px; border: 1px solid var(--accent); color: var(--accent); margin-bottom: 8px; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: 13px; color: var(--accent); margin: 32px 0 18px; }
+.lens-ring { width: 14px; height: 14px; border-radius: 50%; border: 3px solid var(--accent); box-shadow: 0 0 12px var(--accent); }
+.pairing h1 { font-size: 36px; margin-bottom: 10px; }
+.pairing input { font-size: 22px; letter-spacing: .3em; text-align: center; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

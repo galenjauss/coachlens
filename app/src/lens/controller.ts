@@ -4,6 +4,7 @@ import { MAX_RECORD_MS, Recorder } from '../core/audio'
 import { bus } from '../core/bus'
 import type { FlushResult, Outbox, OutboxItem } from '../core/outbox'
 import { KEYS, type KV } from '../core/storage'
+import { CLASS_ID_KEY } from '../phone/classPref'
 import { fromB64, toB64 } from '../core/wav'
 import { imuSample, toLensEvent } from './events'
 import { Glasses, type GlassesBridge } from './glasses'
@@ -125,7 +126,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
     switch (eff.type) {
       case 'markFirstRunSeen': return d.kv.set(KEYS.firstRunSeen, '1')
       case 'loadToday':
-        try { dispatch({ type: 'todayLoaded', today: await d.api.today() }) } catch (e) { dispatch({ type: 'loadFailed', message: errText(e) }) }
+        try { dispatch({ type: 'todayLoaded', today: await d.api.today((await d.kv.get(CLASS_ID_KEY)) ?? undefined) }) } catch (e) { dispatch({ type: 'loadFailed', message: errText(e) }) }
         return
       case 'startSession': {
         const resumed = Boolean(state.today?.sessionId)
@@ -198,6 +199,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
   })
   const offPaired = bus.on('paired', () => dispatch({ type: 'resumed' }))
   const offStart = bus.on('startClass', () => dispatch({ type: 'startRequested' }))
+  const offClass = bus.on('classChanged', () => { void run({ type: 'loadToday' }) })
   const tick = setInterval(() => { if (TICKING.has(state.screen)) void paint() }, TICK_MS)
 
   await paint() // never a black screen: the first page goes up immediately
@@ -207,7 +209,7 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
   return {
     dispatch,
     stop() {
-      unsubscribe(); offPaired(); offStart(); clearInterval(tick)
+      unsubscribe(); offPaired(); offStart(); offClass(); clearInterval(tick)
       for (const t of Object.values(timers)) t.clear()
     },
   }
