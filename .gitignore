@@ -9,3 +9,6 @@ dist
 api/api/
 api/public/
 scripts/e2e/.run/
+
+# Local session transcripts (exported for other tools; never commit)
+transcripts/
