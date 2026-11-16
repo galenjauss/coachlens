@@ -17,7 +17,11 @@ export function Pairing({ api, kv, onPaired }: { api: Api; kv: KV; onPaired(): v
       bus.emit('paired', undefined)
       onPaired()
     } catch (e) {
-      setErr(e instanceof ApiError && e.status === 401 ? 'That code didn’t match.' : 'Can’t reach CoachLens. Check your connection.')
+      setErr(
+        e instanceof ApiError && e.status === 401 ? 'That code didn’t match.'
+          : e instanceof ApiError && e.status === 429 ? 'Too many tries. Wait a few minutes, then try again.'
+            : 'Can’t reach CoachLens. Check your connection.',
+      )
     } finally { setBusy(false) }
   }
   return (

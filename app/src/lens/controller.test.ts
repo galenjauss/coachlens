@@ -756,6 +756,23 @@ describe('lens controller', () => {
       expect(b.sent.join('\n')).toContain('Saved · offline, will sync')
     })
 
+    it('a background flush already running when the note is released still shows its card (not "queued")', async () => {
+      let releaseOld: (v: unknown) => void = () => {}
+      const utterance = vi.fn((p: { text: string | null }) => (p.text === 'old note' ? new Promise(r => { releaseOld = r }) : Promise.resolve(okRes)))
+      const transcribe = vi.fn(async () => 'Priya guard up')
+      const b = await toPeek(fakeApi({ transcribe, utterance }))
+      await new Outbox(b.kv).enqueue({ sessionId: 's1', drillId: null, mode: 'note', audioB64: null, text: 'old note' })
+      bus.emit('outboxRetry', undefined); await flush() // a background flush starts; its first send hangs
+      expect(utterance).toHaveBeenCalledTimes(1)
+      await say(b, twenty(pcm())) // the new note is saved, transcribed and released while that flush still runs
+      const n = b.sent.length
+      releaseOld({ ...okRes, utteranceId: 'u0', cardLines: ['√ old'] }); await flush()
+      expect(utterance).toHaveBeenCalledTimes(2) // the background flush sent the new note
+      const shown = b.sent.slice(n).join('\n')
+      expect(shown).toContain('√ Priya · guard')
+      expect(shown).not.toMatch(/will sync|queued/i)
+    })
+
     it('an empty transcript (422) says so and sends nothing', async () => {
       const transcribe = vi.fn(async () => { throw new ApiError(422, 'empty_transcript') })
       const utterance = vi.fn()

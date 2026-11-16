@@ -103,6 +103,11 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
   const online = () => (d.isOnline ? d.isOnline() : !(typeof navigator !== 'undefined' && navigator.onLine === false))
   /** Flushes reporting on the note just recorded; background retries wait so they never take its reply. */
   let inFlight = 0
+  /**
+   * Notes whose outcome the lens is waiting to show (outbox id → low speech energy). Whichever flush sends
+   * one reports it: a background flush already running when the note's hold is released may be the one.
+   */
+  const awaiting = new Map<string, boolean>()
   /** A Retry / Send now that arrived while a note was reporting: run right after it (never dropped). */
   let reflush: { force: boolean } | null = null
   /** The host backgrounded the app: no keep-warm pings until it resumes. */
@@ -282,33 +287,40 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
    * background flush (no current note) reports what it sent or set aside, so nothing changes unseen (F07).
    */
   async function flush(currentId: string | null, force = false, lowEnergy = false): Promise<void> {
+    if (currentId) awaiting.set(currentId, lowEnergy)
     let r: FlushResult
-    // The request for the note just recorded is really going out: the stage line moves heard → sending.
-    const send = (i: OutboxItem) => { if (i.id === currentId) dispatch({ type: 'sendStarted' }); return sendItem(i) }
+    // The request for a note the lens is waiting on is really going out: the stage line moves heard → sending.
+    const send = (i: OutboxItem) => { if (awaiting.has(i.id)) dispatch({ type: 'sendStarted' }); return sendItem(i) }
     try { r = await d.outbox.flush(send, { force }) } catch (err) {
       console.error('[outbox] flush failed', err)
-      if (currentId) dispatch({ type: 'utteranceQueued' })
+      if (currentId && awaiting.delete(currentId)) dispatch({ type: 'utteranceQueued' })
       return
     }
-    if (!currentId) {
-      const sent = r.results.size + r.delivered.size
-      if (sent || r.failed.size) dispatch({ type: 'outboxSynced', sent, failed: r.failed.size })
-      return
+    // Report every waiting note this flush settled, whichever flush its recording started.
+    const reported = new Set<string>()
+    for (const [id, low] of [...awaiting]) {
+      if (!settled(r, id)) continue
+      awaiting.delete(id)
+      reported.add(id)
+      reportSettled(r, id, low)
     }
-    reportCurrent(r, currentId, lowEnergy)
+    // Still queued (offline / 5xx / not paired), with the true reason. Skipped when already reported.
+    if (currentId && awaiting.delete(currentId)) dispatch({ type: 'utteranceQueued', reason: r.retrying.get(currentId) })
     // Older notes that went through or were set aside in the same flush get a status line too (not just the badge).
-    const othersFailed = [...r.failed.keys()].filter(id => id !== currentId).length
-    if (othersFailed) dispatch({ type: 'outboxSynced', sent: 0, failed: othersFailed })
+    const others = (ids: Iterable<string>) => [...ids].filter(id => !reported.has(id) && id !== currentId).length
+    const sent = currentId ? 0 : others(r.results.keys()) + others(r.delivered)
+    const failed = others(r.failed.keys())
+    if (sent || failed) dispatch({ type: 'outboxSynced', sent, failed })
   }
-  function reportCurrent(r: FlushResult, currentId: string, lowEnergy: boolean): void {
-    const res = r.results.get(currentId)
+  const settled = (r: FlushResult, id: string): boolean => r.results.has(id) || r.delivered.has(id) || r.failed.has(id)
+  function reportSettled(r: FlushResult, id: string, lowEnergy: boolean): void {
+    const res = r.results.get(id)
     if (res) return onResult(res)
-    if (r.delivered.has(currentId)) return dispatch({ type: 'utteranceDelivered' }) // saved; reply unreadable
-    const failed = r.failed.get(currentId)
+    if (r.delivered.has(id)) return dispatch({ type: 'utteranceDelivered' }) // saved; reply unreadable
+    const failed = r.failed.get(id)
     // Rejected as invalid: kept in the failed store. Only an empty transcript means "not understood"
     // ("couldn't hear you" when the audio was also low-energy).
     if (failed) return dispatch(failed.status === 422 && /empty|transcript/i.test(failed.code) ? { type: 'utteranceEmpty', reason: lowEnergy ? 'quiet' : 'not_understood' } : { type: 'utteranceFailed', reason: failed.reason })
-    dispatch({ type: 'utteranceQueued', reason: r.retrying.get(currentId) }) // still queued, with the true reason
   }
 
   /**
@@ -365,9 +377,12 @@ export async function startLens(d: LensDeps): Promise<LensHandle> {
       }
       return onResult(res)
     }
+    // From here a background flush that was already running may send this note: it reports it too.
+    awaiting.set(item.id, lowEnergy)
     if (tryText) {
       const heard = await transcriptFirst(wav, base.sessionId)
       if (heard === 'empty') {
+        awaiting.delete(item.id)
         await d.outbox.drop(item.id).catch(err => console.warn('[outbox] drop failed (the server will reject it)', err))
         return dispatch({ type: 'utteranceEmpty', reason: lowEnergy ? 'quiet' : 'not_understood' })
       }

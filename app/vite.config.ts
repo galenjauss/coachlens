@@ -1,5 +1,39 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+import { readFileSync } from 'node:fs'
+import { findUnlistedUrls, manifestWhitelist, rewriteDeadUrls } from './src/build/bundleUrls'
+
+/**
+ * BUILD ONLY: Even Hub review rejects bundles that contain URL literals outside the manifest's
+ * network.whitelist. Rewrites known-dead dependency URLs after minification, then fails the build
+ * if any unlisted URL is left, so a new dependency can't silently reintroduce a rejection.
+ */
+function evenHubUrlGuard(): Plugin {
+  return {
+    name: 'coachlens-evenhub-url-guard',
+    apply: 'build',
+    generateBundle(_options, bundle) {
+      const manifest: unknown = JSON.parse(readFileSync(new URL('./app.json', import.meta.url), 'utf8'))
+      const whitelist = manifestWhitelist(manifest)
+      const problems: string[] = []
+      for (const file of Object.values(bundle)) {
+        if (file.type === 'chunk') {
+          file.code = rewriteDeadUrls(file.code)
+          problems.push(...findUnlistedUrls(file.code, whitelist).map((u) => `${file.fileName}: ${u}`))
+        } else if (typeof file.source === 'string') {
+          problems.push(...findUnlistedUrls(file.source, whitelist).map((u) => `${file.fileName}: ${u}`))
+        }
+      }
+      if (problems.length > 0) {
+        this.error(
+          `Bundle references URLs missing from app.json network.whitelist:\n  ${problems.join('\n  ')}\n` +
+            'Add the host to the whitelist if the app calls it, or a rewrite in src/build/bundleUrls.ts if it is dead.',
+        )
+      }
+    },
+  }
+}
+
 
 /**
  * DEV ONLY (`apply: 'serve'`, never in a build): remote control for the screenshot fixtures, so one
@@ -33,7 +67,7 @@ function fixtureControl(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), fixtureControl()],
+  plugins: [react(), fixtureControl(), evenHubUrlGuard()],
   server: { host: true, port: 5173 },
   build: { target: 'esnext' },
 })
