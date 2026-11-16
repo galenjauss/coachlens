@@ -27,10 +27,10 @@ describe('prodDeps env validation', () => {
       expect(() => prodDeps()).toThrow(new RegExp(k))
     })
   }
-  it('S2: the per-instructor AI cap defaults to the global cap; only an explicit env sets a lower one', () => {
+  it('S2: the per-instructor AI cap defaults to the global cap; only an explicit env sets a lower one; self-serve accounts get their own pool', () => {
     process.env.AI_DAILY_CAP = '400'
     delete process.env.AI_INSTRUCTOR_DAILY_CAP
-    expect(prodDeps().env).toMatchObject({ aiDailyCap: 400, aiInstructorDailyCap: 400 })
+    expect(prodDeps().env).toMatchObject({ aiDailyCap: 400, aiInstructorDailyCap: 400, publicAi: { cap: 300, instructorCap: 40 } })
     process.env.AI_INSTRUCTOR_DAILY_CAP = '150'
     expect(prodDeps().env.aiInstructorDailyCap).toBe(150)
     process.env.AI_INSTRUCTOR_DAILY_CAP = '900' // never above the global ceiling

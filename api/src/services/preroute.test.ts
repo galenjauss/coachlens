@@ -155,7 +155,7 @@ describe('F20: /v1/status exposes degraded mode honestly', () => {
     expect(r.status).toBe(200)
     const body = StatusResponse.parse(await r.json())
     expect(body).toEqual({
-      aiCallsToday: 3, aiDailyCap: 6, sttConfigured: false, mailMode: 'review', degraded: true,
+      aiCallsToday: 3, aiDailyCap: 6, sttConfigured: false, mailMode: 'review', mailSends: true, degraded: true,
       degradedReasons: ['speech_to_text_unconfigured'], aiCallsRemaining: 3, aiCallsCounted: 'anthropic', day: '2026-10-19',
     })
     // The global ceiling is reached by others: this caller is out too, still seeing only their own count.

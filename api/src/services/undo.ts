@@ -155,7 +155,7 @@ async function planCompensation(deps: Deps, utteranceId: string, labels: LabelSe
     }
   }
 
-  const sent = g.mail.filter(m => m.status === 'sent' || m.status === 'sending')
+  const sent = g.mail.filter(m => m.status === 'sent' || m.status === 'sending' || m.status === 'handed_off')
   const familyOf = async (studentId: string) => ((await modeForStudent(db, studentId)).recipient === 'client' ? '' : "'s family")
   for (const n of g.ns) reversed.add(n.studentId ? `Removed ${nameOf(n.studentId)} note` : 'Removed unassigned note')
   for (const b of g.bills) reversed.add(b.studentId ? `Removed billing flag for ${nameOf(b.studentId)}` : 'Removed billing flag')

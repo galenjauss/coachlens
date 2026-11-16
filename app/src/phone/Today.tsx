@@ -57,6 +57,17 @@ export function Today({ api, kv, outbox, onOpenDeck, onSetup, onOpenInsights, on
     {error && <p className="error" role="alert">Couldn’t load today: {error}</p>}
   </>
 
+  // A new account: no classes yet. Welcome the coach into setup instead of showing an error.
+  if (!t && error === 'needs_setup') return (
+    <main className="screen">
+      {picker}
+      <section className="card" aria-labelledby="welcome-heading">
+        <h1 id="welcome-heading">Welcome to CoachLens</h1>
+        <p className="sub">Add your classes and students. Paste a roster, upload a file or snap a photo; it takes a few minutes.</p>
+        <div className="btns"><button type="button" className="primary" onClick={onSetup}>Set up your classes</button></div>
+      </section>
+    </main>
+  )
   if (!t) return (
     <main className="screen">
       {picker}{banner}

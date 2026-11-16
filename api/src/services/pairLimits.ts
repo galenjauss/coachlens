@@ -13,6 +13,8 @@ import { pairAttempts } from '../db/schema'
 export const PAIR_WINDOW_MS = 10 * 60_000
 export const IP_LIMIT = 10
 export const PREFIX_LIMIT = 30
+/** New accounts one client IP may create per window (a classroom or a family can share an IP). */
+export const SIGNUP_IP_LIMIT = 5
 
 let warnedNoIp = false
 /**
@@ -55,6 +57,16 @@ export async function bump(db: Db, bucket: string, now: Date, prune = Math.rando
 /** A successful pairing does not count against its IP. */
 export async function unbump(db: Db, bucket: string): Promise<void> {
   await db.update(pairAttempts).set({ count: sql`greatest(${pairAttempts.count} - 1, 0)` }).where(eq(pairAttempts.bucket, bucket))
+}
+
+/** Sign-up bucket for a client IP: IPv4 as is, IPv6 by its /64 (one host or network controls a whole /64). */
+export function signupIpKey(ip: string): string {
+  if (!ip.includes(':')) return ip
+  const [head, tail = ''] = ip.toLowerCase().split('::')
+  const left = head ? head.split(':') : []
+  const right = tail ? tail.split(':') : []
+  const full = ip.includes('::') ? [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill('0'), ...right] : left
+  return `${full.slice(0, 4).map(g => g.replace(/^0+(?=.)/, '')).join(':')}::/64`
 }
 
 export const prefixBucket = (code: string) => `prefix:${code.trim().slice(0, 3).toLowerCase()}`

@@ -90,7 +90,7 @@ describe('lens controller', () => {
     const b = await boot(api, false)
     expect(b.sent[0]).toContain('WELCOME TO COACHLENS')
     b.emit(tap); await flush()
-    expect(b.sent.join('\n')).toContain('Pair on phone')
+    expect(b.sent.join('\n')).toContain('Not connected yet')
     expect(await b.kv.get(KEYS.firstRunSeen)).toBe('1')
     paired = true
     bus.emit('paired', undefined); await flush()
@@ -102,8 +102,8 @@ describe('lens controller', () => {
     it('no token (401): home says to pair on the phone, with a retry', async () => {
       const b = await boot(fakeApi({ today: vi.fn(async () => { throw new ApiError(401, 'missing token') }) }))
       expect(b.sent[0]).toMatch(/^create:/) // the first page went up at once
-      expect(lastBody(b.sent)).toContain('Not paired yet')
-      expect(lastBody(b.sent)).toContain('Pair on phone: open CoachLens in the')
+      expect(lastBody(b.sent)).toContain('Not connected yet')
+      expect(lastBody(b.sent)).toContain('and tap Get started.')
       expect(lastBody(b.sent)).toContain('> Tap to retry')
     })
     it('API unreachable: home says it cannot load, names the problem and offers a retry that re-requests', async () => {
@@ -114,10 +114,10 @@ describe('lens controller', () => {
       b.emit(tap); await flush()
       expect(today).toHaveBeenCalledTimes(2)
     })
-    it('API hanging: "Loading class… Pair on your phone if this stays." until the request times out', async () => {
+    it('API hanging: "Loading class… Open the phone app if this stays." until the request times out', async () => {
       const b = await boot(fakeApi({ today: vi.fn(() => new Promise(() => {})) }))
       expect(lastBody(b.sent)).toContain('Loading class…')
-      expect(lastBody(b.sent)).toContain('Pair on your phone if this stays.')
+      expect(lastBody(b.sent)).toContain('Open the phone app if this stays.')
     })
     it('bridge storage that never answers still gets the first-run page on the glasses', async () => {
       const kv = { get: vi.fn(() => new Promise<string | null>(() => {})), set: vi.fn(async () => {}) }
@@ -127,7 +127,7 @@ describe('lens controller', () => {
       lens = await started
       await flush()
       expect(b.sent[0]).toContain('WELCOME TO COACHLENS')
-      expect(b.sent[0]).toContain('Pair on your phone, then tap here.')
+      expect(b.sent[0]).toContain('Get started on phone, then tap here.')
     })
   })
 

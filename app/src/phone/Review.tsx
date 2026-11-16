@@ -4,6 +4,7 @@ import type { Api, ReviewItemClient as ReviewItem } from '../core/api'
 import { approveAllNotice, bulkEmailIds, candidatesError, filterCandidates, outcomeFor, urgentFirst, visibleEmailIds } from './reviewLogic'
 import { usePoll } from './usePoll'
 import { useAction } from './useAction'
+import { copyText, emailText, mailtoHref } from './handOff'
 
 /** F17: an urgent item says so first. */
 const Urgent = ({ item }: { item: { urgent?: boolean } }) => (item.urgent ? <span className="pill high urgent">Urgent</span> : null)
@@ -24,7 +25,8 @@ export function DiffList({ diff, names }: { diff: DeckDiff; names?: Record<strin
 type Props = { api: Api; onGone(text: string): void; refresh(): void | Promise<unknown>; locked?: boolean }
 type EmailItem = Extract<ReviewItem, { kind: 'parent_email' | 'report_card' }>
 
-function EmailCard({ api, item, onGone, refresh, locked, onDirty }: Props & { item: EmailItem; onDirty(id: string, dirty: boolean): void }) {
+/** handOff: CoachLens doesn't send this account's email; the coach copies it into their own email app. */
+function EmailCard({ api, item, onGone, refresh, locked, onDirty, handOff }: Props & { item: EmailItem; onDirty(id: string, dirty: boolean): void; handOff: boolean }) {
   const [edit, setEdit] = useState(false)
   const [subject, setSubject] = useState(item.subject)
   const [body, setBody] = useState(item.body)
@@ -56,7 +58,13 @@ function EmailCard({ api, item, onGone, refresh, locked, onDirty }: Props & { it
       <div className="btns">
         <button type="button" disabled={off} aria-pressed={edit} onClick={() => setEdit(!edit)}>{edit ? 'Done' : 'Edit'}</button>
         <button type="button" disabled={off} onClick={() => run(() => api.skip(item.id), 'Skipped.')}>Skip</button>
-        <button type="button" className="primary" disabled={off || empty} onClick={() => run(() => api.approve(item.id, { subject, body }), 'Sent.')}>{busy ? 'Sending…' : 'Send'}</button>
+        {handOff ? <>
+          <a className="btn" href={mailtoHref(item.to, subject, body)}>Open in Mail</a>
+          <button type="button" className="primary" disabled={off || empty} onClick={() => run(async () => {
+            await copyText(emailText(item.to, subject, body))
+            await api.approve(item.id, { subject, body })
+          }, 'Copied. Paste it into your email app to send it.')}>{busy ? 'Copying…' : 'Copy & done'}</button>
+        </> : <button type="button" className="primary" disabled={off || empty} onClick={() => run(() => api.approve(item.id, { subject, body }), 'Sent.')}>{busy ? 'Sending…' : 'Send'}</button>}
       </div>
     </article>
   )
@@ -144,6 +152,9 @@ function DiffCard({ api, item, onGone, refresh, locked }: Props & { item: Extrac
 
 export function Review({ api }: { api: Api }) {
   const { data, error, loading, reload } = usePoll(() => api.review(), 5000)
+  // Until the status loads, assume drafts-only: never offer "Send" to an account that can't send.
+  const { data: status } = usePoll(() => api.status(), 60000)
+  const handOff = status?.mailSends !== true
   const [notice, setNotice] = useState<string | null>(null)
   const [bulkErr, setBulkErr] = useState<string | null>(null)
   const [bulkBusy, setBulkBusy] = useState(false)
@@ -171,14 +182,14 @@ export function Review({ api }: { api: Api }) {
       {error && <p className="error" role="alert">Couldn’t load review: {error} <button type="button" className="inline" onClick={reload}>Retry</button></p>}
       <div aria-live="polite">{notice && <p className="notice">{notice} <button type="button" className="inline" onClick={() => setNotice(null)}>Dismiss</button></p>}</div>
       {bulkErr && <p className="error" role="alert">{bulkErr}</p>}
-      {emailIds.length > 1 && (
+      {!handOff && emailIds.length > 1 && (
         <div className="btns bulk"><button type="button" className="primary" disabled={bulkBusy} onClick={approveAll}>{bulkBusy ? 'Sending…' : `Send ${emailIds.length} unedited emails`}</button></div>
       )}
-      {excluded > 0 && <p className="muted" id="bulk-hint">Edited emails are sent individually.</p>}
+      {!handOff && excluded > 0 && <p className="muted" id="bulk-hint">Edited emails are sent individually.</p>}
       {data && urgentFirst(data).map(item => {
         const p = { api, onGone, refresh: reload, locked: bulkBusy }
         switch (item.kind) {
-          case 'parent_email': case 'report_card': return <EmailCard key={item.id} {...p} item={item} onDirty={onDirty} />
+          case 'parent_email': case 'report_card': return <EmailCard key={item.id} {...p} item={item} onDirty={onDirty} handOff={handOff} />
           case 'billing': return <BillingCard key={item.id} {...p} item={item} />
           case 'unassigned_note': return <NoteCard key={item.id} {...p} item={item} />
           case 'deck_diff': return <DiffCard key={item.id} {...p} item={item} />

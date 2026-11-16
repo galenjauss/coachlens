@@ -8,6 +8,7 @@ import { modeForStudent } from '../services/context'
 import { getAutonomy } from '../services/settings'
 import { scopedInstructor } from '../http/context'
 import { ownedStudentIds } from '../services/ownership'
+import { coachName } from '../services/accounts'
 
 const SUBJECT: Record<ModeConfig['id'], string> = {
   martial_arts: 'a child in a martial arts class, for their parent',
@@ -53,7 +54,7 @@ export async function draftReportCard(deps: Deps, studentId: string, month: stri
       ? [`Client: ${firstName} (writing to them directly)`]
       : [`Student: ${firstName}${mode.id === 'martial_arts' ? `, ${s.belt} belt` : ''}`, `Parent: ${g.name}`]
     const prompt = [
-      `Coach: ${deps.env.instructorName}`, ...who, `Month: ${month}`,
+      `Coach: ${await coachName(deps)}`, ...who, `Month: ${month}`,
       `Classes attended in the last 30 days (recorded): ${present?.n ?? 0}`, `Open focus areas: ${open.map(o => o.tag).join(', ') || 'none'}`,
       'Coach notes:', ...recent.map(r => `- ${r.at.toISOString().slice(0, 10)} [${r.drill ?? 'class'}] ${r.text}`),
     ].join('\n')

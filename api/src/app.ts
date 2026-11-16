@@ -6,10 +6,10 @@ import { z } from 'zod'
 import { AgentTask, InsightsQuery, DeckPatch, ReplaceDeckRequest, VoicePlanRequest, SettingsPatch, ExtractRequest, MAX_ALIASES, MetricCreate, MAX_IMAGE_BASE64, MAX_ONBOARDING_TEXT, OnboardingCommit, RedraftRequest, TranscribeForm, UtteranceForm, type UtteranceResponse } from '@matside/shared'
 import { SttUnavailableError, type Deps } from './deps'
 import { getStatus } from './services/status'
-import { attendance, billingFlags, drills, enrollments, instructors, insights as insightsTable, notes, sessions, students, classes, utterances } from './db/schema'
+import { attendance, billingFlags, drills, enrollments, insights as insightsTable, notes, sessions, students, classes, utterances } from './db/schema'
 import { runAs } from './http/context'
 import { authenticate, DEV_PAIRING_PEPPER, instructorForCode, issueToken, revokeOtherTokens, revokeToken, rotatePairingCode, syncEnvPairingCode } from './services/pairing'
-import { bump, clientIp, IP_LIMIT, PREFIX_LIMIT, prefixBucket, prunePairAttempts, unbump } from './services/pairLimits'
+import { bump, clientIp, IP_LIMIT, SIGNUP_IP_LIMIT, signupIpKey, PREFIX_LIMIT, prefixBucket, prunePairAttempts, unbump } from './services/pairLimits'
 import {
   insightOwnedBy, ownedStudentIds, ownsAgentRun, ownsBilling, ownsClass, ownsDeck, ownsDiff, ownsDrill, ownsInsight,
   ownsMetric, ownsNote, ownsOutbox, ownsSession, ownsStudent, ownsUtterance,
@@ -43,7 +43,8 @@ import { agentRunDetail, agentTaskRuns, agentsSummary, utteranceRuns } from './s
 import { localDate, upcomingClassDate } from './logic/dates'
 import { computeCoverage, coverageAndNext, loadSessionContext, markPresent, nextStudentFor } from './services/context'
 import { extractOnboarding } from './agents/onboarding'
-import { BudgetExceededError } from './agents/budget'
+import { BudgetExceededError, dailyMeter } from './agents/budget'
+import { createSelfServeInstructor, cronInstructors, MAX_CLASSES, MAX_STUDENTS, rosterHasRoom } from './services/accounts'
 import { getSettings, patchSettings, SettingsError } from './services/settings'
 import { commitOnboarding, onboardingStatus, OnboardingError } from './services/onboarding'
 import { acceptInsight, dismissInsight, insightsOnAttendance, InsightsError, listInsights, runInsights, type InsightActResult } from './services/insights'
@@ -103,6 +104,27 @@ export function createApp(deps: Deps) {
     // The shared prefix bucket only ever refuses codes that do not match.
     const many = await bump(db, prefixBucket(code), deps.now()) > PREFIX_LIMIT
     throw new HTTPException(many ? 429 : 401, { message: many ? 'slow down' : 'bad code' })
+  })
+
+  /**
+   * One-tap sign-up for anyone who installs the app: a new, empty, private account and its first token. No email or
+   * code. Abuse bounds: SIGNUP_IP_LIMIT per client IP per window, SIGNUP_DAILY_CAP new accounts per day overall, and
+   * every account's AI and speech-to-text calls are capped per day (see prod.ts), so sign-ups cannot run up the bill.
+   */
+  const signups = dailyMeter(db, { meter: 'signup', cap: deps.env.signupDailyCap ?? 100, tz: deps.env.timeZone, now: deps.now })
+  app.post('/signup', async c => {
+    // Unknown client IP: one shared, strict bucket (never "no limit"). IPv6 is keyed by its /64, which one host controls.
+    const ip = clientIp(k => c.req.header(k))
+    if (await bump(db, `signup:${ip ? signupIpKey(ip) : 'unknown'}`, deps.now()) > SIGNUP_IP_LIMIT) {
+      c.header('Retry-After', '600')
+      throw new HTTPException(429, { message: 'slow down' })
+    }
+    try { await signups.take() } catch (e) {
+      if (e instanceof BudgetExceededError) throw new HTTPException(503, { message: 'signups_paused' })
+      throw e
+    }
+    const instructorId = await createSelfServeInstructor(db)
+    return c.json({ token: await issueToken(db, instructorId, deps.now()) })
   })
 
   app.use('/v1/*', async (c, next) => {
@@ -210,6 +232,8 @@ export function createApp(deps: Deps) {
       return (await deps.stt.transcribe(new Uint8Array(await audio.arrayBuffer()), hints)).trim()
     } catch (e) {
       if (e instanceof SttUnavailableError) throw new HTTPException(503, { message: 'stt_not_configured' })
+      // The account's (or the day's) speech-to-text allowance is used up: 429 keeps the note queued on the phone.
+      if (e instanceof BudgetExceededError) throw new HTTPException(429, { message: 'stt_budget_reached' })
       throw e
     }
   }
@@ -406,6 +430,8 @@ export function createApp(deps: Deps) {
   app.get('/v1/today', async c => {
     const classId = c.req.query('classId')
     if (classId !== undefined && (classId.length < 1 || classId.length > 64)) throw new HTTPException(400, { message: 'bad classId' })
+    // A new account has no classes yet: a clear "set up on the phone" state, not a server error.
+    if (classId === undefined && (await listClasses(db, me(c))).length === 0) throw new HTTPException(409, { message: 'needs_setup' })
     return c.json(await guard(getToday(deps, classId, me(c))))
   })
 
@@ -414,7 +440,11 @@ export function createApp(deps: Deps) {
     const today = localDate(deps.now(), deps.env.timeZone)
     let drafted = 0
     let failed = 0
-    for (const cl of await db.select().from(classes)) {
+    // Operator accounts first, then self-serve accounts that ran a class recently; abandoned sign-ups cost nothing.
+    const accounts = await cronInstructors(db, deps.now())
+    const rank = new Map(accounts.map((id, i) => [id, i]))
+    const due = (await db.select().from(classes)).filter(cl => rank.has(cl.instructorId)).sort((a, b) => rank.get(a.instructorId)! - rank.get(b.instructorId)!)
+    for (const cl of due) {
       try { if (await runAs(cl.instructorId, () => nextDeckFor(deps, cl.id, today))) drafted++ } catch (e) {
         failed++
         console.error('[jobs/plan] class failed', cl.id, e)
@@ -424,7 +454,8 @@ export function createApp(deps: Deps) {
     await prunePairAttempts(db, deps.now()).catch(e => console.error('[jobs/plan] prune pair_attempts', e))
     // Per instructor (C4): each pass sees only that instructor's students and settings.
     let insights = 0
-    for (const ins of await db.select({ id: instructors.id }).from(instructors)) {
+    for (const id of accounts) {
+      const ins = { id }
       insights += await runAs(ins.id, () => runInsights(deps, { trigger: 'cron' })).then(r => r.length).catch(e => { console.error('[jobs/plan] insights failed', ins.id, e); return 0 })
     }
     return c.json({ drafted, failed, insights })
@@ -471,7 +502,8 @@ export function createApp(deps: Deps) {
   app.get('/jobs/report-cards', async c => {
     if (!deps.env.cronSecret || !codesMatch(c.req.header('authorization') ?? '', `Bearer ${deps.env.cronSecret}`)) throw new HTTPException(401, { message: 'cron only' })
     let drafted = 0
-    for (const ins of await db.select({ id: instructors.id }).from(instructors)) {
+    for (const id of await cronInstructors(db, deps.now())) {
+      const ins = { id }
       drafted += (await runAs(ins.id, async () => runReportCards(deps, await ownedStudentIds(db, ins.id)))).drafted
     }
     return c.json({ drafted })
@@ -496,6 +528,7 @@ export function createApp(deps: Deps) {
   app.post('/v1/students', async c => {
     const body = await json(c.req.raw, StudentCreate)
     await ownAllClasses(c, body.classIds)
+    if (!(await rosterHasRoom(db, me(c), 0, 1))) throw new HTTPException(409, { message: `roster_limit: at most ${MAX_STUDENTS} students` })
     const year = Number(localDate(deps.now(), deps.env.timeZone).slice(0, 4))
     return c.json(await createStudent(db, me(c), body, year), 201)
   })
@@ -520,7 +553,11 @@ export function createApp(deps: Deps) {
     if (r === 'no_class') throw new HTTPException(409, { message: 'no_class' })
     return c.json(r)
   })
-  app.post('/v1/classes', async c => c.json(await createClass(db, me(c), await json(c.req.raw, ClassCreate)), 201))
+  app.post('/v1/classes', async c => {
+    const body = await json(c.req.raw, ClassCreate)
+    if (!(await rosterHasRoom(db, me(c), 1, 0))) throw new HTTPException(409, { message: `roster_limit: at most ${MAX_CLASSES} classes` })
+    return c.json(await createClass(db, me(c), body), 201)
+  })
   app.use('/v1/classes/:id', async (c, next) => { await need(ownsClass(db, me(c), c.req.param('id')!), 'class'); await next() })
   app.patch('/v1/classes/:id', async c => c.json(await updateClass(db, c.req.param('id'), await json(c.req.raw, ClassUpdate))))
   app.delete('/v1/classes/:id', async c => {
@@ -641,6 +678,10 @@ export function createApp(deps: Deps) {
   })
   app.post('/v1/onboarding/commit', async c => {
     const body = await json(c.req.raw, OnboardingCommit)
+    // Conservative (rows matched by name are updated, not added), so a full roster may need edits instead of a re-import.
+    if (!(await rosterHasRoom(db, me(c), body.classes.length, body.students.length))) {
+      throw new HTTPException(409, { message: `roster_limit: at most ${MAX_CLASSES} classes and ${MAX_STUDENTS} students per account` })
+    }
     try {
       return c.json(await commitOnboarding(deps, c.get('instructorId'), body))
     } catch (e) {

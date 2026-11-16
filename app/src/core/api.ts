@@ -137,6 +137,8 @@ export function createApi(baseUrl: string, getToken: () => Promise<string | null
   const StudentRow = z.object({ id: z.string(), name: z.string() }).loose()
   return {
     pair: (code: string) => post('/pair', { code }, z.object({ token: z.string() })),
+    /** One-tap sign-up: a new private account and its token. */
+    signup: () => post('/signup', {}, z.object({ token: z.string() })),
     classes: () => req('/v1/classes', {}, z.array(ClassRow)),
     today: (classId?: string) => req(classId ? `/v1/today?classId=${encodeURIComponent(classId)}` : '/v1/today', {}, Today),
     startSession: (classId: string) => post('/v1/sessions', { classId }, StartSessionResponse),

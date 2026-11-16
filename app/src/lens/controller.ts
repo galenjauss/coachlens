@@ -14,7 +14,7 @@ import { Glasses, type GlassesBridge } from './glasses'
 import { NodDetector, type NodConfig } from './nod'
 import { createPlanListen } from './planListen'
 import { autoDismisses, autoHides, initialState, reduce, resultKey } from './reducer'
-import { MIC_TICK_MS, PAIR_ERROR, render } from './render'
+import { MIC_TICK_MS, PAIR_ERROR, SETUP_ERROR, render } from './render'
 import type { DisplayMode, Effect, LensEvent, LensState } from './state'
 import type { Insight, UtteranceResponse } from '@matside/shared'
 
@@ -68,6 +68,7 @@ function slot() {
 }
 
 const errText = (e: unknown) => (e instanceof ApiError && e.status === 401 ? PAIR_ERROR
+  : e instanceof ApiError && e.status === 409 && e.message === 'needs_setup' ? SETUP_ERROR
   : e instanceof ApiError && e.message === 'stt_not_configured' ? 'Speech-to-text not set up'
   : e instanceof ApiError ? `Server error ${e.status}`
   : e instanceof NetworkError && e.message === 'timeout' ? 'Server not responding' : 'Offline')

@@ -110,7 +110,7 @@ export const outbox = pgTable('outbox', {
   id: id(), kind: text('kind').$type<'parent_email' | 'report_card'>().notNull(),
   studentId: text('student_id').notNull(), sessionId: text('session_id'), toEmail: text('to_email').notNull(),
   subject: text('subject').notNull(), body: text('body').notNull(),
-  status: text('status').$type<'pending_review' | 'sending' | 'sent' | 'skipped' | 'error' | 'cancelled'>().notNull().default('pending_review'),
+  status: text('status').$type<'pending_review' | 'sending' | 'sent' | 'handed_off' | 'skipped' | 'error' | 'cancelled'>().notNull().default('pending_review'),
   error: text('error'), sentAt: ts('sent_at'), createdAt: createdAt(),
   // What drafted it: request | urgent | recurring | monthly (null on rows drafted before v2).
   trigger: text('trigger'),

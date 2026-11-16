@@ -531,6 +531,8 @@ export const StatusResponse = z.object({
   aiDailyCap: z.number().int().nullable(),
   sttConfigured: z.boolean(),
   mailMode: z.enum(['review', 'auto', 'off']),
+  /** False: CoachLens does not send this account's emails; approved drafts are copied into the coach's own email app. */
+  mailSends: z.boolean().optional(),
   degraded: z.boolean(),
   // Extra detail beyond C5.
   degradedReasons: z.array(DegradedReason),

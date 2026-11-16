@@ -6,7 +6,18 @@ import * as schema from './db/schema'
 import type { Db } from './db/client'
 import { SttUnavailableError, type Deps } from './deps'
 import { anthropicLlm, MODEL_FAST, MODEL_SMART } from './agents/llm'
-import { dbBudget } from './agents/budget'
+import { dailyMeter, dbBudget } from './agents/budget'
+import { isSelfServe } from './services/accounts'
+
+/** Self-serve per-account daily defaults: about one busy class of notes plus its follow-up and planning. */
+const DEFAULT_AI_PER_COACH = 40
+const DEFAULT_STT_PER_COACH = 60
+
+const positive = (k: string, fallback: number): number => {
+  const v = Number(process.env[k] || fallback)
+  if (!Number.isFinite(v) || v <= 0) throw new Error(`${k} must be a positive number`)
+  return v
+}
 
 const need = (k: string) => {
   const v = process.env[k]
@@ -27,30 +38,40 @@ export function prodDeps(): Deps {
   const cronSecret = need('CRON_SECRET')
   const allowedOrigins = need('ALLOWED_ORIGINS').split(',').map(s => s.trim())
   if (allowedOrigins.includes('*')) console.warn('[prod] ALLOWED_ORIGINS=* (any origin); narrow it to the WebView origin')
-  const cap = Number(process.env.AI_DAILY_CAP || 400)
-  if (!Number.isFinite(cap) || cap <= 0) throw new Error('AI_DAILY_CAP must be a positive number')
-  // S2: one instructor can use at most this many of the day's calls; the global cap stays the ceiling.
-  // Unset: the global cap (a single-coach deployment keeps all of it). Only an explicit value sets a lower sub-cap.
-  const instructorCap = Math.min(cap, Number(process.env.AI_INSTRUCTOR_DAILY_CAP || cap))
-  if (!Number.isFinite(instructorCap) || instructorCap <= 0) throw new Error('AI_INSTRUCTOR_DAILY_CAP must be a positive number')
+  // Spend ceilings. Anyone can create an account, so every paid call is capped per account AND per day overall:
+  // the deployment-wide caps bound the worst-case daily bill however many accounts exist.
+  const cap = positive('AI_DAILY_CAP', 400)
+  // Operator accounts (demo coach, schools you set up): unset per-account cap = the whole operator pool, as before.
+  const instructorCap = Math.min(cap, positive('AI_INSTRUCTOR_DAILY_CAP', cap))
+  const sttCap = positive('STT_DAILY_CAP', 1500)
+  const sttInstructorCap = Math.min(sttCap, positive('STT_INSTRUCTOR_DAILY_CAP', sttCap))
+  // Self-serve accounts spend from a separate pool, so sign-ups can never use up the operator's day.
+  const publicAiCap = positive('PUBLIC_AI_DAILY_CAP', 300)
+  const publicAi = { cap: publicAiCap, instructorCap: Math.min(publicAiCap, positive('PUBLIC_AI_ACCOUNT_DAILY_CAP', DEFAULT_AI_PER_COACH)) }
+  const publicSttCap = positive('PUBLIC_STT_DAILY_CAP', 1000)
+  const publicStt = { cap: publicSttCap, instructorCap: Math.min(publicSttCap, positive('PUBLIC_STT_ACCOUNT_DAILY_CAP', DEFAULT_STT_PER_COACH)) }
+  const isPublic = (id: string) => isSelfServe(db, id)
+  const signupDailyCap = positive('SIGNUP_DAILY_CAP', 100)
   // Pairing-code hashes are keyed by a server secret: PAIRING_PEPPER, else one derived from CRON_SECRET.
   const pairingPepper = pairingPepperFrom({ PAIRING_PEPPER: process.env.PAIRING_PEPPER, CRON_SECRET: need('CRON_SECRET') })
   const timeZone = process.env.TZ_NAME ?? 'America/Los_Angeles'
+  const sttBudget = dailyMeter(db, { meter: 'stt', cap: sttCap, instructorCap: sttInstructorCap, tz: timeZone, now: () => new Date(), publicPool: { ...publicStt, isPublic } })
   return {
     db,
     llm: anthropicLlm({
       fast: process.env.MODEL_FAST || MODEL_FAST,
       smart: process.env.MODEL_SMART || MODEL_SMART,
-      budget: dbBudget(db, cap, timeZone, () => new Date(), instructorCap),
+      budget: dbBudget(db, cap, timeZone, () => new Date(), instructorCap, { ...publicAi, isPublic }),
     }),
     stt: {
       async transcribe(wav, hints) {
         if (!openaiKey) throw new SttUnavailableError()
+        await sttBudget.take() // BudgetExceededError('stt') -> 429 stt_budget_reached; the phone keeps the note and retries
         const { default: OpenAI, toFile } = await import('openai')
         const openai = new OpenAI({ apiKey: openaiKey })
         const r = await openai.audio.transcriptions.create({
           file: await toFile(Buffer.from(wav), 'note.wav', { type: 'audio/wav' }),
-          model: process.env.STT_MODEL ?? 'gpt-4o-transcribe',
+          model: process.env.STT_MODEL || 'gpt-4o-mini-transcribe',
           prompt: `A coach or instructor speaking during a session. Student names: ${hints.join(', ')}.`,
         })
         return r.text
@@ -76,6 +97,11 @@ export function prodDeps(): Deps {
       timeZone,
       aiDailyCap: cap,
       aiInstructorDailyCap: instructorCap,
+      publicAi,
+      signupDailyCap,
+      // Only these accounts' approved emails are sent by CoachLens (the demo coach by default); everyone else gets
+      // drafts to send from their own email app, so the service never mails strangers on a new account's say-so.
+      mailSenders: (process.env.MAIL_SENDERS ?? '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
       pairingPepper,
       pairingPepperPrevious: process.env.PAIRING_PEPPER_PREVIOUS || undefined,
       sttConfigured: Boolean(openaiKey),

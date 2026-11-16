@@ -24,6 +24,12 @@ export interface Env {
   pairingPepperPrevious?: string
   /** Per-instructor daily Anthropic-call cap (AI_INSTRUCTOR_DAILY_CAP); absent = the global cap. The global cap stays the ceiling. */
   aiInstructorDailyCap?: number | null
+  /** Self-serve accounts' own AI pool (PUBLIC_AI_DAILY_CAP / PUBLIC_AI_ACCOUNT_DAILY_CAP); absent = the operator caps. */
+  publicAi?: { cap: number; instructorCap: number }
+  /** New self-serve accounts allowed per local day across the deployment (SIGNUP_DAILY_CAP); absent = 100. */
+  signupDailyCap?: number
+  /** Instructor emails whose approved parent emails CoachLens sends itself (MAIL_SENDERS, plus the demo coach). */
+  mailSenders?: string[]
   /** False when no speech-to-text key is configured (transcription then fails with 503); absent = configured. */
   sttConfigured?: boolean
 }

@@ -44,7 +44,7 @@ Privacy, deletion and export requests go to the developer contact on this listin
 `coachlens-api.vercel.app`: the developer's own Hono API on Vercel (source in `api/` of the repo). It is the only host in the network whitelist.
 
 ## Reviewer notes
-- To get started, pair the phone with the code the developer provides. The glasses show "Pair on your phone…" until then, never a blank screen.
+- No code or account from the developer is needed: tap **Get started** on the phone to create a private account, then add a class in setup (paste a short roster such as "Kids Tue 5pm: Priya, Leo, Mia"). Until then the glasses show "Not connected yet" or "No classes yet", never a blank screen.
 - Root double-tap opens the system exit dialog (`shutDownPageContainer(1)`).
-- The service is a single-coach demonstration deployment with synthetic students; reviewers share the demo instructor.
-- Demo data: martial-arts class "Kids · Tue". Try "everyone's here" at roll call, then "who is forgetting to keep their guard up?".
+- Each account has a daily allowance of AI and speech-to-text calls; past it, notes still save and are processed later.
+- For accounts created in the app, CoachLens never sends email itself: approved parent drafts are copied into the coach's own email app.

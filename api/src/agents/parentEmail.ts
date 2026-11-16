@@ -10,6 +10,7 @@ import { approveOutbox } from '../services/review'
 import { cancelIfUndone, isUtteranceUndone } from '../services/deferred'
 import { currentUtteranceId } from '../http/context'
 import { clip } from '../logic/text'
+import { canSendMail, coachName, ownerOfStudent } from '../services/accounts'
 
 const COACH: Record<ModeConfig['id'], string> = {
   martial_arts: "a kids' martial arts instructor",
@@ -148,12 +149,13 @@ export async function draftParentEmail(
       ? [`Client: ${firstName} (writing to them directly)`]
       : [`${mode.person === 'student' ? 'Student' : 'Person'}: ${firstName}${mode.id === 'martial_arts' ? ` (${s.belt} belt)` : ''}`, `Parent: ${g.name}`]
     const urgentFact = a.trigger.kind === 'urgent' ? a.trigger.content : null
+    const coach = await coachName(deps)
     const urgent = urgentFact !== null
     // An urgent note carries only the observation: no progress history to blend into it.
     const prompt = urgent
-      ? [`Coach: ${deps.env.instructorName}`, ...who, `URGENT · Observation (logged today): ${urgentFact}`].join('\n')
+      ? [`Coach: ${coach}`, ...who, `URGENT · Observation (logged today): ${urgentFact}`].join('\n')
       : [
-          `Coach: ${deps.env.instructorName}`, ...who, why,
+          `Coach: ${coach}`, ...who, why,
           `Open focus areas: ${open.map(o => o.tag).join(', ') || 'none'}`,
           `Recent coach notes (newest first):`, ...recent.map(r => `- ${r.at.toISOString().slice(0, 10)} [${r.drill ?? 'class'}] ${r.text}`),
         ].join('\n')
@@ -161,7 +163,7 @@ export async function draftParentEmail(
     // Fact preservation: an urgent draft that lost the observation's words is replaced by the plain template.
     const factLost = urgentFact !== null && !keepsFacts(urgentFact, firstName!, drafted.subject, drafted.body)
     const email = factLost && urgentFact !== null
-      ? urgentFallback({ firstName: firstName!, readerName: g.name, toClient, content: urgentFact, coach: deps.env.instructorName })
+      ? urgentFallback({ firstName: firstName!, readerName: g.name, toClient, content: urgentFact, coach })
       : drafted
     // C2 race guard: check before writing, write, then re-check (Undo sets the flag before cancelling drafts).
     if (await isUtteranceUndone(db, utteranceId)) return undone
@@ -169,7 +171,8 @@ export async function draftParentEmail(
     if (await cancelIfUndone(db, utteranceId, row!.id)) return undone
     // Urgent notes ALWAYS wait for the instructor's review, whatever the setting: the fact check catches dropped facts,
     // not invented or inverted ones, so a person reads every urgent note before it leaves.
-    const sent = autonomy === 'auto' && !urgent ? await approveOutbox(deps, row!.id) : null
+    // Drafts-only accounts never auto-send: their coach sends each email from their own app.
+    const sent = autonomy === 'auto' && !urgent && await canSendMail(deps, await ownerOfStudent(db, s.id)) ? await approveOutbox(deps, row!.id) : null
     const note = sent ? (sent.ok ? ' and sent' : ` (auto-send failed: ${sent.error}; left for review)`) : ''
     return {
       result: row!.id,

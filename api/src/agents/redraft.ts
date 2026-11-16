@@ -6,6 +6,7 @@ import { modeForStudent } from '../services/context'
 import { withRun } from './runs'
 import { EmailOut, parentEmailInstructions } from './parentEmail'
 import { ReportCardOut, reportCardInstructions } from './reportCard'
+import { coachName } from '../services/accounts'
 
 export type RedraftResult =
   | { ok: true; item: RedraftResponse }
@@ -25,7 +26,7 @@ export async function redraftOutbox(deps: Deps, id: string, instruction: string)
   const recent = await db.select({ text: notes.text, at: notes.createdAt, drill: drills.name }).from(notes).leftJoin(drills, eq(drills.id, notes.drillId))
     .where(and(eq(notes.studentId, row.studentId), gte(notes.createdAt, since))).orderBy(desc(notes.createdAt)).limit(10)
   const prompt = [
-    `Coach: ${deps.env.instructorName}`,
+    `Coach: ${await coachName(deps)}`,
     `Coach's instruction: """${instruction}"""`,
     `Current subject: ${row.subject}`,
     'Current body:', row.body,

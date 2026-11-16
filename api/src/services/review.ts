@@ -5,6 +5,7 @@ import type { Deps } from '../deps'
 import { billingFlags, deckDiffs, notes, outbox, students, utterances } from '../db/schema'
 import { withRun } from '../agents/runs'
 import { billingOwnedBy, deckIdOwnedBy, noteOwnedBy, studentIdOwnedBy } from './ownership'
+import { canSendMail, ownerOfStudent } from './accounts'
 
 const iso = (d: Date) => d.toISOString()
 const first = (n: string | null) => (n ? n.split(' ')[0]! : 'Unknown')
@@ -33,13 +34,16 @@ export async function listReview(db: Db, instructorId: string | null): Promise<R
 
 export type ReviewFail = 'not_found' | 'not_pending'
 export type ActionResult = { ok: true } | { ok: false; code: ReviewFail; error: string }
-export type ApproveResult = { ok: true } | { ok: false; code: ReviewFail | 'send_failed'; error: string }
+export type ApproveResult = { ok: true; handedOff?: true } | { ok: false; code: ReviewFail | 'send_failed'; error: string }
 
 const notFound = (what: string): ActionResult => ({ ok: false, code: 'not_found', error: `${what} not found` })
 const conflict = (what: string): ActionResult => ({ ok: false, code: 'not_pending', error: `${what} is not pending` })
 
 export async function approveOutbox(deps: Deps, id: string, edits: { subject?: string; body?: string } = {}): Promise<ApproveResult> {
   const { db } = deps
+  // Decided before the claim, so a failed lookup can't leave the draft stuck in 'sending'.
+  const [owner] = await db.select({ studentId: outbox.studentId }).from(outbox).where(eq(outbox.id, id))
+  const sends = await canSendMail(deps, owner ? await ownerOfStudent(db, owner.studentId) : null)
   // Atomic claim: only one concurrent caller can move pending_review -> sending.
   // C2: a draft whose utterance was undone is never claimed for sending.
   const [row] = await db.update(outbox).set({ status: 'sending' }).where(and(eq(outbox.id, id), eq(outbox.status, 'pending_review'),
@@ -50,6 +54,11 @@ export async function approveOutbox(deps: Deps, id: string, edits: { subject?: s
   }
   const subject = edits.subject ?? row.subject
   const body = edits.body ?? row.body
+  // Drafts-only account: the coach sends it from their own email app; "approve" records that it was handed off.
+  if (!sends) {
+    await db.update(outbox).set({ subject, body, status: 'handed_off', sentAt: deps.now(), error: null }).where(eq(outbox.id, id))
+    return { ok: true, handedOff: true }
+  }
   const to = deps.env.demoEmailOverride ?? row.toEmail
   let sendError: string | null = null
   await withRun(deps, { agent: 'mailer', trigger: 'approved', sessionId: row.sessionId, links: { outboxId: id, studentId: row.studentId } }, async () => {

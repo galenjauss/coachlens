@@ -1,6 +1,6 @@
 # CoachLens Privacy Policy
 
-_Last updated: October 18, 2026_
+_Last updated: November 16, 2026_
 
 CoachLens is an Even Hub app for instructors (martial arts, personal training, tutoring). The instructor uses it to record notes about their students and to let AI agents handle follow-up work. This policy explains what CoachLens collects, why, where it goes, and how to remove it.
 
@@ -13,7 +13,7 @@ CoachLens is used by **instructors**. Students, clients and parents never sign i
 | Voice recordings | The microphone, only while you are recording a note (tap or hold on the glasses) or a planning conversation (double-tap in a class lobby) | Turned into text. **On your phone:** if the network is down or the upload fails, the recording waits temporarily in the app's offline queue on your phone and is deleted from the queue once it has been delivered. **On our server:** audio is not retained. It is passed to the speech-to-text service, the text is kept, and the audio is discarded. |
 | Transcripts and notes | Your voice notes, typed edits | Progress tracking, report cards, lesson plans, answers to your questions |
 | Class and roster information | Onboarding (typed, pasted, CSV, or a photo you choose), the phone app | Names, ranks or levels, schedules, curriculum, attendance |
-| Parent, guardian or client email addresses | You, during onboarding or in the phone app | Sending emails **you approve** (or that you set an agent to send automatically) |
+| Parent, guardian or client email addresses | You, during onboarding or in the phone app | Sending emails **you approve**. For accounts created in the app, CoachLens does not send email itself: approved drafts are copied into your own email app and you send them |
 | Progress metrics | Your notes or phone entries (e.g. time in rank, lift records, test scores) | Student profiles, progress insights |
 | Billing notes | Your voice notes | A reminder list for you. **CoachLens never processes payments** and never stores card or bank details. |
 | Photos | Your camera or photo library, only during setup and only when you tap **Read with AI** | Reading a schedule, sign-in sheet or curriculum into your class setup. The photo is sent for that one extraction and is not stored. |
@@ -41,7 +41,7 @@ CoachLens runs its own backend at **`coachlens-api.vercel.app`**, built and oper
 | Neon (database) | Your class data, notes, transcripts and settings | Storage |
 | OpenAI (speech-to-text) | Note audio | Transcription only |
 | Anthropic (Claude) | Transcripts, class context, setup text and photos you choose to read | Sorting notes, drafting emails, report cards and plans, answering your questions |
-| Resend (email) | The emails you approve, or that you set an agent to send automatically | Email delivery |
+| Resend (email) | Only for operator-created accounts: the emails you approve, or that you set an agent to send automatically. Not used for accounts created in the app. | Email delivery |
 
 API providers receive data only to perform these tasks for CoachLens. We do not sell or share your data for advertising.
 
@@ -57,14 +57,13 @@ Audio waiting in the offline queue stays on your phone only until it is delivere
 
 ## Pairing and access
 
-- **How pairing works:** the phone pairs by entering a pairing code that the developer gives you in person. Each instructor has their own code, which the service operator can rotate. Codes are stored hashed on the server. After pairing, the phone holds an access token, and the server stores only a hash of it.
+- **How you get an account:** tap **Get started** in the phone app. That creates a new, private account with no name, email or password; you add your own name and classes in setup. To use the same account on another phone, use the pairing code shown in Settings on the first phone. Codes are stored hashed on the server. Each phone holds an access token, and the server stores only a hash of it.
 - **Tokens expire after 90 days.** An **Unpair this phone** control revokes the phone's token on the server, and **Sign out other phones** revokes the others.
 - **Uninstalling alone does not revoke access on the server.** Deleting the app removes the token from your phone, but the server-side token stays valid until it expires. Use Unpair before you delete the app, or contact the developer via the Even Hub listing.
-- **Version note:** these controls are live on the deployed service and phone app (Oct 18, 2026). The Even Hub v0.1.0 build under review predates them and has no Unpair control.
 
-## Current deployment limits
+## Accounts and limits
 
-The live service is a **demonstration deployment**. It holds one instructor's synthetic demo data (no real students). Data is separated between instructors: every request is scoped to the signed-in instructor. Please still do not enter real student information into it. All outgoing email from the demo goes to a single demo inbox.
+Data is separated between accounts: every request is scoped to the signed-in account, and no account can see another's students, notes or drafts. Each account has a daily allowance of AI and speech-to-text requests; when it is used up, notes are still saved and are processed the next day.
 
 ## Security
 

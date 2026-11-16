@@ -123,6 +123,8 @@ function context(s: LensState, now: number) {
 
 /** Load error after a 401 (no token, or it was revoked): home tells the coach to pair on the phone. */
 export const PAIR_ERROR = 'Pair on phone'
+/** Load error for a new account with no classes yet: setup happens on the phone. */
+export const SETUP_ERROR = 'Set up on phone'
 const NET_ERRORS = new Set(['Offline', 'Server not responding'])
 
 function home(s: LensState): PageSpec {
@@ -140,12 +142,14 @@ function home(s: LensState): PageSpec {
     const action = s.starting ? 'Starting class…' : s.loadError ? `${s.loadError} · tap to retry` : '> Tap to start class'
     body = `${td.className} · ${td.startTime}\n${td.modeLabel} · ${td.theme}\n${td.planUnit}: ${td.deck.drills.length}\n\n${action}`
   } else if (s.loadError === PAIR_ERROR) {
-    body = `Not paired yet.\n${PAIR_ERROR}: open CoachLens in the Even app and enter the code.\n\n> Tap to retry`
+    body = `Not connected yet.\nOpen CoachLens on your phone\nand tap Get started.\n\n> Tap to retry`
+  } else if (s.loadError === SETUP_ERROR) {
+    body = `No classes yet.\nAdd your classes in CoachLens\non your phone.\n\n> Tap to retry`
   } else if (s.loadError) {
     const net = NET_ERRORS.has(s.loadError) ? ' · check the phone\'s internet' : ''
     body = `Can't load class.\n${s.loadError}${net}\n\n> Tap to retry`
   } else {
-    body = 'Loading class…\nPair on your phone if this stays.'
+    body = 'Loading class…\nOpen the phone app if this stays.'
   }
   return panel(`COACHLENS${pos}`, body, footer)
 }
@@ -476,7 +480,7 @@ export function render(s: LensState, now: number): PageSpec {
     case 'planResult': return planResult(s)
     case 'wrapup': return wrapup(s)
     case 'firstRun':
-      return panel('WELCOME TO COACHLENS', 'Quiet: the lens goes dark when idle.\nnod or tap: wake · tap: note\nswipe: deck · 2×: end class / undo\n\n> Pair on your phone, then tap here.', '')
+      return panel('WELCOME TO COACHLENS', 'Quiet: the lens goes dark when idle.\nnod or tap: wake · tap: note\nswipe: deck · 2×: end class / undo\n\n> Get started on phone, then tap here.', '')
     case 'attendance': return attendance(s)
     case 'attendanceDone': {
       const drills = s.today?.deck.drills ?? []

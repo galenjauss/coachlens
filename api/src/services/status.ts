@@ -1,10 +1,10 @@
-import { and, eq } from 'drizzle-orm'
 import type { DegradedReason, StatusResponse } from '@matside/shared'
 import type { Deps } from '../deps'
-import { llmUsage, llmUsageInstructor } from '../db/schema'
+import { meterUsage } from '../agents/budget'
 import { currentInstructorId } from '../http/context'
 import { localDate } from '../logic/dates'
 import { getAutonomy } from './settings'
+import { canSendMail, isSelfServe } from './accounts'
 
 /**
  * Degraded-mode status (C5): Anthropic calls made today against the configured cap (the same llm_usage counter the
@@ -14,13 +14,14 @@ export async function getStatus(deps: Deps): Promise<StatusResponse> {
   const day = localDate(deps.now(), deps.env.timeZone)
   // S2: the caller's own calls and cap; the deployment-wide total only shows as exhaustion, never as a count.
   const ins = currentInstructorId()
-  const [all] = await deps.db.select({ calls: llmUsage.calls }).from(llmUsage).where(eq(llmUsage.day, day))
-  const [mine] = ins ? await deps.db.select({ calls: llmUsageInstructor.calls }).from(llmUsageInstructor)
-    .where(and(eq(llmUsageInstructor.instructorId, ins), eq(llmUsageInstructor.day, day))) : []
-  const aiCallsToday = mine?.calls ?? 0
-  const globalCap = deps.env.aiDailyCap ?? null
-  const aiDailyCap = globalCap === null ? null : Math.min(globalCap, deps.env.aiInstructorDailyCap ?? globalCap)
-  const globalLeft = globalCap === null ? null : Math.max(0, globalCap - (all?.calls ?? 0))
+  // A self-serve account reads its own pool (see agents/budget.ts Pool).
+  const pub = Boolean(ins && deps.env.publicAi && await isSelfServe(deps.db, ins))
+  const usage = await meterUsage(deps.db, 'ai', day, ins, pub ? 'public' : 'operator')
+  const aiCallsToday = usage.mine
+  const globalCap = pub ? deps.env.publicAi!.cap : deps.env.aiDailyCap ?? null
+  const ownCap = pub ? deps.env.publicAi!.instructorCap : deps.env.aiInstructorDailyCap ?? globalCap
+  const aiDailyCap = globalCap === null ? null : Math.min(globalCap, ownCap ?? globalCap)
+  const globalLeft = globalCap === null ? null : Math.max(0, globalCap - usage.all)
   const ownLeft = aiDailyCap === null ? null : Math.max(0, aiDailyCap - aiCallsToday)
   const remaining = ownLeft === null ? null : Math.min(ownLeft, globalLeft ?? ownLeft)
   const exhausted = remaining !== null && remaining <= 0
@@ -29,6 +30,7 @@ export async function getStatus(deps: Deps): Promise<StatusResponse> {
   return {
     aiCallsToday, aiDailyCap, sttConfigured,
     mailMode: await getAutonomy(deps.db, 'parent_email'),
+    mailSends: await canSendMail(deps, ins),
     degraded: degradedReasons.length > 0,
     degradedReasons,
     aiCallsRemaining: remaining,
