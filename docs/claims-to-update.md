@@ -106,7 +106,7 @@ Done Nov 16 with v0.1.1, except as noted: the tagline is `Eyes-up notes and AI f
 - Tagline: `Eyes-up notes and AI follow-up for coaches and teachers.`
 - Description: replace `someone ready to test` with `someone due a rank review`, and `Agents take it from there:` with `Agents handle the follow-up:` (see [`store/listing.md`](store/listing.md)).
 - Reviewer notes: add `The service is a single-coach demonstration deployment with synthetic students; reviewers share the demo instructor.`
-- Privacy policy URL is unchanged (`https://coachlens-phone.vercel.app/privacy.html`). The corrected policy goes live when the phone app (`coachlens-phone.vercel.app`) is next deployed; until then the hosted page still shows the old text ("Audio is not stored", "one-time code", GitHub issues for deletion).
+- Privacy policy URL is unchanged (`https://coachlens-phone.vercel.app/privacy.html`). The corrected policy is live (verified Nov 16: the hosted page matches `app/public/privacy.html`).
 
 ## 4. Anything else said in person or in chat
 
