@@ -102,7 +102,7 @@ The simplest, safest option is to replace the whole story with the new [`docs/de
 
 ## 3. Even Hub listing (portal)
 
-The submitted v0.1.0 listing cannot be edited while it is in review. With the next build:
+Done Nov 16 with v0.1.1, except as noted: the tagline is `Eyes-up notes and AI follow-up for coaches` (the portal caps it at 50 characters), both description swaps are live, and the portal has no reviewer-notes field (the note below was not sent). Originally planned:
 - Tagline: `Eyes-up notes and AI follow-up for coaches and teachers.`
 - Description: replace `someone ready to test` with `someone due a rank review`, and `Agents take it from there:` with `Agents handle the follow-up:` (see [`store/listing.md`](store/listing.md)).
 - Reviewer notes: add `The service is a single-coach demonstration deployment with synthetic students; reviewers share the demo instructor.`

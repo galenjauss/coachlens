@@ -2,7 +2,7 @@
 
 Each step marked 👤 needs you.
 
-**Status after the Oct 18 audit:** Even Hub v0.1.0 is submitted and in review (no approval confirmed). The **installed-Beta gate is OPEN**: run [`beta-acceptance.md`](beta-acceptance.md) on physical G2 and attach evidence before any copy says the installed Beta is verified. The API and phone app with the remediation were deployed on Oct 18, but the Even Hub v0.1.0 build under review does not contain it (`app/coachlens-0.1.1.ehpk` is not uploaded). Public copy that needs replacing is listed in [`claims-to-update.md`](claims-to-update.md).
+**Status (Nov 16):** Even Hub rejected v0.1.0 on Oct 18 because its bundle held two URL strings outside `network.whitelist` (`https://react.dev/errors/` from react-dom and `http://[${e}]` from zod's IPv6 check). v0.1.1, built from `build` with the remediation, a build-time URL guard (`app/src/build/bundleUrls.ts`) and the corrected tagline/description, was submitted on Nov 16 and is in review (no approval confirmed). Earlier status: Even Hub v0.1.0 was submitted and in review. The **installed-Beta gate is OPEN**: run [`beta-acceptance.md`](beta-acceptance.md) on physical G2 and attach evidence before any copy says the installed Beta is verified. The API and phone app with the remediation were deployed on Oct 18, but the Even Hub v0.1.0 build under review does not contain it (`app/coachlens-0.1.1.ehpk` is not uploaded). Public copy that needs replacing is listed in [`claims-to-update.md`](claims-to-update.md).
 
 ## 1. Devpost (LA Hacks, deadline Sun 12:00 PM PT)
 

@@ -6,7 +6,9 @@ Copy for the Even Hub developer portal. The v0.1.0 submission used the earlier t
 CoachLens
 
 ## Tagline (short)
-Eyes-up notes and AI follow-up for coaches and teachers.
+Eyes-up notes and AI follow-up for coaches
+
+(The portal caps the tagline at 50 characters; the longer "…for coaches and teachers." does not fit.)
 
 ## Description
 CoachLens is for the people at the front of the room: martial-arts instructors, personal trainers and tutors. Your hands are full, twenty people need your attention, and the follow-up work piles up after class.
